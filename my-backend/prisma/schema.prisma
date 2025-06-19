@@ -1,0 +1,280 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  password   String
+  name       String
+  phone      String?
+  role       String   @default("admin")
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  businessId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Business {
+  id          String     @id @default(cuid())
+  name        String
+  gstNumber   String?
+  address     String?
+  phone       String?
+  email       String?
+  users       User[]
+  customers   Customer[]
+  parties     Party[]
+  products    Product[]
+  expenses    Expense[]
+  quotations  Quotation[]
+  purchases   Purchase[]
+  deliveryChallans DeliveryChallan[]
+  transactions Transaction[]
+  barcodes    Barcode[]
+  sales       Sale[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Customer {
+  id         String   @id @default(cuid())
+  name       String
+  phone      String?
+  email      String?
+  address    String?
+  gstNumber  String?
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  businessId String
+  quotations Quotation[]
+  deliveryChallans DeliveryChallan[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Product {
+  id            String   @id @default(cuid())
+  name          String
+  sku           String?  @unique
+  description   String?
+  salePrice     Float    @default(0)
+  purchasePrice Float?   @default(0)
+  stock         Int      @default(0)
+  unit          String   @default("pcs")
+  category      String?
+  businessId    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  business       Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  purchaseItems  PurchaseItem[]
+  quotationItems QuotationItem[]
+  challanItems   ChallanItem[]
+  barcodes       Barcode[]
+
+  @@map("products")
+}
+
+model Barcode {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  format     String   @default("CODE128")
+  productId  String
+  businessId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("Barcode")
+}
+
+model Quotation {
+  id         String         @id @default(cuid())
+  quotationNo String
+  date       DateTime
+  validUntil DateTime?
+  customer   Customer       @relation(fields: [customerId], references: [id])
+  customerId String
+  business   Business       @relation(fields: [businessId], references: [id])
+  businessId String
+  items      QuotationItem[]
+  subtotal   Float
+  tax        Float          @default(0)
+  discount   Float          @default(0)
+  total      Float
+  status     String         @default("Draft")
+  notes      String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([businessId, quotationNo])
+}
+
+model QuotationItem {
+  id          String    @id @default(cuid())
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  quotationId String
+  product     Product   @relation(fields: [productId], references: [id])
+  productId   String
+  quantity    Int
+  rate        Float
+  amount      Float
+}
+
+model Purchase {
+  id         String        @id @default(cuid())
+  purchaseNo String
+  date       DateTime
+  supplier   String
+  business   Business      @relation(fields: [businessId], references: [id])
+  businessId String
+  items      PurchaseItem[]
+  subtotal   Float
+  tax        Float         @default(0)
+  discount   Float         @default(0)
+  total      Float
+  status     String        @default("Draft")
+  notes      String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@unique([businessId, purchaseNo])
+}
+
+model PurchaseItem {
+  id         String   @id @default(cuid())
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  purchaseId String
+  product    Product  @relation(fields: [productId], references: [id])
+  productId  String
+  quantity   Int
+  rate       Float
+  amount     Float
+}
+
+model DeliveryChallan {
+  id             String        @id @default(cuid())
+  challanNo      String
+  date           DateTime
+  customer       Customer      @relation(fields: [customerId], references: [id])
+  customerId     String
+  business       Business      @relation(fields: [businessId], references: [id])
+  businessId     String
+  items          ChallanItem[]
+  deliveryDate   DateTime?
+  vehicleNumber  String?
+  driverName     String?
+  status         String        @default("Draft")
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([businessId, challanNo])
+}
+
+model ChallanItem {
+  id        String          @id @default(cuid())
+  challan   DeliveryChallan @relation(fields: [challanId], references: [id], onDelete: Cascade)
+  challanId String
+  product   Product         @relation(fields: [productId], references: [id])
+  productId String
+  quantity  Int
+  unit      String          @default("Nos")
+  remarks   String?
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  type        String   // "Payment In" or "Payment Out"
+  party       String
+  amount      Float
+  mode        String   // Cash, Bank Transfer, UPI, etc.
+  description String?
+  date        DateTime
+  reference   String?
+  businessId  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model Expense {
+  id         String   @id @default(cuid())
+  category   String
+  amount     Float
+  date       DateTime
+  description String?
+  business   Business @relation(fields: [businessId], references: [id])
+  businessId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Sale {
+  id         String   @id @default(cuid())
+  customer   String
+  amount     Float
+  items      String
+  date       String
+  businessId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model Party {
+  id         Int      @id @default(autoincrement())
+  name       String
+  phone      String?
+  email      String?
+  address    String?
+  gstNumber  String?
+  type       String   // Customer, Supplier, Both
+  balance    Float?   @default(0)
+  isActive   Boolean  @default(true)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  businessId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("parties")
+}
+model Invoice {
+  id            String   @id @default(cuid())
+  invoiceNumber String
+  invoiceDate   String
+  customerName  String
+  invoiceAmount Float
+  received      Float
+  balance       Float
+  paymentMode   String
+  notes         String?
+  businessId    String
+  createdAt     DateTime @default(now())
+  items         InvoiceItem[]
+}
+
+model InvoiceItem {
+  id        String   @id @default(cuid())
+  invoiceId String
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id])
+  name      String
+  qty       Int
+  rate      Float
+  amount    Float
+}

@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Plus, MoreVertical, Search, Filter, Download, X, ChevronDown, Calendar, Share2, Save, Info, Camera } from 'lucide-react';
 
 // Purchase Form Page Component
-function PurchaseFormPage({ onClose, onSave }) {
+function PurchaseFormPage({ onClose, onSave }: { onClose: () => void; onSave?: (data: any) => void }) {
   const [formData, setFormData] = useState({
     billNumber: 'Purchase #1',
     billDate: '19/06/2025',
@@ -291,7 +291,7 @@ function PurchaseFormPage({ onClose, onSave }) {
 }
 
 // Sale Form Page Component
-function SaleFormPage({ onClose, onSave }) {
+function SaleFormPage({ onClose, onSave }: { onClose: () => void; onSave?: (data: any) => void }) {
   const [formData, setFormData] = useState({
     billNumber: 'Sale #1',
     billDate: '19/06/2025',
@@ -580,7 +580,7 @@ function SaleFormPage({ onClose, onSave }) {
 }
 
 // Purchase Order Form Page Component
-function PurchaseOrderFormPage({ onClose, onSave, type = 'purchase-order' }) {
+function PurchaseOrderFormPage({ onClose, onSave, type = 'purchase-order' }: { onClose: () => void; onSave?: (data: any) => void; type?: string }) {
   const [formData, setFormData] = useState({
     orderNumber: '1',
     orderDate: '19/06/2025',

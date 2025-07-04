@@ -253,4 +253,20 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
   );
 };
 
-export default PaymentInModal;
+const PaymentInAddPage = () => {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <PaymentInModal
+      isOpen={open}
+      onClose={() => setOpen(false)}
+      partyName="Demo Party"
+      total={1000}
+      dueBalance={500}
+      saleId="demo-sale-id"
+      onSave={() => setOpen(false)}
+    />
+  );
+};
+
+export default PaymentInAddPage;

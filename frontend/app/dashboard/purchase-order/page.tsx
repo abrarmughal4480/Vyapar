@@ -1041,7 +1041,7 @@ export default function PurchaseOrderPage() {
     setShowForm(false);
   };
 
-  const saveOrder = (orderData) => {
+  const saveOrder = (orderData: any) => {
     setOrders(prev => [...prev, orderData]);
     setShowForm(false);
   };

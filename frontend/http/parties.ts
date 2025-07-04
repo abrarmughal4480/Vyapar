@@ -1,0 +1,68 @@
+import api from './api';
+
+export interface PartyData {
+  name: string;
+  partyType: string;
+  phone?: string;
+  email?: string;
+  gstNumber?: string;
+  pan?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  openingBalance?: number;
+  tags?: string[];
+  status?: string;
+  note?: string;
+}
+
+export const createParty = async (partyData: PartyData, token: string): Promise<any> => {
+  const response = await api.post('/parties', partyData, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  return response.data;
+};
+
+export const fetchPartiesByUserId = async (token: string): Promise<any> => {
+  const response = await api.get('/parties', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  return response.data;
+};
+
+export const updateParty = async (id: string, partyData: PartyData, token: string): Promise<any> => {
+  const response = await api.put(`/parties/${id}`, partyData, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  return response.data;
+};
+
+export const deleteParty = async (id: string, token: string): Promise<any> => {
+  const response = await api.delete(`/parties/${id}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  return response.data;
+};
+
+export const getCustomerParties = async (token: string) => {
+  const res = await api.get('/parties', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return res.data.data;
+};
+
+export const getPartyBalance = async (partyName: string, token: string) => {
+  const res = await api.get(`/parties/balance?name=${encodeURIComponent(partyName)}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return res.data.balance;
+}; 

@@ -1,3 +1,5 @@
+"use client"
+
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { receivePayment } from '@/http/sales';

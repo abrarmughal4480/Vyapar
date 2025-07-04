@@ -41,7 +41,7 @@ function PurchaseFormPage({ onClose, onSave }: { onClose: () => void; onSave?: (
     setItems([...items, newRow]);
   };
 
-  const updateItem = (id, field, value) => {
+  const updateItem = (id: number, field: string, value: any) => {
     setItems(items.map(item => {
       if (item.id === id) {
         const updatedItem = { ...item, [field]: value };
@@ -330,7 +330,7 @@ function SaleFormPage({ onClose, onSave }: { onClose: () => void; onSave?: (data
     setItems([...items, newRow]);
   };
 
-  const updateItem = (id, field, value) => {
+  const updateItem = (id: number, field: string, value: any) => {
     setItems(items.map(item => {
       if (item.id === id) {
         const updatedItem = { ...item, [field]: value };
@@ -622,7 +622,7 @@ function PurchaseOrderFormPage({ onClose, onSave, type = 'purchase-order' }: { o
     setItems([...items, newRow]);
   };
 
-  const updateItem = (id, field, value) => {
+  const updateItem = (id: number, field: string, value: any) => {
     setItems(items.map(item => {
       if (item.id === id) {
         const updatedItem = { ...item, [field]: value };

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { addItem, updateItem } from '../../../../http/items'
 import Toast from '../../../components/Toast'
@@ -32,7 +32,7 @@ interface Item {
   location?: string
 }
 
-export default function AddItemPage() {
+function AddItemPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const editMode = searchParams.get('edit') === 'true'
@@ -1105,5 +1105,13 @@ export default function AddItemPage() {
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
     </div>
+  );
+}
+
+export default function AddItemPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <AddItemPageInner />
+    </Suspense>
   );
 }

@@ -1,8 +1,10 @@
 'use client'
 
+import React, { useContext } from 'react'
+import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState, useContext } from 'react'
-import { SidebarContext } from '../dashboard/layout'
+import { useEffect, useState } from 'react'
+import { SidebarContext } from '../contexts/SidebarContext'
 import { FiChevronRight } from 'react-icons/fi'
 
 // Define types for nav items

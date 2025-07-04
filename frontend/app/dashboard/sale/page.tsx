@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, BarChart3, Printer, Settings, ChevronDown, Eye, Edit, MoreHorizontal, Trash2 } from 'lucide-react';
 import { getSalesByUser, getSalesStatsByUser, getSaleById } from '@/http/sales';
 import { jwtDecode } from 'jwt-decode';
-import PaymentInModal from '../payment-in/add/page';
+import PaymentInModal from '../../components/PaymentInModal';
 import ReactDOM from 'react-dom';
 import { createPopper } from '@popperjs/core';
 import Toast from '../../components/Toast';

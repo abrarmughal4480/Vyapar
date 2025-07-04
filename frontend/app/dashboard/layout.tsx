@@ -2,9 +2,8 @@
 import Header from '../components/Header'
 import Sidebar from '../components/Sidebar'
 import BottomNavigation from '../components/BottomNavigation'
-import { useState, createContext, useContext } from 'react'
-
-export const SidebarContext = createContext({ isCollapsed: false, setIsCollapsed: (v: boolean) => {} })
+import { useState } from 'react'
+import { SidebarContext } from '../contexts/SidebarContext'
 
 export default function DashboardLayout({
   children,

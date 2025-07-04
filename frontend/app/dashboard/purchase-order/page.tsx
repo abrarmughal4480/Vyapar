@@ -1017,7 +1017,7 @@ function PurchaseOrderFormPage({ onClose, onSave, type = 'purchase-order' }: { o
 
 export default function PurchaseOrderPage() {
   const [businessName, setBusinessName] = useState('Enter Business Name');
-  const [orders, setOrders] = useState([]);
+  const [orders, setOrders] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [formType, setFormType] = useState('purchase-order'); // 'purchase-order', 'purchase', 'sale'

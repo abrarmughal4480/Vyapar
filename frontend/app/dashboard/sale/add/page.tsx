@@ -615,7 +615,15 @@ const AddSalePage = () => {
             }
           } catch (updateError) {
             console.error('Error updating delivery challan:', updateError);
-            console.error('Error details:', updateError.response?.data);
+            // Type check karo ke updateError object hai aur usme response property hai
+            if (
+              updateError &&
+              typeof updateError === 'object' &&
+              'response' in updateError &&
+              (updateError as any).response?.data
+            ) {
+              console.error('Error details:', (updateError as any).response.data);
+            }
             setToast({ 
               message: `Sale saved! Invoice No: ${result.sale.invoiceNo || ''}. Note: Could not update delivery challan status.`, 
               type: 'success' 

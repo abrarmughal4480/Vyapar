@@ -91,22 +91,8 @@ export const createPurchase = async (req, res) => {
       fullPurchase: purchase.toObject()
     });
     
-    // If this purchase was converted from a purchase order, update the order status
-    if (req.body.sourceOrderId) {
-      try {
-        const PurchaseOrder = (await import('../models/purchaseOrder.js')).default;
-        const purchaseOrder = await PurchaseOrder.findById(req.body.sourceOrderId);
-        if (purchaseOrder) {
-          purchaseOrder.status = 'Completed';
-          purchaseOrder.billNumber = purchase.billNo;
-          purchaseOrder.convertedToBill = purchase._id;
-          await purchaseOrder.save();
-          console.log(`Updated purchase order ${req.body.sourceOrderId} to completed status`);
-        }
-      } catch (err) {
-        console.error('Failed to update purchase order status:', err);
-      }
-    }
+    // Note: Purchase order status update is now handled in the frontend
+    // to match the pattern used in sales conversion
     
     // Update supplier openingBalance in DB (decrease balance for purchase)
     try {

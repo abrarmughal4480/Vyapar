@@ -1,8 +1,8 @@
 "use client";
-import React, { useState, useEffect } from 'react';
-import { Plus, MoreVertical, Search, Filter, Download, X, ChevronDown, Calendar, Share2, Save, Info, Camera } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, MoreVertical, Search, Filter, Download, X, ChevronDown, Calendar, Share2, Save, Info, Camera, Settings } from 'lucide-react';
 import { getToken } from '../../lib/auth';
-import { getUserPurchaseOrders, updatePurchaseOrder } from '../../../http/purchaseOrders';
+import { getUserPurchaseOrders, updatePurchaseOrder, fixCompletedPurchaseOrders } from '../../../http/purchaseOrders';
 import { useRouter } from 'next/navigation';
 
 // Purchase Form Page Component
@@ -959,10 +959,6 @@ function PurchaseOrderFormPage({ onClose, onSave, type = 'purchase-order' }: { o
                 <option value="UPI">UPI</option>
                 <option value="Cheque">Cheque</option>
               </select>
-              <button className="text-blue-600 text-xs mt-1 flex items-center gap-1">
-                <Plus size={10} />
-                Add Payment type
-              </button>
             </div>
 
             {/* Spacer */}
@@ -1088,6 +1084,23 @@ export default function PurchaseOrderPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [convertingOrder, setConvertingOrder] = useState<string | null>(null);
+  const [fixingOrders, setFixingOrders] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [dateRanges, setDateRanges] = useState([
+    { value: 'All', label: 'All Time' },
+    { value: 'Custom', label: 'Custom' },
+    { value: 'Today', label: 'Today' },
+    { value: 'Yesterday', label: 'Yesterday' },
+    { value: 'This Week', label: 'This Week' },
+    { value: 'This Month', label: 'This Month' },
+    { value: 'This Year', label: 'This Year' }
+  ]);
+  const [filterType, setFilterType] = useState('All');
+  const [showDateDropdown, setShowDateDropdown] = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const dateDropdownRef = useRef<HTMLDivElement>(null);
+  const dateDropdownButtonRef = useRef<HTMLButtonElement>(null);
 
   // Fetch purchase orders from database
   useEffect(() => {
@@ -1115,8 +1128,7 @@ export default function PurchaseOrderPage() {
   }, []);
 
   const handleAddPurchaseOrder = () => {
-    setFormType('purchase-order');
-    setShowForm(true);
+    router.push('/dashboard/purchaseAdd?from=purchase-order');
   };
 
   const handleAddSale = () => {
@@ -1125,8 +1137,44 @@ export default function PurchaseOrderPage() {
   };
 
   const handleAddPurchase = () => {
-    // Navigate to purchase add page with purchase-order context
-    window.location.href = '/dashboard/purchaseAdd?from=purchase-order';
+    router.push('/dashboard/purchaseAdd?from=purchase-bills');
+  };
+
+  const handleFixCompletedOrders = async () => {
+    try {
+      setFixingOrders(true);
+      const token = getToken();
+      if (!token) {
+        alert('Authentication required');
+        return;
+      }
+      
+      console.log('=== FIX COMPLETED ORDERS DEBUG ===');
+      console.log('Token:', token ? 'Present' : 'Missing');
+      console.log('Attempting to fix completed purchase orders...');
+      
+      const result = await fixCompletedPurchaseOrders(token);
+      console.log('Fix result:', result);
+      
+      if (result && result.success) {
+        console.log('Fix successful! Fixed count:', result.fixedCount);
+        alert(`Fixed ${result.fixedCount} completed purchase orders!`);
+        refreshOrders(); // Refresh the orders list
+      } else {
+        console.error('Fix failed:', result);
+        alert('Failed to fix completed orders');
+      }
+    } catch (err: any) {
+      console.error('Error fixing completed orders:', err);
+      console.error('Error details:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
+      alert(`Error fixing completed orders: ${err.message}`);
+    } finally {
+      setFixingOrders(false);
+    }
   };
 
   // Convert purchase order to purchase
@@ -1233,6 +1281,59 @@ export default function PurchaseOrderPage() {
     }
   };
 
+  const handleFilterTypeChange = (value: string) => {
+    setFilterType(value);
+    setShowDateDropdown(false);
+    
+    // Set date range based on selection
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+    
+    switch (value) {
+      case 'Today':
+        setDateFrom(startOfDay.toISOString().split('T')[0]);
+        setDateTo(endOfDay.toISOString().split('T')[0]);
+        break;
+      case 'Yesterday':
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const startOfYesterday = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
+        const endOfYesterday = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59);
+        setDateFrom(startOfYesterday.toISOString().split('T')[0]);
+        setDateTo(endOfYesterday.toISOString().split('T')[0]);
+        break;
+      case 'This Week':
+        const startOfWeek = new Date(today);
+        startOfWeek.setDate(today.getDate() - today.getDay());
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        endOfWeek.setHours(23, 59, 59);
+        setDateFrom(startOfWeek.toISOString().split('T')[0]);
+        setDateTo(endOfWeek.toISOString().split('T')[0]);
+        break;
+      case 'This Month':
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
+        setDateFrom(startOfMonth.toISOString().split('T')[0]);
+        setDateTo(endOfMonth.toISOString().split('T')[0]);
+        break;
+      case 'This Year':
+        const startOfYear = new Date(today.getFullYear(), 0, 1);
+        const endOfYear = new Date(today.getFullYear(), 11, 31, 23, 59, 59);
+        setDateFrom(startOfYear.toISOString().split('T')[0]);
+        setDateTo(endOfYear.toISOString().split('T')[0]);
+        break;
+      case 'Custom':
+        // Keep existing dates for custom
+        break;
+      default:
+        setDateFrom('');
+        setDateTo('');
+        break;
+    }
+  };
+
   if (showForm) {
     if (formType === 'purchase-order') {
       return (
@@ -1259,240 +1360,280 @@ export default function PurchaseOrderPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 p-6">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            {/* Business Name Input */}
-            <div className="flex items-center">
-              <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
-              <input
-                type="text"
-                value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
-                className="text-lg font-medium text-gray-700 bg-transparent border-none outline-none focus:text-gray-900"
-                placeholder="Enter Business Name"
-              />
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-wrap items-center gap-3">
+      <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
+        <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+          <div className="text-center md:text-left">
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Purchase Orders</h1>
+            <p className="text-sm text-gray-500 mt-1">Manage your purchase orders and convert them to bills</p>
+          </div>
+          <div className="flex flex-col md:flex-row gap-2 md:gap-4">
+            <button
+              onClick={handleAddPurchaseOrder}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
+              disabled={loading}
+            >
+              + Add Purchase Order
+            </button>
+            <button className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
+              <Settings className="w-5 h-5 text-gray-600" />
+            </button>
+          </div>
+        </div>
+      </div>
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6">
+        <div className="bg-gradient-to-br from-blue-100 to-blue-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
+          <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-blue-500 text-white mb-3 text-xl">📦</div>
+          <div className="text-2xl font-bold text-blue-700">{orders.length}</div>
+          <div className="text-sm text-gray-500">Total Orders</div>
+        </div>
+        <div className="bg-gradient-to-br from-green-100 to-green-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
+          <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-green-500 text-white mb-3 text-xl">💰</div>
+          <div className="text-2xl font-bold text-green-700">PKR {orders.reduce((sum, o) => sum + (o.total || 0), 0).toLocaleString()}</div>
+          <div className="text-sm text-gray-500">Total Amount</div>
+        </div>
+        <div className="bg-gradient-to-br from-purple-100 to-purple-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
+          <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-purple-500 text-white mb-3 text-xl">✅</div>
+          <div className="text-2xl font-bold text-purple-700">{orders.filter(o => o.status === 'Completed' || o.status === 'Order Completed').length}</div>
+          <div className="text-sm text-gray-500">Completed Orders</div>
+        </div>
+      </div>
+      {/* Search & Filters Section (like sales) */}
+      <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-4 md:p-6 mb-6 border border-gray-100 z-[1]">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+          {/* Modern Search Bar */}
+          <div className="relative w-full md:w-80">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-lg">🔍</span>
+            <input
+              type="text"
+              placeholder="Search orders..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 rounded-full bg-white/80 shadow focus:ring-2 focus:ring-blue-500 focus:border-blue-500 border border-gray-200 transition-all placeholder-gray-400 text-gray-900"
+            />
+          </div>
+          {/* Filter Tabs/Pills */}
+          <div className="flex gap-2 md:gap-4">
+            {['All', 'Draft', 'Completed', 'Overdue'].map((tab) => (
               <button
-                onClick={handleAddSale}
-                className="flex items-center gap-2 px-4 py-2 bg-pink-100 text-pink-700 rounded-lg hover:bg-pink-200 transition-colors"
+                key={tab}
+                onClick={() => setStatusFilter(tab)}
+                className={`px-4 py-2 rounded-full font-medium transition-colors text-sm border-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${statusFilter === tab
+                    ? 'bg-blue-600 text-white border-blue-600 shadow scale-105'
+                    : 'bg-white text-gray-700 border-gray-200 hover:bg-blue-50'
+                  }`}
               >
-                <Plus size={16} />
-                Add Sale
+                {tab}
               </button>
-              
+            ))}
+          </div>
+          {/* Date Range & Quick Filter Dropdown (custom style) */}
+          <div className="flex flex-col sm:flex-row gap-2 items-center mt-2">
+            {/* Custom Dropdown for Date Range */}
+            <div ref={dateDropdownRef} className="relative w-full sm:w-56">
               <button
-                onClick={handleAddPurchase}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                ref={dateDropdownButtonRef}
+                type="button"
+                className="w-full flex items-center justify-between px-4 py-2.5 rounded-full bg-white/80 shadow border border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all group"
+                onClick={() => setShowDateDropdown((v) => !v)}
+                aria-haspopup="listbox"
+                aria-expanded={showDateDropdown ? 'true' : 'false'}
               >
-                <Plus size={16} />
-                Add Purchase
+                <span className="truncate">{dateRanges.find(r => r.value === filterType)?.label || 'All Time'}</span>
+                <svg className={`w-5 h-5 ml-2 transition-transform ${showDateDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
               </button>
-
-              <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
-                <Plus size={20} />
-              </button>
-
-              <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
-                <MoreVertical size={20} />
-              </button>
+              {showDateDropdown && (
+                <ul
+                  className="absolute z-[100] bg-white rounded-xl shadow-lg border border-gray-100 py-1 max-h-60 overflow-auto animate-fadeinup w-full"
+                  style={{ top: '110%', left: 0 }}
+                  tabIndex={-1}
+                  role="listbox"
+                >
+                  {dateRanges.map((range) => (
+                    <li
+                      key={range.value}
+                      className={`px-4 py-2 cursor-pointer rounded-lg transition-all hover:bg-blue-50 ${filterType === range.value ? 'font-semibold text-blue-600 bg-blue-100' : 'text-gray-700'}`}
+                      onClick={() => handleFilterTypeChange(range.value)}
+                      role="option"
+                      aria-selected={filterType === range.value}
+                    >
+                      {range.label}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
+            {/* Date Pickers */}
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              className="px-4 py-2 rounded-full bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[140px]"
+              placeholder="From Date"
+              disabled={filterType === 'All'}
+            />
+            <span className="text-gray-500">to</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              className="px-4 py-2 rounded-full bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[140px]"
+              placeholder="To Date"
+              disabled={filterType === 'All'}
+            />
           </div>
         </div>
       </div>
 
-      {/* Orders Section Title */}
-      <div className="max-w-7xl mx-auto px-4 py-4">
-        <h2 className="text-xl font-semibold text-gray-500 text-center">ORDERS</h2>
-      </div>
-
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        {loading ? (
-          /* Loading State */
-          <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-            <p className="text-gray-600">Loading purchase orders...</p>
-          </div>
-        ) : error ? (
-          /* Error State */
-          <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-            <div className="text-red-500 mb-4">⚠️</div>
-            <p className="text-red-600 mb-4">{error}</p>
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100 mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-6 border-b border-gray-200 gap-4">
+          <h2 className="text-lg font-semibold text-gray-900">Transactions</h2>
+          <div className="flex gap-2">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search orders..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-full text-sm w-full md:w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              />
+            </div>
             <button
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="p-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
+              title="Print"
             >
-              Try Again
+              🖨️
             </button>
           </div>
-        ) : orders.length === 0 ? (
-          /* Empty State */
-          <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-            {/* Shopping Cart Illustration */}
-            <div className="w-48 h-48 mb-8 relative">
-              <div className="absolute inset-0 bg-blue-100 rounded-full opacity-20"></div>
-              <div className="absolute inset-4 bg-blue-200 rounded-full opacity-30"></div>
-              <div className="absolute inset-8 bg-blue-300 rounded-full opacity-40"></div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="relative">
-                  {/* Shopping Cart */}
-                  <svg width="80" height="80" viewBox="0 0 100 100" className="text-blue-600">
-                    <path
-                      d="M20 20h10l8 40h30l6-20H35"
-                      stroke="currentColor"
-                      strokeWidth="3"
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <circle cx="25" cy="75" r="3" fill="currentColor" />
-                    <circle cx="65" cy="75" r="3" fill="currentColor" />
-                    <path
-                      d="M30 60h28"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  
-                  {/* Document/Receipt */}
-                  <div className="absolute -right-6 -top-2">
-                    <div className="w-8 h-10 bg-white border-2 border-gray-300 rounded-sm shadow-sm">
-                      <div className="w-full h-1 bg-gray-300 mt-1"></div>
-                      <div className="w-3/4 h-1 bg-gray-300 mt-1 ml-1"></div>
-                      <div className="w-1/2 h-1 bg-gray-300 mt-1 ml-1"></div>
-                      <div className="w-full h-1 bg-gray-300 mt-1"></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px]">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Order No.</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Supplier</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Order Date</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Due Date</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Amount</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Balance</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Status</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                    Loading orders...
+                  </td>
+                </tr>
+              ) : error ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-8 text-center text-red-500">
+                    {error}
+                  </td>
+                </tr>
+              ) : orders.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                    No purchase orders found. Create your first purchase order!
+                  </td>
+                </tr>
+              ) : (
+                orders
+                  .filter(order => {
+                    // Search filter
+                    const searchLower = searchTerm.toLowerCase();
+                    const matchesSearch = (
+                      (order.supplierName || '').toLowerCase().includes(searchLower) ||
+                      (order.orderNumber || '').toString().toLowerCase().includes(searchLower)
+                    );
 
-            {/* Text Content */}
-            <div className="max-w-md mb-8 px-4">
-              <p className="text-gray-600 text-lg leading-relaxed">
-                Make & share purchase orders with your parties & convert them to purchase bill instantly.
-              </p>
-            </div>
+                    // Status filter
+                    const orderStatus = getOrderStatus(order);
+                    const matchesStatus = statusFilter === 'All' || 
+                      (statusFilter === 'Completed' && (orderStatus === 'Completed' || orderStatus === 'Order Completed')) ||
+                      (statusFilter === 'Draft' && orderStatus === 'Draft') ||
+                      (statusFilter === 'Overdue' && orderStatus === 'Overdue');
 
-            {/* Call to Action Button */}
-            <button
-              onClick={handleAddPurchaseOrder}
-              className="px-8 py-3 bg-orange-500 text-white font-medium rounded-lg hover:bg-orange-600 transition-colors shadow-sm"
-            >
-              Add Your First Purchase Order
-            </button>
-          </div>
-        ) : (
-          /* List View (when there are orders) */
-          <div>
-            {/* Search and Filter Bar */}
-            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between mb-6 gap-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full lg:w-auto">
-                <div className="relative w-full sm:w-64">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                  <input
-                    type="text"
-                    placeholder="Search orders..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
-                  />
-                </div>
-                <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 w-full sm:w-auto justify-center">
-                  <Filter size={16} />
-                  Filter
-                </button>
-              </div>
-              
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
-                <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 justify-center">
-                  <Download size={16} />
-                  Export
-                </button>
-                <button
-                  onClick={handleAddPurchaseOrder}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 justify-center"
-                >
-                  <Plus size={16} />
-                  Add Purchase Order
-                </button>
-              </div>
-            </div>
+                    // Date filter
+                    let matchesDate = true;
+                    if (filterType !== 'All') {
+                      const orderDate = new Date(order.orderDate);
+                      const today = new Date();
+                      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
 
-            {/* Orders List Table */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px]">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Order No.
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Supplier
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Order Date
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Due Date
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Amount
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Balance
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {orders.map((order) => {
-                      const orderStatus = getOrderStatus(order);
-                      return (
-                        <tr key={order._id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {order.orderNumber}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {order.supplierName || 'N/A'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {order.orderDate ? new Date(order.orderDate).toLocaleDateString() : 'N/A'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : 'N/A'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            ₹{order.total ? order.total.toFixed(2) : '0.00'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            ₹{order.balance ? order.balance.toFixed(2) : '0.00'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(orderStatus)}`}>
-                              {orderStatus}
-                            </span>
-                          </td>
-                                                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                          <div className="flex justify-center">
-                            {orderStatus === 'Order Completed' && order.invoiceNumber ? (
-                              <span className="text-blue-600 text-sm font-medium">
-                                Invoice: {order.invoiceNumber}
-                              </span>
-                            ) : orderStatus !== 'Order Completed' ? (
+                      switch (filterType) {
+                        case 'Today':
+                          matchesDate = orderDate >= startOfDay && orderDate <= endOfDay;
+                          break;
+                        case 'Yesterday':
+                          const yesterday = new Date(today);
+                          yesterday.setDate(yesterday.getDate() - 1);
+                          const startOfYesterday = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
+                          const endOfYesterday = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59);
+                          matchesDate = orderDate >= startOfYesterday && orderDate <= endOfYesterday;
+                          break;
+                        case 'This Week':
+                          const startOfWeek = new Date(today);
+                          startOfWeek.setDate(today.getDate() - today.getDay());
+                          const endOfWeek = new Date(startOfWeek);
+                          endOfWeek.setDate(startOfWeek.getDate() + 6);
+                          endOfWeek.setHours(23, 59, 59);
+                          matchesDate = orderDate >= startOfWeek && orderDate <= endOfWeek;
+                          break;
+                        case 'This Month':
+                          const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+                          const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
+                          matchesDate = orderDate >= startOfMonth && orderDate <= endOfMonth;
+                          break;
+                        case 'This Year':
+                          const startOfYear = new Date(today.getFullYear(), 0, 1);
+                          const endOfYear = new Date(today.getFullYear(), 11, 31, 23, 59, 59);
+                          matchesDate = orderDate >= startOfYear && orderDate <= endOfYear;
+                          break;
+                        case 'Custom':
+                          if (dateFrom && dateTo) {
+                            const fromDate = new Date(dateFrom);
+                            const toDate = new Date(dateTo);
+                            toDate.setHours(23, 59, 59);
+                            matchesDate = orderDate >= fromDate && orderDate <= toDate;
+                          }
+                          break;
+                      }
+                    }
+
+                    return matchesSearch && matchesStatus && matchesDate;
+                  })
+                  .map((order, index) => {
+                    return (
+                      <tr key={order._id} className={`hover:bg-blue-50/40 transition-all ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                        <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">{order.orderNumber}</td>
+                        <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{order.supplierName || 'N/A'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{order.orderDate ? new Date(order.orderDate).toLocaleDateString() : 'N/A'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{order.dueDate ? new Date(order.dueDate).toLocaleDateString() : 'N/A'}</td>
+                        <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">PKR {order.total ? order.total.toLocaleString() : '0.00'}</td>
+                        <td className="px-6 py-4 text-sm font-semibold text-orange-600 whitespace-nowrap text-center">PKR {order.balance ? order.balance.toLocaleString() : '0.00'}</td>
+                        <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(getOrderStatus(order))}`}>{getOrderStatus(order)}</span>
+                        </td>
+                        <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
+                          <div className="flex justify-center gap-2">
+                            {getOrderStatus(order) === 'Order Completed' ? (
+                              order.invoiceNumber ? (
+                                <span className="text-blue-600 text-sm font-medium">
+                                  Converted to {order.invoiceNumber}
+                                </span>
+                              ) : (
+                                <span className="text-orange-600 text-sm font-medium">
+                                  Completed (No Invoice)
+                                </span>
+                              )
+                            ) : (
                               <button 
                                 onClick={() => handleConvertToPurchase(order)}
                                 disabled={convertingOrder === order._id}
@@ -1502,20 +1643,16 @@ export default function PurchaseOrderPage() {
                               >
                                 Convert to Purchase
                               </button>
-                            ) : (
-                              <span className="text-gray-400 text-sm">-</span>
                             )}
                           </div>
                         </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
+                      </tr>
+                    );
+                  })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

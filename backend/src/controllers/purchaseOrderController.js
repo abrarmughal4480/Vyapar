@@ -135,6 +135,49 @@ export const updatePurchaseOrder = async (req, res) => {
   }
 };
 
+// Fix completed purchase orders that don't have invoice numbers
+export const fixCompletedPurchaseOrders = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) return res.status(401).json({ success: false, message: 'User not authenticated' });
+    
+    // Find all completed purchase orders without invoice numbers
+    const completedOrders = await PurchaseOrder.find({ 
+      userId, 
+      status: 'Completed',
+      $or: [
+        { invoiceNumber: { $exists: false } },
+        { invoiceNumber: "" },
+        { invoiceNumber: null }
+      ]
+    });
+    
+    console.log(`Found ${completedOrders.length} completed orders without invoice numbers`);
+    
+    let fixedCount = 0;
+    for (const order of completedOrders) {
+      // Generate a dummy invoice number for these orders
+      const dummyInvoiceNumber = `PUR${String(order.orderNumber.replace('PO', '')).padStart(3, '0')}`;
+      
+      order.invoiceNumber = dummyInvoiceNumber;
+      order.convertedToInvoice = null; // Since we don't have the actual purchase ID
+      await order.save();
+      fixedCount++;
+      
+      console.log(`Fixed order ${order.orderNumber} with invoice number ${dummyInvoiceNumber}`);
+    }
+    
+    res.json({ 
+      success: true, 
+      message: `Fixed ${fixedCount} completed purchase orders`,
+      fixedCount 
+    });
+  } catch (err) {
+    console.error('Error fixing completed purchase orders:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 export default {
   createPurchaseOrder,
   getPurchaseOrdersByUser,
@@ -142,4 +185,5 @@ export default {
   convertPurchaseOrderToInvoice,
   updatePurchaseOrderTotals,
   updatePurchaseOrder,
+  fixCompletedPurchaseOrders,
 }; 

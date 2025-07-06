@@ -202,7 +202,7 @@ export default function AddPurchasePage() {
 
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [parties, setParties] = useState<any[]>([]);
   const [showPartySuggestions, setShowPartySuggestions] = useState(false);
   const [showItemSuggestions, setShowItemSuggestions] = useState<{[id: number]: boolean}>({});
@@ -225,6 +225,7 @@ export default function AddPurchasePage() {
       if (fromContext === 'purchase-order') {
         setPageTitle('Add Purchase Order');
         setPageType('purchase-order');
+        setRedirectTo('/dashboard/purchase-order');
         
         // If order data is provided, populate the form
         if (orderDataParam) {
@@ -296,11 +297,13 @@ export default function AddPurchasePage() {
   // Fetch parties and items on component mount
   useEffect(() => {
     const initializeData = async () => {
+      setLoading(true);
       await fetchPartySuggestions();
       await fetchItemSuggestions();
+      setLoading(false);
     };
     initializeData();
-  }, []); // fetchPartySuggestions and fetchItemSuggestions are stable functions
+  }, []);
 
   // Clear party balance when party name changes
   useEffect(() => {
@@ -565,7 +568,8 @@ export default function AddPurchasePage() {
         description: newPurchase.description || '',
         imageUrl: uploadedImage || '',
         orderDate: newPurchase.invoiceDate,
-        dueDate: newPurchase.dueDate ? new Date(newPurchase.dueDate).toISOString() : null
+        dueDate: newPurchase.dueDate ? new Date(newPurchase.dueDate).toISOString() : null,
+        sourceOrderId: originalOrderId // Include the source order ID for conversion
       };
 
       console.log('Due date being sent:', {
@@ -599,25 +603,58 @@ export default function AddPurchasePage() {
         // If this was a conversion from purchase order, update the original order status and invoice number
         if (originalOrderId) {
           try {
+            console.log('=== CONVERTING PURCHASE ORDER TO PURCHASE ===');
+            console.log('Source Order ID:', originalOrderId);
+            console.log('Purchase Bill No:', response?.purchase?.billNo || response?.billNo || response?.billNumber || '');
+            console.log('Token:', token ? 'Present' : 'Missing');
+            
             // Use the actual purchase bill number for invoiceNumber
-            const billNumber = response.data?.billNumber || '';
-            await updatePurchaseOrder(token, originalOrderId, { 
-              status: 'Completed',
-              invoiceNumber: billNumber,
-              convertedToInvoice: response.data?._id || null,
-              dueDate: originalOrderDueDate ? new Date(originalOrderDueDate).toISOString() : (newPurchase.dueDate ? new Date(newPurchase.dueDate).toISOString() : null)
+            const billNumber = response?.purchase?.billNo || response?.billNo || response?.billNumber || response?.id || '';
+            console.log('=== CONVERT PURCHASE ORDER DEBUG ===');
+            console.log('Response:', response);
+            console.log('Purchase object:', response?.purchase);
+            console.log('Attempting to update purchase order with:', {
+              orderId: originalOrderId,
+              billNumber: billNumber,
+              purchaseId: response?.purchase?._id || response?._id
             });
-            successMessage = 'Purchase bill created and order completed successfully!';
+            
+            try {
+              const updateResult = await updatePurchaseOrder(token, originalOrderId, { 
+                status: 'Completed',
+                invoiceNumber: billNumber,
+                convertedToInvoice: response?.purchase?._id || response?._id || null,
+                dueDate: originalOrderDueDate ? new Date(originalOrderDueDate).toISOString() : (newPurchase.dueDate ? new Date(newPurchase.dueDate).toISOString() : null)
+              });
+              
+              console.log('Update result:', updateResult);
+              
+              if (updateResult && updateResult.success) {
+                console.log('Purchase order update successful!');
+                successMessage = `Purchase bill created! Bill No: ${billNumber}. Purchase Order converted successfully.`;
+              } else {
+                console.error('Update failed:', updateResult);
+                successMessage = `Purchase bill created! Bill No: ${billNumber}. Note: Could not update purchase order status.`;
+              }
+            } catch (updateError: any) {
+              console.error('Error updating purchase order:', updateError);
+              console.error('Update error details:', {
+                message: updateError.message,
+                response: updateError.response?.data,
+                status: updateError.response?.status
+              });
+              successMessage = `Purchase bill created! Bill No: ${billNumber}. Note: Could not update purchase order status.`;
+            }
           } catch (error) {
             console.error('Error updating purchase order status:', error);
-            // Don't fail the whole operation if status update fails
+            successMessage = `Purchase bill created! Bill No: ${response?.purchase?.billNo || response?.billNo || response?.billNumber || ''}. Note: Could not update purchase order status.`;
           }
         }
       }
       
       if (response.success) {
         setToast({ message: successMessage, type: 'success' });
-        setTimeout(() => router.push(redirectTo), 1200);
+        setTimeout(() => router.push(redirectPath || redirectTo), 1200);
       } else {
         throw new Error(response.message || 'Failed to create purchase');
       }
@@ -639,401 +676,432 @@ export default function AddPurchasePage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-2 sm:px-4 md:px-8">
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-      <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-6">
-        {/* Sticky Header - match sale add page */}
-        <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 flex justify-between items-center px-6 py-4">
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">{pageTitle}</h1>
-          <button
-            type="button"
-            onClick={() => router.push(redirectTo)}
-            className="text-gray-400 hover:text-gray-600 text-2xl"
-            aria-label="Cancel"
-          >
-            ✕
-          </button>
+    <div className="relative min-h-screen">
+      {loading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white bg-opacity-80">
+          <div className="flex flex-col items-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mb-4"></div>
+            <div className="text-lg text-blue-700 font-semibold">Loading...</div>
+          </div>
         </div>
-        {/* Supplier and Date Section - match sale add page */}
-        <form onSubmit={handleSubmit} className="divide-y divide-gray-200 w-full">
-          <div className="bg-gray-50 px-6 py-6 w-full">
-            <div className={`grid gap-6 ${pageType === 'purchase-order' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
-              {/* Supplier and Phone - Full width for purchase bills */}
-              <div className={`grid gap-4 ${pageType === 'purchase-order' ? 'grid-cols-2' : 'grid-cols-1 md:grid-cols-2'}`}>
-                <div>
-                  <label className="block text-sm font-medium text-blue-600 mb-2">Supplier *</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      name="partyName"
-                      value={newPurchase.partyName}
-                      onChange={handleInputChange}
-                      onFocus={() => {
-                        fetchPartySuggestions();
-                        setShowPartySuggestions(true);
-                      }}
-                      onBlur={() => setTimeout(() => setShowPartySuggestions(false), 200)}
-                      className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${formErrors.partyName ? 'border-red-300 bg-red-50' : 'border-blue-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-200 focus:outline-none`}
-                      placeholder="Search or enter supplier name"
-                    />
-                    {showPartySuggestions && (
-                      <div className="absolute left-0 right-0 mt-1 w-full z-50">
-                        {parties.length > 0 ? (
-                          <ul className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                            {parties.map((party: any) => (
-                              <li
-                                key={party._id}
-                                className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
-                                onMouseDown={() => {
-                                  setNewPurchase(prev => ({ 
-                                    ...prev, 
-                                    partyName: party.name, 
-                                    phoneNo: party.phone || '' 
-                                  }));
-                                  setShowPartySuggestions(false);
-                                  fetchPartyBalance(party.name);
-                                }}
-                              >
-                                {party.name} {party.phone && <span className="text-xs text-gray-400">({party.phone})</span>}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <div className="bg-white border border-blue-200 rounded-lg shadow-lg px-4 py-2 text-gray-400">No suppliers found.</div>
+      )}
+      {!loading && (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center px-2 sm:px-4 md:px-8">
+          {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+          <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-6">
+            {/* Sticky Header - match sale add page */}
+            <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 flex justify-between items-center px-6 py-4">
+              <h1 className="text-xl md:text-2xl font-bold text-gray-900">{pageTitle}</h1>
+              <button
+                type="button"
+                onClick={() => router.push(redirectTo)}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+                aria-label="Cancel"
+              >
+                ✕
+              </button>
+            </div>
+            {/* Supplier and Date Section - match sale add page */}
+            <form onSubmit={handleSubmit} className="divide-y divide-gray-200 w-full">
+              <div className="bg-gray-50 px-6 py-6 w-full">
+                <div className={`grid gap-6 ${pageType === 'purchase-order' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+                  {/* Supplier and Phone - Full width for purchase bills */}
+                  <div className={`grid gap-4 ${pageType === 'purchase-order' ? 'grid-cols-2' : 'grid-cols-1 md:grid-cols-2'}`}>
+                    <div>
+                      <label className="block text-sm font-medium text-blue-600 mb-2">Supplier *</label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          name="partyName"
+                          value={newPurchase.partyName}
+                          onChange={handleInputChange}
+                          onFocus={() => {
+                            fetchPartySuggestions();
+                            setShowPartySuggestions(true);
+                          }}
+                          onBlur={() => setTimeout(() => setShowPartySuggestions(false), 200)}
+                          className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${formErrors.partyName ? 'border-red-300 bg-red-50' : 'border-blue-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-200 focus:outline-none`}
+                          placeholder="Search or enter supplier name"
+                        />
+                        {showPartySuggestions && (
+                          <div className="absolute left-0 right-0 mt-1 w-full z-50">
+                            {parties.length > 0 ? (
+                              <ul className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                {parties.map((party: any) => (
+                                  <li
+                                    key={party._id}
+                                    className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
+                                    onMouseDown={() => {
+                                      setNewPurchase(prev => ({ 
+                                        ...prev, 
+                                        partyName: party.name, 
+                                        phoneNo: party.phone || '' 
+                                      }));
+                                      setShowPartySuggestions(false);
+                                      fetchPartyBalance(party.name);
+                                    }}
+                                  >
+                                    {party.name} {party.phone && <span className="text-xs text-gray-400">({party.phone})</span>}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="bg-white border border-blue-200 rounded-lg shadow-lg px-4 py-2 text-gray-400">No suppliers found.</div>
+                            )}
+                          </div>
                         )}
+                      </div>
+                      {partyBalance !== null && (
+                        <div className={`text-xs mt-1 font-semibold ${partyBalance < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          Balance: PKR {Math.abs(partyBalance).toLocaleString()}
+                        </div>
+                      )}
+                      {formErrors.partyName && <p className="text-xs text-red-500 mt-1">{formErrors.partyName}</p>}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                      <input
+                        type="text"
+                        name="phoneNo"
+                        value={newPurchase.phoneNo}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
+                        placeholder="Phone number"
+                      />
+                    </div>
+                  </div>
+                  {/* Right: Invoice Date and Due Date - Only for Purchase Orders */}
+                  {pageType === 'purchase-order' && (
+                    <div className="flex flex-col gap-4 items-end justify-start">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Date</label>
+                        <input
+                          type="date"
+                          name="invoiceDate"
+                          value={newPurchase.invoiceDate || new Date().toISOString().split('T')[0]}
+                          onChange={handleInputChange}
+                          className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
+                        <input
+                          type="date"
+                          name="dueDate"
+                          value={newPurchase.dueDate || new Date().toISOString().split('T')[0]}
+                          onChange={handleInputChange}
+                          className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {/* Items Table Section - match sale add page */}
+              <div className={`bg-white px-6 py-6 w-full rounded-b-2xl ${formErrors.items ? 'border-2 border-red-300' : ''}`}>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-lg font-semibold text-blue-800 flex items-center gap-2">
+                    <span>🛒</span> Items
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={addNewRow}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-sm"
+                  >
+                    <span className="text-xl">+</span> Add Row
+                  </button>
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 z-10">
+                      <tr className="border-b border-gray-200 bg-blue-100">
+                        <th className="text-left py-3 px-2 font-semibold text-gray-700 w-8">#</th>
+                        <th className="text-left py-3 px-2 font-semibold text-gray-700">ITEM</th>
+                        <th className="text-left py-3 px-2 font-semibold text-gray-700 w-20">QTY</th>
+                        <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">UNIT</th>
+                        <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">PRICE/UNIT</th>
+                        <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">AMOUNT</th>
+                        <th className="text-left py-3 px-2 font-semibold text-gray-700 w-8"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {newPurchase.items.map((item, index) => {
+                        const handleFocus = async (event: React.FocusEvent<HTMLInputElement>) => {
+                          console.log('Item input focused, fetching suggestions...');
+                          await fetchItemSuggestions();
+                          console.log('Setting showItemSuggestions to true for item:', item.id);
+                          setShowItemSuggestions(prev => ({ ...prev, [item.id]: true }));
+                          
+                          const rect = event.target.getBoundingClientRect();
+                          const style: React.CSSProperties = {
+                            position: 'absolute',
+                            top: rect.bottom + window.scrollY + 4,
+                            left: rect.left + window.scrollX,
+                            width: rect.width,
+                            zIndex: 9999,
+                            maxHeight: '200px',
+                            overflowY: 'auto' as const
+                          };
+                          console.log('Setting dropdown style:', style);
+                          setDropdownStyle(style);
+                        };
+
+                        return (
+                          <tr
+                            key={item.id}
+                            className={`border-b border-gray-100 ${index % 2 === 0 ? 'bg-white' : 'bg-blue-50'} hover:bg-blue-100 transition-colors`}
+                          >
+                            <td className="py-2 px-2 font-medium">{index + 1}</td>
+                            <td className="py-2 px-2">
+                              <input
+                                type="text"
+                                value={item.item}
+                                onChange={e => handleItemChange(item.id, 'item', e.target.value)}
+                                onFocus={handleFocus}
+                                onBlur={() => setTimeout(() => setShowItemSuggestions(prev => ({ ...prev, [item.id]: false })), 200)}
+                                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                                placeholder="Enter item name..."
+                              />
+                              {showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
+                                <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                  
+                                  {itemSuggestions.length > 0 ? (
+                                    itemSuggestions
+                                      .filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()))
+                                    .map(i => (
+                                      <li
+                                        key={i._id}
+                                          className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
+                                        onMouseDown={() => {
+                                          console.log('Selected item:', i);
+                                          handleItemChange(item.id, 'item', i.name);
+                                          // Map the unit to dropdown options
+                                          let mappedUnit = 'NONE';
+                                          if (i.unit) {
+                                            const unitMap: { [key: string]: string } = {
+                                              'Piece': 'PCS',
+                                              'Kg': 'KG',
+                                              'Gram': 'KG',
+                                              'Liter': 'LITER',
+                                              'Meter': 'METER',
+                                              'Box': 'BOX',
+                                              'Packet': 'PACKET',
+                                              'Dozen': 'DOZEN',
+                                              'Unit': 'UNIT'
+                                            };
+                                            mappedUnit = unitMap[i.unit] || i.unit.toUpperCase();
+                                          }
+                                          handleItemChange(item.id, 'unit', mappedUnit);
+                                          handleItemChange(item.id, 'price', i.purchasePrice || 0);
+                                          setShowItemSuggestions(prev => ({ ...prev, [item.id]: false }));
+                                        }}
+                                      >
+                                                          <div className="flex justify-between items-center">
+                        <span className="font-medium text-gray-800">{i.name}</span>
+                        <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.purchasePrice || 0} • Qty: {i.stock || 0}</span>
+                      </div>
+                                      </li>
+                                      ))
+                                  ) : (
+                                    <li className="px-4 py-3 text-center">
+                                      <div className="text-gray-500 text-sm">
+                                        {itemSuggestions.length === 0 ? (
+                                          <div>
+                                            <div className="text-gray-400 mb-1">📦</div>
+                                            <div>No items available</div>
+                                            <div className="text-xs text-gray-400 mt-1">Add items in the Items section first</div>
+                                          </div>
+                                        ) : (
+                                          <div>
+                                            <div className="text-gray-400 mb-1">🔍</div>
+                                            <div>No matching items</div>
+                                            <div className="text-xs text-gray-400 mt-1">Try a different search term</div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </li>
+                                  )}
+                                </ul>,
+                                document.body
+                              )}
+                            </td>
+                            <td className="py-2 px-2">
+                              <input
+                                type="number"
+                                value={item.qty}
+                                min={0}
+                                onChange={e => handleItemChange(item.id, 'qty', e.target.value)}
+                                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                              />
+                            </td>
+                            <td className="py-2 px-2">
+                              <CustomDropdown
+                                options={[
+                                  { value: 'NONE', label: 'NONE' },
+                                  { value: 'KG', label: 'KG' },
+                                  { value: 'PCS', label: 'PCS' },
+                                  { value: 'BOX', label: 'BOX' },
+                                  { value: 'Custom', label: 'Custom' }
+                                ]}
+                                value={item.unit}
+                                onChange={val => handleItemChange(item.id, 'unit', val)}
+                              />
+                              {item.unit === 'Custom' && (
+                                <input
+                                  type="text"
+                                  value={item.customUnit}
+                                  onChange={e => handleItemChange(item.id, 'customUnit', e.target.value)}
+                                  className="mt-2 w-full px-3 py-2 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                  placeholder="Enter custom unit"
+                                />
+                              )}
+                            </td>
+                            <td className="py-2 px-2">
+                              <input
+                                type="number"
+                                value={item.price}
+                                min={0}
+                                onChange={e => handleItemChange(item.id, 'price', e.target.value)}
+                                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                              />
+                            </td>
+                            <td className="py-2 px-2">
+                              <span className="text-gray-900 font-semibold">{isNaN(item.amount) ? '0.00' : item.amount.toFixed(2)} {item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? item.unit : ''}</span>
+                            </td>
+                            <td className="py-2 px-2 flex gap-1">
+                              {newPurchase.items.length > 1 && (
+                                <button
+                                  type="button"
+                                  className="text-red-600 hover:text-red-700 px-2 py-1 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 transition-colors"
+                                  onClick={() => deleteRow(item.id)}
+                                  title="Delete row"
+                                >
+                                  –
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {formErrors.items && <p className="text-xs text-red-500 mt-2">{formErrors.items}</p>}
+              </div>
+              {/* Image Upload & Description Section (match sale) */}
+              <div className="bg-gray-50 px-6 py-6 w-full">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Add Image</label>
+                    <div className="flex items-center gap-4">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        className="hidden"
+                        id="imageUpload"
+                        disabled={imageUploading}
+                      />
+                      <label
+                        htmlFor="imageUpload"
+                        className={`flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-200 ${
+                          imageUploading
+                            ? 'border-blue-300 bg-blue-50 text-blue-700 cursor-not-allowed'
+                            : uploadedImage 
+                            ? 'border-green-500 bg-green-50 text-green-700' 
+                            : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span>{imageUploading ? '⏳' : uploadedImage ? '✅' : '🖼️'}</span>
+                        <span className="font-medium">
+                          {imageUploading ? 'Uploading...' : uploadedImage ? 'Image Added' : 'Add Image'}
+                        </span>
+                      </label>
+                      {uploadedImage && (
+                        <button
+                          type="button"
+                          onClick={removeImage}
+                          className="flex items-center gap-2 px-3 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-all duration-200"
+                        >
+                          <span>🗑️</span>
+                          <span className="font-medium">Remove</span>
+                        </button>
+                      )}
+                    </div>
+                    {uploadedImage && (
+                      <div className="mt-4">
+                        <img
+                          src={uploadedImage}
+                          alt="Uploaded preview"
+                          className="max-w-full sm:max-w-xs max-h-32 object-cover border border-gray-300 rounded-lg shadow-sm"
+                        />
                       </div>
                     )}
                   </div>
-                  {partyBalance !== null && (
-                    <div className={`text-xs mt-1 font-semibold ${partyBalance < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      Balance: PKR {Math.abs(partyBalance).toLocaleString()}
-                    </div>
-                  )}
-                  {formErrors.partyName && <p className="text-xs text-red-500 mt-1">{formErrors.partyName}</p>}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
-                  <input
-                    type="text"
-                    name="phoneNo"
-                    value={newPurchase.phoneNo}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
-                    placeholder="Phone number"
-                  />
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Description / Notes</label>
+                    <textarea
+                      value={newPurchase.description}
+                      onChange={e => setNewPurchase({...newPurchase, description: e.target.value})}
+                      placeholder="Add any additional notes or description for this purchase..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                      rows={4}
+                    />
+                  </div>
                 </div>
               </div>
-              {/* Right: Invoice Date and Due Date - Only for Purchase Orders */}
-              {pageType === 'purchase-order' && (
-                <div className="flex flex-col gap-4 items-end justify-start">
+              {/* Summary Section (match sale) */}
+              <div className="bg-white px-6 py-8 w-full rounded-xl shadow-sm mt-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+                  {/* Discount */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Date</label>
-                    <input
-                      type="date"
-                      name="invoiceDate"
-                      value={newPurchase.invoiceDate || new Date().toISOString().split('T')[0]}
-                      onChange={handleInputChange}
-                      className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
-                    <input
-                      type="date"
-                      name="dueDate"
-                      value={newPurchase.dueDate || new Date().toISOString().split('T')[0]}
-                      onChange={handleInputChange}
-                      className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                    />
-                  </div>
-                </div>
-              )}
-              {/* Due Date for Purchase Bills */}
-              {pageType === 'purchase-bill' && (
-                <div className="flex flex-col gap-4 items-end justify-start">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
-                    <input
-                      type="date"
-                      name="dueDate"
-                      value={newPurchase.dueDate || new Date().toISOString().split('T')[0]}
-                      onChange={handleInputChange}
-                      className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-          {/* Items Table Section - match sale add page */}
-          <div className={`bg-white px-6 py-6 w-full rounded-b-2xl ${formErrors.items ? 'border-2 border-red-300' : ''}`}>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold text-blue-800 flex items-center gap-2">
-                <span>🛒</span> Items
-              </h2>
-              <button
-                type="button"
-                onClick={addNewRow}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-sm"
-              >
-                <span className="text-xl">+</span> Add Row
-              </button>
-            </div>
-            <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 z-10">
-                  <tr className="border-b border-gray-200 bg-blue-100">
-                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-8">#</th>
-                    <th className="text-left py-3 px-2 font-semibold text-gray-700">ITEM</th>
-                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-20">QTY</th>
-                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">UNIT</th>
-                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">PRICE/UNIT</th>
-                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">AMOUNT</th>
-                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-8"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {newPurchase.items.map((item, index) => {
-                    const handleFocus = async (event: React.FocusEvent<HTMLInputElement>) => {
-                      console.log('Item input focused, fetching suggestions...');
-                      await fetchItemSuggestions();
-                      console.log('Setting showItemSuggestions to true for item:', item.id);
-                      setShowItemSuggestions(prev => ({ ...prev, [item.id]: true }));
-                      
-                      const rect = event.target.getBoundingClientRect();
-                      const style: React.CSSProperties = {
-                        position: 'absolute',
-                        top: rect.bottom + window.scrollY + 4,
-                        left: rect.left + window.scrollX,
-                        width: rect.width,
-                        zIndex: 9999,
-                        maxHeight: '200px',
-                        overflowY: 'auto' as const
-                      };
-                      console.log('Setting dropdown style:', style);
-                      setDropdownStyle(style);
-                    };
-
-                    return (
-                      <tr
-                        key={item.id}
-                        className={`border-b border-gray-100 ${index % 2 === 0 ? 'bg-white' : 'bg-blue-50'} hover:bg-blue-100 transition-colors`}
-                      >
-                        <td className="py-2 px-2 font-medium">{index + 1}</td>
-                        <td className="py-2 px-2">
-                          <input
-                            type="text"
-                            value={item.item}
-                            onChange={e => handleItemChange(item.id, 'item', e.target.value)}
-                            onFocus={handleFocus}
-                            onBlur={() => setTimeout(() => setShowItemSuggestions(prev => ({ ...prev, [item.id]: false })), 200)}
-                            className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-                            placeholder="Enter item name..."
-                          />
-                          {showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
-                            <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                              
-                              {itemSuggestions.length > 0 ? (
-                                itemSuggestions
-                                  .filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()))
-                                .map(i => (
-                                  <li
-                                    key={i._id}
-                                      className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
-                                    onMouseDown={() => {
-                                      console.log('Selected item:', i);
-                                      handleItemChange(item.id, 'item', i.name);
-                                      // Map the unit to dropdown options
-                                      let mappedUnit = 'NONE';
-                                      if (i.unit) {
-                                        const unitMap: { [key: string]: string } = {
-                                          'Piece': 'PCS',
-                                          'Kg': 'KG',
-                                          'Gram': 'KG',
-                                          'Liter': 'LITER',
-                                          'Meter': 'METER',
-                                          'Box': 'BOX',
-                                          'Packet': 'PACKET',
-                                          'Dozen': 'DOZEN',
-                                          'Unit': 'UNIT'
-                                        };
-                                        mappedUnit = unitMap[i.unit] || i.unit.toUpperCase();
-                                      }
-                                      handleItemChange(item.id, 'unit', mappedUnit);
-                                      handleItemChange(item.id, 'price', i.purchasePrice || 0);
-                                      setShowItemSuggestions(prev => ({ ...prev, [item.id]: false }));
-                                    }}
-                                  >
-                                                          <div className="flex justify-between items-center">
-                      <span className="font-medium text-gray-800">{i.name}</span>
-                      <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.purchasePrice || 0} • Qty: {i.stock || 0}</span>
-                    </div>
-                                  </li>
-                                  ))
-                              ) : (
-                                <li className="px-4 py-3 text-center">
-                                  <div className="text-gray-500 text-sm">
-                                    {itemSuggestions.length === 0 ? (
-                                      <div>
-                                        <div className="text-gray-400 mb-1">📦</div>
-                                        <div>No items available</div>
-                                        <div className="text-xs text-gray-400 mt-1">Add items in the Items section first</div>
-                                      </div>
-                                    ) : (
-                                      <div>
-                                        <div className="text-gray-400 mb-1">🔍</div>
-                                        <div>No matching items</div>
-                                        <div className="text-xs text-gray-400 mt-1">Try a different search term</div>
-                                      </div>
-                                    )}
-                                  </div>
-                                </li>
-                              )}
-                            </ul>,
-                            document.body
-                          )}
-                        </td>
-                        <td className="py-2 px-2">
+                    <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                      <span>💸</span> Discount
+                    </label>
+                    <div className="flex flex-row items-center gap-2">
+                      <div className="flex flex-col flex-1">
+                        <div className="flex flex-row gap-2">
                           <input
                             type="number"
-                            value={item.qty}
-                            min={0}
-                            onChange={e => handleItemChange(item.id, 'qty', e.target.value)}
-                            className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                            name="discount"
+                            value={newPurchase.discount}
+                            onChange={e => setNewPurchase({ ...newPurchase, discount: e.target.value })}
+                            className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
                           />
-                        </td>
-                        <td className="py-2 px-2">
                           <CustomDropdown
                             options={[
-                              { value: 'NONE', label: 'NONE' },
-                              { value: 'KG', label: 'KG' },
-                              { value: 'PCS', label: 'PCS' },
-                              { value: 'BOX', label: 'BOX' },
-                              { value: 'Custom', label: 'Custom' }
+                              { value: '%', label: '%' },
+                              { value: 'PKR', label: 'PKR' }
                             ]}
-                            value={item.unit}
-                            onChange={val => handleItemChange(item.id, 'unit', val)}
+                            value={newPurchase.discountType}
+                            onChange={val => setNewPurchase({ ...newPurchase, discountType: val })}
+                            className="w-28 min-w-[72px] mb-1 h-11"
                           />
-                          {item.unit === 'Custom' && (
-                            <input
-                              type="text"
-                              value={item.customUnit}
-                              onChange={e => handleItemChange(item.id, 'customUnit', e.target.value)}
-                              className="mt-2 w-full px-3 py-2 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
-                              placeholder="Enter custom unit"
-                            />
-                          )}
-                        </td>
-                        <td className="py-2 px-2">
-                          <input
-                            type="number"
-                            value={item.price}
-                            min={0}
-                            onChange={e => handleItemChange(item.id, 'price', e.target.value)}
-                            className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-                          />
-                        </td>
-                        <td className="py-2 px-2">
-                          <span className="text-gray-900 font-semibold">{isNaN(item.amount) ? '0.00' : item.amount.toFixed(2)} {item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? item.unit : ''}</span>
-                        </td>
-                        <td className="py-2 px-2 flex gap-1">
-                          {newPurchase.items.length > 1 && (
-                            <button
-                              type="button"
-                              className="text-red-600 hover:text-red-700 px-2 py-1 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 transition-colors"
-                              onClick={() => deleteRow(item.id)}
-                              title="Delete row"
-                            >
-                              –
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {formErrors.items && <p className="text-xs text-red-500 mt-2">{formErrors.items}</p>}
-          </div>
-          {/* Image Upload & Description Section (match sale) */}
-          <div className="bg-gray-50 px-6 py-6 w-full">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Add Image</label>
-                <div className="flex items-center gap-4">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    id="imageUpload"
-                    disabled={imageUploading}
-                  />
-                  <label
-                    htmlFor="imageUpload"
-                    className={`flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-200 ${
-                      imageUploading
-                        ? 'border-blue-300 bg-blue-50 text-blue-700 cursor-not-allowed'
-                        : uploadedImage 
-                        ? 'border-green-500 bg-green-50 text-green-700' 
-                        : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50'
-                    }`}
-                  >
-                    <span>{imageUploading ? '⏳' : uploadedImage ? '✅' : '🖼️'}</span>
-                    <span className="font-medium">
-                      {imageUploading ? 'Uploading...' : uploadedImage ? 'Image Added' : 'Add Image'}
-                    </span>
-                  </label>
-                  {uploadedImage && (
-                    <button
-                      type="button"
-                      onClick={removeImage}
-                      className="flex items-center gap-2 px-3 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-all duration-200"
-                    >
-                      <span>🗑️</span>
-                      <span className="font-medium">Remove</span>
-                    </button>
-                  )}
-                </div>
-                {uploadedImage && (
-                  <div className="mt-4">
-                    <img
-                      src={uploadedImage}
-                      alt="Uploaded preview"
-                      className="max-w-full sm:max-w-xs max-h-32 object-cover border border-gray-300 rounded-lg shadow-sm"
-                    />
+                        </div>
+                        <div className="text-xs text-gray-500 min-h-[24px] mt-1">
+                          {newPurchase.discount && !isNaN(Number(newPurchase.discount)) ? (
+                            <>
+                              Discount: 
+                              {newPurchase.discountType === '%'
+                                ? `${newPurchase.discount}% = PKR${discountValue.toFixed(2)}`
+                                : `PKR${discountValue.toFixed(2)}`}
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Description / Notes</label>
-                <textarea
-                  value={newPurchase.description}
-                  onChange={e => setNewPurchase({...newPurchase, description: e.target.value})}
-                  placeholder="Add any additional notes or description for this purchase..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                  rows={4}
-                />
-              </div>
-            </div>
-          </div>
-          {/* Summary Section (match sale) */}
-          <div className="bg-white px-6 py-8 w-full rounded-xl shadow-sm mt-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-              {/* Discount */}
-              <div>
-                <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                  <span>💸</span> Discount
-                </label>
-                <div className="flex flex-row items-center gap-2">
-                  <div className="flex flex-col flex-1">
-                    <div className="flex flex-row gap-2">
+                  {/* Tax */}
+                  <div>
+                    <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                      <span>🧾</span> Tax
+                    </label>
+                    <div className="flex flex-row items-center gap-2">
                       <input
                         type="number"
-                        name="discount"
-                        value={newPurchase.discount}
-                        onChange={e => setNewPurchase({ ...newPurchase, discount: e.target.value })}
+                        name="tax"
+                        value={newPurchase.tax}
+                        onChange={e => setNewPurchase({ ...newPurchase, tax: e.target.value })}
                         className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
                       />
                       <CustomDropdown
@@ -1041,134 +1109,100 @@ export default function AddPurchasePage() {
                           { value: '%', label: '%' },
                           { value: 'PKR', label: 'PKR' }
                         ]}
-                        value={newPurchase.discountType}
-                        onChange={val => setNewPurchase({ ...newPurchase, discountType: val })}
+                        value={newPurchase.taxType}
+                        onChange={val => setNewPurchase({ ...newPurchase, taxType: val })}
                         className="w-28 min-w-[72px] mb-1 h-11"
                       />
                     </div>
                     <div className="text-xs text-gray-500 min-h-[24px] mt-1">
-                      {newPurchase.discount && !isNaN(Number(newPurchase.discount)) ? (
+                      {newPurchase.tax && !isNaN(Number(newPurchase.tax)) ? (
                         <>
-                          Discount: 
-                          {newPurchase.discountType === '%'
-                            ? `${newPurchase.discount}% = PKR${discountValue.toFixed(2)}`
-                            : `PKR${discountValue.toFixed(2)}`}
+                          Tax: {newPurchase.taxType === '%'
+                            ? `${newPurchase.tax}% = PKR${taxValue.toFixed(2)}`
+                            : `PKR${taxValue.toFixed(2)}`}
                         </>
                       ) : null}
                     </div>
                   </div>
-                </div>
-              </div>
-              {/* Tax */}
-              <div>
-                <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                  <span>🧾</span> Tax
-                </label>
-                <div className="flex flex-row items-center gap-2">
-                  <input
-                    type="number"
-                    name="tax"
-                    value={newPurchase.tax}
-                    onChange={e => setNewPurchase({ ...newPurchase, tax: e.target.value })}
-                    className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                  <CustomDropdown
-                    options={[
-                      { value: '%', label: '%' },
-                      { value: 'PKR', label: 'PKR' }
-                    ]}
-                    value={newPurchase.taxType}
-                    onChange={val => setNewPurchase({ ...newPurchase, taxType: val })}
-                    className="w-28 min-w-[72px] mb-1 h-11"
-                  />
-                </div>
-                <div className="text-xs text-gray-500 min-h-[24px] mt-1">
-                  {newPurchase.tax && !isNaN(Number(newPurchase.tax)) ? (
-                    <>
-                      Tax: {newPurchase.taxType === '%'
-                        ? `${newPurchase.tax}% = PKR${taxValue.toFixed(2)}`
-                        : `PKR${taxValue.toFixed(2)}`}
-                    </>
-                  ) : null}
-                </div>
-              </div>
-              {/* Payment Type */}
-              <div>
-                <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                  <span>💳</span> Payment Type
-                </label>
-                <div className="flex flex-col">
-                  <CustomDropdown
-                    options={[
-                      { value: 'Cash', label: 'Cash' },
-                      { value: 'Card', label: 'Card' },
-                      { value: 'UPI', label: 'UPI' },
-                      { value: 'Cheque', label: 'Cheque' }
-                    ]}
-                    value={newPurchase.paymentType}
-                    onChange={val => setNewPurchase({ ...newPurchase, paymentType: val })}
-                    className="mb-1"
-                  />
-                  <div className="text-xs text-gray-500 min-h-[24px] mt-1"></div>
-                </div>
-              </div>
-              {/* Totals */}
-              <div className="md:col-span-1 flex flex-col items-end gap-2">
-                <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full min-w-[220px]">
-                  <div className="flex flex-col gap-1">
-                    <div className="flex justify-between text-xs text-gray-600">
-                      <span>Sub Total</span>
-                      <span>PKR{subTotal.toFixed(2)}</span>
+                  {/* Payment Type */}
+                  <div>
+                    <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                      <span>💳</span> Payment Type
+                    </label>
+                    <div className="flex flex-col">
+                      <CustomDropdown
+                        options={[
+                          { value: 'Cash', label: 'Cash' },
+                          { value: 'Card', label: 'Card' },
+                          { value: 'UPI', label: 'UPI' },
+                          { value: 'Cheque', label: 'Cheque' }
+                        ]}
+                        value={newPurchase.paymentType}
+                        onChange={val => setNewPurchase({ ...newPurchase, paymentType: val })}
+                        className="mb-1"
+                      />
+                      <div className="text-xs text-gray-500 min-h-[24px] mt-1"></div>
                     </div>
-                    <div className="flex justify-between text-xs text-gray-600">
-                      <span>Discount</span>
-                      <span>- PKR{discountValue.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs text-gray-600">
-                      <span>Tax</span>
-                      <span>+ PKR{taxValue.toFixed(2)}</span>
-                    </div>
-                    <div className="border-t border-blue-200 my-2"></div>
-                    <div className="flex justify-between text-lg font-bold text-blue-900">
-                      <span>Grand Total</span>
-                      <span>PKR{grandTotal.toFixed(2)}</span>
+                  </div>
+                  {/* Totals */}
+                  <div className="md:col-span-1 flex flex-col items-end gap-2">
+                    <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full min-w-[220px]">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex justify-between text-xs text-gray-600">
+                          <span>Sub Total</span>
+                          <span>PKR{subTotal.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs text-gray-600">
+                          <span>Discount</span>
+                          <span>- PKR{discountValue.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs text-gray-600">
+                          <span>Tax</span>
+                          <span>+ PKR{taxValue.toFixed(2)}</span>
+                        </div>
+                        <div className="border-t border-blue-200 my-2"></div>
+                        <div className="flex justify-between text-lg font-bold text-blue-900">
+                          <span>Grand Total</span>
+                          <span>PKR{grandTotal.toFixed(2)}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
+              {/* Submit Button (match sale) */}
+              <div className="flex justify-end gap-4 px-6 py-6 bg-gray-50 border-t border-gray-200 w-full">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className={`px-6 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
+                    loading 
+                      ? 'bg-gray-400 text-white cursor-not-allowed' 
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  {loading ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Add Purchase</span>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
-          {/* Submit Button (match sale) */}
-          <div className="flex justify-end gap-4 px-6 py-6 bg-gray-50 border-t border-gray-200 w-full">
-            <button
-              type="submit"
-              disabled={loading}
-              className={`px-6 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
-                loading 
-                  ? 'bg-gray-400 text-white cursor-not-allowed' 
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
-            >
-              {loading ? (
-                <>
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span>Saving...</span>
-                </>
-              ) : (
-                <>
-                  <span>Add Purchase</span>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </>
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

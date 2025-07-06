@@ -24,15 +24,15 @@ export async function deletePurchaseOrder(userId: string, orderId: string) {
 }
 
 export async function updatePurchaseOrder(token: string, orderId: string, data: any) {
-  const res = await fetch(`http://localhost:4000/api/purchase-orders/${orderId}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    },
-    body: JSON.stringify(data),
-  });
-  return res.json();
+  try {
+    const res = await api.put(`/api/purchase-orders/${orderId}`, data, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return res.data;
+  } catch (error) {
+    console.error('Error updating purchase order:', error);
+    throw error;
+  }
 }
 
 export const getUserPurchaseOrders = async (token: string) => {
@@ -55,6 +55,18 @@ export const createPurchaseOrder = async (token: string, purchaseOrderData: any)
     return res.data;
   } catch (error) {
     console.error('Error creating purchase order:', error);
+    throw error;
+  }
+};
+
+export const fixCompletedPurchaseOrders = async (token: string) => {
+  try {
+    const res = await api.post('/api/purchase-orders/fix-completed', {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return res.data;
+  } catch (error) {
+    console.error('Error fixing completed purchase orders:', error);
     throw error;
   }
 }; 

@@ -93,7 +93,7 @@ export default function DeliveryChallanPage() {
         // Log each challan's status and invoice number
         result.data.forEach((challan: any, index: number) => {
           console.log(`Challan ${index + 1}:`, {
-            id: challan._id || challan.id,
+            id: challan.id,
             challanNumber: challan.challanNumber,
             status: challan.status,
             invoiceNumber: challan.invoiceNumber,
@@ -130,12 +130,12 @@ export default function DeliveryChallanPage() {
     }
 
     const testChallan = deliveryChallans[0];
-    const challanId = testChallan._id || testChallan.id;
+    const challanId = testChallan.id;
     
     console.log('=== TESTING DELIVERY CHALLAN STATUS UPDATE ===');
     console.log('Test challan:', testChallan);
     console.log('Test challan ID:', challanId);
-    console.log('Test challan _id:', testChallan._id);
+    console.log('Test challan id:', testChallan.id);
     console.log('Test challan id:', testChallan.id);
     
     try {
@@ -168,7 +168,7 @@ export default function DeliveryChallanPage() {
   };
 
   const handleConvertToSale = (challanId: string) => {
-    const challan = deliveryChallans.find(c => (c._id || c.id) === challanId);
+    const challan = deliveryChallans.find(c => c.id === challanId);
     if (!challan) {
       setErrorMessage('Challan not found');
       return;
@@ -177,7 +177,7 @@ export default function DeliveryChallanPage() {
     console.log('=== CONVERTING DELIVERY CHALLAN TO SALE ===');
     console.log('Challan ID:', challanId);
     console.log('Challan:', challan);
-    console.log('Challan _id:', challan._id);
+    console.log('Challan id:', challan.id);
     console.log('Challan id:', challan.id);
 
     // Prepare sale data from challan
@@ -202,7 +202,7 @@ export default function DeliveryChallanPage() {
       taxType: '%',
       paymentType: 'Credit',
       description: challan.description || '',
-      sourceChallanId: challan._id || challan.id,
+      sourceChallanId: challan.id,
       sourceChallanNumber: challan.challanNumber
     };
 
@@ -606,7 +606,7 @@ export default function DeliveryChallanPage() {
                 </tr>
               ) : (
                 filteredChallans.map((challan, idx) => (
-                  <tr key={challan._id || challan.id} className={`hover:bg-blue-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                  <tr key={challan.id} className={`hover:bg-blue-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                     <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">
                       {challan.challanNumber}
                     </td>
@@ -632,7 +632,7 @@ export default function DeliveryChallanPage() {
                       <div className="flex justify-center gap-2 relative">
                         {getEffectiveStatus(challan) === 'Open' ? (
                           <button 
-                            onClick={() => handleConvertToSale(challan._id || challan.id)}
+                            onClick={() => handleConvertToSale(challan.id)}
                             className="text-blue-600 hover:text-blue-800 text-sm font-medium"
                             disabled={isLoading}
                           >

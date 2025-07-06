@@ -308,8 +308,8 @@ export default function CreateSalesOrderPage() {
     const updateDropdownPosition = () => {
       if (inputRef.current) {
         const rect = inputRef.current.getBoundingClientRect();
-        const style = {
-          position: 'absolute',
+        const style: React.CSSProperties = {
+          position: 'absolute' as const,
           top: rect.bottom + window.scrollY + 4,
           left: rect.left + window.scrollX + 4,
           width: rect.width,

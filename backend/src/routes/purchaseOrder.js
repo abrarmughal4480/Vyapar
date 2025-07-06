@@ -6,7 +6,8 @@ import {
   updatePurchaseOrderStatus,
   convertPurchaseOrderToInvoice,
   updatePurchaseOrderTotals,
-  updatePurchaseOrder
+  updatePurchaseOrder,
+  fixCompletedPurchaseOrders
 } from '../controllers/purchaseOrderController.js';
 
 const router = express.Router();
@@ -31,5 +32,8 @@ router.post('/update-totals', updatePurchaseOrderTotals);
 
 // Add this route for full update
 router.put('/:orderId', updatePurchaseOrder);
+
+// Fix completed purchase orders without invoice numbers
+router.post('/fix-completed', fixCompletedPurchaseOrders);
 
 export default router; 

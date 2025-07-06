@@ -8,7 +8,7 @@ import { createSale } from '../../../../http/sales';
 import { getCustomerParties, getPartyBalance } from '../../../../http/parties';
 import { getUserItems } from '../../../../http/items';
 import api from '../../../../http/api';
-import { API_ENDPOINTS } from '../../../lib/api';
+import { API_ENDPOINTS } from '../../../../lib/api';
 // Import any other needed components or hooks
 
 interface SaleItem {

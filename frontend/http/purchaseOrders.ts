@@ -1,0 +1,60 @@
+import api from './api';
+
+// Purchase Orders API for frontend
+
+export async function getPurchaseOrders(userId: string) {
+  const res = await fetch(`http://localhost:4000/purchase-orders/${userId}`);
+  return res.json();
+}
+
+export async function addPurchaseOrder(userId: string, purchaseOrder: any) {
+  const res = await fetch(`http://localhost:4000/purchase-orders/${userId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(purchaseOrder),
+  });
+  return res.json();
+}
+
+export async function deletePurchaseOrder(userId: string, orderId: string) {
+  const res = await fetch(`http://localhost:4000/purchase-orders/${userId}/${orderId}`, {
+    method: 'DELETE',
+  });
+  return res.json();
+}
+
+export async function updatePurchaseOrder(token: string, orderId: string, data: any) {
+  const res = await fetch(`http://localhost:4000/api/purchase-orders/${orderId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export const getUserPurchaseOrders = async (token: string) => {
+  try {
+    const res = await api.get('/api/purchase-orders', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return res.data.data || res.data || [];
+  } catch (error) {
+    console.error('Error fetching purchase orders:', error);
+    return [];
+  }
+};
+
+export const createPurchaseOrder = async (token: string, purchaseOrderData: any) => {
+  try {
+    const res = await api.post('/api/purchase-orders', purchaseOrderData, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return res.data;
+  } catch (error) {
+    console.error('Error creating purchase order:', error);
+    throw error;
+  }
+}; 

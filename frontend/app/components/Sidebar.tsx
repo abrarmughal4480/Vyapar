@@ -45,7 +45,19 @@ const navItems: NavItem[] = [
       { id: 'sale-return-credit', label: 'Sale Return/ Credit Note', path: '/dashboard/credit-note' }
     ]
   },
-  { id: 'purchase', label: 'Purchase', icon: '🛒', path: '/dashboard/purchase', description: 'Purchase Orders' },
+  { 
+    id: 'purchase', 
+    label: 'Purchase', 
+    icon: '🛒', 
+    path: '/dashboard/purchase', 
+    description: 'Purchase & Bills',
+    hasDropdown: true,
+    subItems: [
+      { id: 'purchase-bills', label: 'Purchase Bills', icon: '🧾', path: '/dashboard/purchase' },
+      { id: 'purchase-order', label: 'Purchase Order', icon: '📋', path: '/dashboard/purchase-order' },
+      { id: 'payment-out', label: 'Payment Out', icon: '💸', path: '/dashboard/payment-out' }
+    ]
+  },
   { id: 'expenses', label: 'Expenses', icon: '💸', path: '/dashboard/expenses', description: 'Business Expenses' },
   { id: 'cash-bank', label: 'Cash & Bank', icon: '🏦', path: '/dashboard/cash-bank', description: 'Payment Records' },
   { id: 'reports', label: 'Reports', icon: '📈', path: '/dashboard/reports', description: 'Business Analytics' },
@@ -89,12 +101,27 @@ export default function Sidebar() {
   const handleNavigation = (item: NavItem) => {
     if (item.hasDropdown) {
       toggleDropdown(item.id)
+      // Close other dropdowns when opening a new one
+      setOpenDropdowns(prev => {
+        const newState = { ...prev }
+        // Close all other dropdowns except the current one
+        Object.keys(newState).forEach(key => {
+          if (key !== item.id) {
+            newState[key] = false
+          }
+        })
+        return newState
+      })
+      
+      // Navigate to default path for dropdown items
       if (item.id === 'sale') {
         router.push('/dashboard/sale')
+      } else if (item.id === 'purchase') {
+        router.push('/dashboard/purchase')
       }
     } else {
-      // Close 'sale' dropdown if another main item is clicked
-      setOpenDropdowns(prev => ({ ...prev, sale: false }))
+      // Close all dropdowns if another main item is clicked
+      setOpenDropdowns(prev => ({ ...prev, sale: false, purchase: false }))
       router.push(item.path)
     }
   }
@@ -193,7 +220,8 @@ export default function Sidebar() {
                   <button
                     key={subItem.id}
                     onClick={() => {
-                      setOpenDropdowns(prev => ({ ...prev, sale: true }))
+                      // Keep the current dropdown open and navigate
+                      setOpenDropdowns(prev => ({ ...prev, [item.id]: true }))
                       router.push(subItem.path)
                     }}
                     className={`w-full flex items-center px-3 py-2 rounded-xl text-left text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 relative ${

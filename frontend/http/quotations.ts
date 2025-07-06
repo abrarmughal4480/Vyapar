@@ -1,10 +1,24 @@
 import api from './api';
 
 export const createQuotation = async (quotation: any, token: string) => {
-  const res = await api.post('/quotations', quotation, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  return res.data;
+  try {
+    console.log('=== CREATING QUOTATION ===');
+    console.log('Quotation data:', quotation);
+    console.log('Token:', token ? 'Present' : 'Missing');
+    
+    const res = await api.post('/quotations', quotation, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    console.log('Quotation creation response:', res.data);
+    return res.data;
+  } catch (error: any) {
+    console.error('Quotation creation error:', error);
+    console.error('Error status:', error.response?.status);
+    console.error('Error response:', error.response?.data);
+    console.error('Error message:', error.message);
+    throw error;
+  }
 };
 
 export const getQuotationsForUser = async (token: string) => {

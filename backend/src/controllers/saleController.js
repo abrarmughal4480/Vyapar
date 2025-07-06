@@ -162,4 +162,40 @@ export const getSalesStatsByUser = async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+};
+
+// Get sales overview (total sales per month) for a user
+export const getSalesOverview = async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
+    let objectUserId;
+    try {
+      objectUserId = mongoose.Types.ObjectId(userId);
+    } catch (e) {
+      return res.json({ success: true, overview: [] });
+    }
+    // Group sales by month and sum grandTotal
+    const overview = await Sale.aggregate([
+      { $match: { userId: objectUserId } },
+      {
+        $group: {
+          _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
+          totalSales: { $sum: "$grandTotal" },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    ]);
+    // Format result for frontend
+    const formatted = overview.map(item => ({
+      year: item._id.year,
+      month: item._id.month,
+      totalSales: item.totalSales,
+      count: item.count
+    }));
+    res.json({ success: true, overview: formatted });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 }; 

@@ -1,22 +1,339 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Toast from '../../../components/Toast'
+import ReactDOM from 'react-dom'
+import { getToken } from '../../../lib/auth'
+import { createDeliveryChallan } from '../../../../http/deliveryChallan'
+import { getCustomerParties, getPartyBalance } from '../../../../http/parties'
+import { getUserItems } from '../../../../http/items'
 
-// This would be saved as: /app/dashboard/sale-order/create/page.js or /pages/dashboard/sale-order/create.js
 
 interface FormData {
   refNo: string;
   invoiceDate: string;
+  dueDate: string;
   customer: string;
   phone: string;
-  items: { item: string; qty: number; unit: string; price: number; amount: number }[];
+  items: { id: number; item: string; qty: string; unit: string; customUnit: string; price: string; amount: number }[];
   description: string;
   image: File | null;
   discount: number;
   discountType: string;
   tax: string;
+  taxType: string;
   taxAmount: number;
+}
+
+type DropdownOption = { value: string; label: string };
+
+interface CustomDropdownProps {
+  options: DropdownOption[];
+  value: string;
+  onChange: (val: string) => void;
+  className?: string;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+function CustomDropdown({ options, value, onChange, className = '', placeholder = 'Select', disabled = false }: CustomDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (!ref.current) return;
+      if (!(event.target instanceof Node)) return;
+      if (!ref.current.contains(event.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  useEffect(() => {
+    if (open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setDropdownStyle({
+        position: 'absolute',
+        top: rect.bottom + window.scrollY + 6,
+        left: rect.left + window.scrollX + rect.width / 2 - (rect.width + 40) / 2,
+        width: rect.width + 40,
+        minWidth: rect.width,
+        zIndex: 1000,
+        maxHeight: '12rem',
+        overflowY: 'auto',
+      });
+    }
+  }, [open]);
+
+  return (
+    <div ref={ref} className={`relative ${disabled ? 'opacity-60 pointer-events-none' : ''} ${className}`}> 
+      <button
+        ref={btnRef}
+        type="button"
+        className={`w-full px-3 py-2 border-2 border-blue-100 rounded-lg bg-white flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-blue-200 appearance-none transition-all ${open ? 'ring-2 ring-blue-300' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        tabIndex={0}
+      >
+        <span className="truncate text-left">{options.find((o: DropdownOption) => o.value === value)?.label || placeholder}</span>
+        <span className={`ml-2 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}>
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+        </span>
+      </button>
+      {open && typeof window !== 'undefined' && ReactDOM.createPortal(
+        <ul
+          style={dropdownStyle}
+          className="bg-white border-2 border-blue-100 rounded-lg shadow-lg animate-fadeinup custom-dropdown-scrollbar"
+          onMouseDown={e => e.preventDefault()}
+        >
+          {options.map((opt: DropdownOption) => (
+            <li
+              key={opt.value}
+              className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'}`}
+              onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); }}
+              tabIndex={0}
+              onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { if (e.key === 'Enter') { onChange(opt.value); setOpen(false); }}}
+              aria-selected={value === opt.value}
+            >
+              {opt.label}
+            </li>
+          ))}
+        </ul>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+function ItemRow({
+  item,
+  index,
+  handleItemChange,
+  showItemSuggestions,
+  setShowItemSuggestions,
+  itemSuggestions,
+  deleteRow,
+  formData,
+  fetchItemSuggestions
+}: {
+  item: { id: number; item: string; qty: string; unit: string; customUnit: string; price: string; amount: number };
+  index: number;
+  handleItemChange: (index: number, field: string, value: any) => void;
+  showItemSuggestions: {[id: number]: boolean};
+  setShowItemSuggestions: React.Dispatch<React.SetStateAction<{[id: number]: boolean}>>;
+  itemSuggestions: any[];
+  deleteRow: (index: number) => void;
+  formData: FormData;
+  fetchItemSuggestions: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+
+  const updateDropdownPosition = () => {
+    if (inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
+      const style = {
+        position: 'absolute',
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.left + window.scrollX + 4,
+        width: rect.width,
+        zIndex: 9999
+      };
+      console.log('Dropdown position:', style);
+      setDropdownStyle(style);
+    }
+  };
+
+  useLayoutEffect(() => {
+    if (showItemSuggestions[item.id]) {
+      updateDropdownPosition();
+      window.addEventListener('scroll', updateDropdownPosition, true);
+      window.addEventListener('resize', updateDropdownPosition);
+      // Add click outside logic
+      const handleClickOutside = (event: MouseEvent) => {
+        if (
+          inputRef.current &&
+          !inputRef.current.contains(event.target as Node)
+        ) {
+          setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+        }
+      };
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        window.removeEventListener('scroll', updateDropdownPosition, true);
+        window.removeEventListener('resize', updateDropdownPosition);
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showItemSuggestions[item.id]]);
+
+  const handleFocus = () => {
+    console.log('Item input focused, fetching suggestions...');
+    console.log('Item ID:', item.id);
+    fetchItemSuggestions();
+    setShowItemSuggestions((prev: any) => {
+      const newState = { ...prev, [item.id]: true };
+      console.log('Updated showItemSuggestions:', newState);
+      return newState;
+    });
+    updateDropdownPosition();
+  };
+
+  return (
+    <tr
+      className={`border-b border-gray-100 ${index % 2 === 0 ? 'bg-white' : 'bg-blue-50'} hover:bg-blue-100 transition-colors`}
+    >
+      <td className="py-2 px-2 font-medium">{index + 1}</td>
+      <td className="py-2 px-2">
+        <input
+          ref={inputRef}
+          type="text"
+          value={item.item}
+                      onChange={e => {
+              console.log('Item input changed:', e.target.value);
+              handleItemChange(index, 'item', e.target.value);
+            }}
+          onFocus={handleFocus}
+                      onBlur={() => {
+              console.log('Item input blurred');
+              setTimeout(() => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false })), 200);
+            }}
+          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+          placeholder="Enter item name..."
+          data-testid={`item-input-${item.id}`}
+        />
+        {showItemSuggestions[item.id] && typeof window !== 'undefined' && (() => {
+          console.log('Rendering item suggestions dropdown for item', item.id);
+          console.log('showItemSuggestions:', showItemSuggestions);
+          console.log('itemSuggestions length:', itemSuggestions.length);
+          console.log('itemSuggestions:', itemSuggestions);
+          console.log('Dropdown style:', dropdownStyle);
+          return ReactDOM.createPortal(
+          <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+            {itemSuggestions.length > 0 ? (
+              (() => {
+                const filteredItems = itemSuggestions.filter((i: any) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
+                console.log('Filtered items for search term:', item.item, 'Result:', filteredItems);
+                return filteredItems.map((i: any) => (
+                  <li
+                    key={i._id}
+                    className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
+                    onMouseDown={() => {
+                      console.log('Selected item:', i);
+                      handleItemChange(index, 'item', i.name);
+                      // Map the unit to dropdown options
+                      let mappedUnit = 'NONE';
+                      if (i.unit) {
+                        const unitMap: { [key: string]: string } = {
+                          'Piece': 'PCS',
+                          'Kg': 'KG',
+                          'Gram': 'KG',
+                          'Liter': 'LITER',
+                          'Meter': 'METER',
+                          'Box': 'BOX',
+                          'Packet': 'PACKET',
+                          'Dozen': 'DOZEN',
+                          'Unit': 'UNIT'
+                        };
+                        mappedUnit = unitMap[i.unit] || i.unit.toUpperCase();
+                      }
+                      handleItemChange(index, 'unit', mappedUnit);
+                      handleItemChange(index, 'price', i.salePrice || 0);
+                      setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+                    }}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-gray-800">{i.name}</span>
+                      <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock || 0}</span>
+                                          </div>
+                    </li>
+                  ));
+                })()
+            ) : (
+              <li className="px-4 py-3 text-center">
+                <div className="text-gray-500 text-sm">
+                  {itemSuggestions.length === 0 ? (
+                    <div>
+                      <div className="text-gray-400 mb-1">📦</div>
+                      <div>No items available</div>
+                      <div className="text-xs text-gray-400 mt-1">Add items in the Items section first</div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="text-gray-400 mb-1">🔍</div>
+                      <div>No matching items</div>
+                      <div className="text-xs text-gray-400 mt-1">Try a different search term</div>
+                    </div>
+                  )}
+                </div>
+              </li>
+            )}
+          </ul>,
+          document.body
+        );
+        })()}
+      </td>
+      <td className="py-2 px-2">
+        <input
+          type="number"
+          value={item.qty}
+          min={0}
+          onChange={e => handleItemChange(index, 'qty', e.target.value)}
+          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+        />
+      </td>
+      <td className="py-2 px-2">
+        <CustomDropdown
+          options={[
+            { value: 'NONE', label: 'NONE' },
+            { value: 'KG', label: 'KG' },
+            { value: 'PCS', label: 'PCS' },
+            { value: 'BOX', label: 'BOX' },
+            { value: 'Custom', label: 'Custom' }
+          ]}
+          value={item.unit}
+          onChange={val => handleItemChange(index, 'unit', val)}
+        />
+        {item.unit === 'Custom' && (
+          <input
+            type="text"
+            value={item.customUnit}
+            onChange={e => handleItemChange(index, 'customUnit', e.target.value)}
+            className="mt-2 w-full px-3 py-2 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+            placeholder="Enter custom unit"
+          />
+        )}
+      </td>
+      <td className="py-2 px-2">
+        <input
+          type="number"
+          value={item.price}
+          min={0}
+          onChange={e => handleItemChange(index, 'price', e.target.value)}
+          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+        />
+      </td>
+      <td className="py-2 px-2">
+        <span className="text-gray-900 font-semibold">{isNaN(item.amount) ? '0.00' : item.amount.toFixed(2)} {item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? item.unit : ''}</span>
+      </td>
+      <td className="py-2 px-2 flex gap-1">
+        {formData.items.length > 1 && (
+          <button
+            type="button"
+            className="text-red-600 hover:text-red-700 px-2 py-1 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 transition-colors"
+            onClick={() => deleteRow(index)}
+            title="Delete row"
+          >
+            –
+          </button>
+        )}
+      </td>
+    </tr>
+  );
 }
 
 export default function CreateSalesOrderPage() {
@@ -24,110 +341,59 @@ export default function CreateSalesOrderPage() {
   const [formData, setFormData] = useState<FormData>({
     refNo: '1',
     invoiceDate: new Date().toISOString().split('T')[0],
+    dueDate: new Date().toISOString().split('T')[0],
     customer: '',
     phone: '',
     items: [
-      { item: '', qty: 1, unit: 'NONE', price: 0, amount: 0 },
-      { item: '', qty: 1, unit: 'NONE', price: 0, amount: 0 }
+      { id: 1, item: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 },
+      { id: 2, item: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
     ],
     description: '',
     image: null,
     discount: 0,
     discountType: '%',
-    tax: 'NONE',
+    tax: '',
+    taxType: '%',
     taxAmount: 0
   })
   
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false)
-  const [customers, setCustomers] = useState([
-    'Customer 1 - 9876543210',
-    'Customer 2 - 9876543211', 
-    'Customer 3 - 9876543212'
-  ])
+  const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([])
+  const [itemSuggestions, setItemSuggestions] = useState<any[]>([])
+  const [showItemSuggestions, setShowItemSuggestions] = useState<{[id: number]: boolean}>({})
+  const [partyBalance, setPartyBalance] = useState<number|null>(null)
   
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
-  const [authToken, setAuthToken] = useState('')
-  const [isInitialized, setIsInitialized] = useState(false)
   const [showDescription, setShowDescription] = useState(false)
   const [showImage, setShowImage] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null)
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null)
+  const [imageUploading, setImageUploading] = useState(false)
+
+  // Click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element
+      if (searchDropdownOpen && !target.closest('.customer-search-container')) {
+        setSearchDropdownOpen(false)
+      }
+    }
+
+    if (searchDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [searchDropdownOpen])
 
   // Unit options
   const unitOptions = ['NONE', 'PCS', 'KG', 'METER', 'LITER', 'BOX', 'DOZEN']
   const taxOptions = ['NONE', 'GST 5%', 'GST 12%', 'GST 18%', 'GST 28%']
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
-  // Auth check
-  const checkAuth = useCallback(() => {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-
-    const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token');
-    const userData = localStorage.getItem('user') || localStorage.getItem('vypar_user_session');
-    
-    if (!token || !userData) {
-      console.log('No authentication found, redirecting to home');
-      router.push('/');
-      return null;
-    }
-
-    try {
-      const parsedUser = JSON.parse(userData);
-      
-      if (!parsedUser.id || !parsedUser.email || parsedUser.email === 'demo@vyparr.com') {
-        console.log('Invalid or demo user data, redirecting to home');
-        router.push('/');
-        return null;
-      }
-
-      let businessId = parsedUser.businessId;
-      if (!businessId) {
-        businessId = `biz_${parsedUser.id}_${Date.now()}`;
-        parsedUser.businessId = businessId;
-        localStorage.setItem('user', JSON.stringify(parsedUser));
-        localStorage.setItem('vypar_user_session', JSON.stringify(parsedUser));
-        localStorage.setItem('businessId', businessId);
-      }
-      
-      return {
-        token,
-        user: parsedUser,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      };
-    } catch (error) {
-      console.log('Error parsing user data, redirecting to home');
-      router.push('/');
-      return null;
-    }
-  }, [router]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const auth = checkAuth();
-      if (auth) {
-        setAuthToken(auth.token);
-        setIsInitialized(true);
-      }
-    }
-  }, [checkAuth])
-
-  const getBusinessId = useCallback(() => {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-
-    const auth = checkAuth();
-    if (auth?.user?.businessId) {
-      return auth.user.businessId;
-    }
-    
-    return localStorage.getItem('businessId');
-  }, [checkAuth]);
 
   // Calculate amount for each item
   useEffect(() => {
@@ -135,19 +401,21 @@ export default function CreateSalesOrderPage() {
       ...prev,
       items: prev.items.map(item => ({
         ...item,
-        amount: item.qty * item.price
+        amount: (parseFloat(item.qty) || 0) * (parseFloat(item.price) || 0)
       }))
     }))
   }, [])
 
   // Calculate totals
-  const subtotal = formData.items.reduce((sum, item) => sum + item.amount, 0)
+  const subtotal = formData.items.reduce((sum, item) => sum + (item.amount || 0), 0)
   const discountAmount = formData.discountType === '%' 
     ? (subtotal * formData.discount) / 100 
     : formData.discount
   const totalAfterDiscount = subtotal - discountAmount
-  const taxAmount = formData.tax !== 'NONE' 
-    ? (totalAfterDiscount * parseInt(formData.tax.split(' ')[1]?.replace('%', '') || '0')) / 100 
+  const taxAmount = formData.tax && !isNaN(Number(formData.tax)) 
+    ? (formData.taxType === '%' 
+      ? (totalAfterDiscount * Number(formData.tax) / 100)
+      : Number(formData.tax))
     : 0
   const grandTotal = totalAfterDiscount + taxAmount
 
@@ -159,7 +427,7 @@ export default function CreateSalesOrderPage() {
         if (i === index) {
           const updatedItem = { ...item, [field]: value }
           if (field === 'qty' || field === 'price') {
-            updatedItem.amount = updatedItem.qty * updatedItem.price
+            updatedItem.amount = (parseFloat(updatedItem.qty) || 0) * (parseFloat(updatedItem.price) || 0)
           }
           return updatedItem
         }
@@ -170,9 +438,22 @@ export default function CreateSalesOrderPage() {
 
   // Add new row
   const addRow = () => {
+    const lastItem = formData.items[formData.items.length - 1];
+    if (!lastItem.item || !lastItem.qty || !lastItem.price) {
+      setToast({ message: 'Please fill the last row before adding a new one.', type: 'error' });
+      return;
+    }
     setFormData(prev => ({
       ...prev,
-      items: [...prev.items, { item: '', qty: 1, unit: 'NONE', price: 0, amount: 0 }]
+      items: [...prev.items, { 
+        id: Math.max(...prev.items.map(item => item.id), 0) + 1, 
+        item: '', 
+        qty: '', 
+        unit: 'NONE', 
+        customUnit: '', 
+        price: '', 
+        amount: 0 
+      }]
     }))
   }
 
@@ -186,18 +467,9 @@ export default function CreateSalesOrderPage() {
     }
   }
 
-  // Handle customer selection
-  const handleCustomerSelect = (customer: string) => {
-    const [name, phone] = customer.split(' - ')
-    setFormData(prev => ({
-      ...prev,
-      customer: name,
-      phone: phone
-    }))
-    setSearchDropdownOpen(false)
-  }
 
-  // Save sales order
+
+  // Save delivery challan
   const handleSave = async () => {
     if (!formData.customer.trim()) {
       setError('Customer name is required')
@@ -213,105 +485,143 @@ export default function CreateSalesOrderPage() {
     setError('')
 
     try {
-      const businessId = getBusinessId();
-      if (!businessId) {
-        setError('Unable to determine business ID');
+      const token = getToken();
+      if (!token) {
+        setError('User not authenticated');
         setIsLoading(false);
         return;
       }
 
-      const orderPayload = {
+      const challanPayload = {
         customerName: formData.customer,
         customerPhone: formData.phone,
-        items: formData.items.filter(item => item.item.trim() && item.price > 0),
+        items: formData.items.filter(item => item.item.trim() && parseFloat(item.price) > 0),
         subtotal: subtotal,
         tax: taxAmount,
         total: grandTotal,
         status: 'Created',
         date: formData.invoiceDate,
+        dueDate: formData.dueDate,
         refNo: formData.refNo,
         discount: discountAmount,
+        discountType: formData.discountType,
+        taxType: formData.taxType,
         description: formData.description
       };
 
-      // Save to localStorage
-      const localStorageKey = `vyparr_sales_orders_${businessId}`;
-      const existingOrders = JSON.parse(localStorage.getItem(localStorageKey) || '[]');
+      const result = await createDeliveryChallan(challanPayload, token);
       
-      const newOrder = {
-        ...orderPayload,
-        id: `SO-${Date.now()}`,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      const updatedOrders = [newOrder, ...existingOrders];
-      localStorage.setItem(localStorageKey, JSON.stringify(updatedOrders));
-
-      // Try to sync with API
-      try {
-        const response = await fetch(`${API_BASE_URL}/sales/orders/${businessId}`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${authToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(orderPayload)
-        });
-        
-        if (response.ok) {
-          console.log('Sales order synced with API successfully');
-        }
-      } catch (apiError) {
-        console.log('API sync failed, but order saved locally:', apiError);
+      if (result.success) {
+        setToast({ message: 'Delivery challan created successfully!', type: 'success' })
+        setTimeout(() => {
+          router.push('/dashboard/delivery-challan')
+        }, 1500)
+      } else {
+        setError(result.message || 'Failed to create delivery challan')
       }
-
-      alert('Sales order created successfully!')
-      router.push('/dashboard/sale-order')
     } catch (error) {
-      setError('Failed to save sales order')
+      setToast({ message: 'Failed to save delivery challan', type: 'error' })
       console.error(error)
     } finally {
       setIsLoading(false)
     }
   }
 
+  // Handle image upload
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      setToast({ message: 'Image size should be less than 5MB', type: 'error' });
+      return;
+    }
+    
+    setImageUploading(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setUploadedImage(reader.result as string);
+      setImageUploading(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeImage = () => setUploadedImage(null);
+
+  // Fetch parties for suggestions
+  const fetchCustomerSuggestions = async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const parties = await getCustomerParties(token);
+      setCustomerSuggestions(parties || []);
+    } catch {}
+  };
+
+  // Fetch items for suggestions
+  const fetchItemSuggestions = async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const items = await getUserItems(token);
+      console.log('Fetched items for suggestions:', items);
+      setItemSuggestions(items || []);
+    } catch (error) {
+      console.error('Error fetching item suggestions:', error);
+      setItemSuggestions([]);
+    }
+  };
+
+  // Debug effect to log item suggestions changes
+  useEffect(() => {
+    console.log('Item suggestions updated:', itemSuggestions);
+  }, [itemSuggestions]);
+
+  // Fetch item suggestions on component mount
+  useEffect(() => {
+    console.log('Component mounted, fetching initial item suggestions...');
+    fetchItemSuggestions();
+  }, []);
+
+  // Fetch party balance when customer changes
+  useEffect(() => {
+    const fetchBalance = async () => {
+      if (!formData.customer) {
+        setPartyBalance(null);
+        return;
+      }
+      const token = getToken();
+      if (!token) return;
+      try {
+        const balance = await getPartyBalance(formData.customer, token);
+        setPartyBalance(balance);
+      } catch (err) {
+        setPartyBalance(null);
+      }
+    };
+    fetchBalance();
+  }, [formData.customer]);
+
   // Handle share functionality
   const handleShare = () => {
-    alert('Share functionality to be implemented')
+    setToast({ message: 'Share functionality to be implemented', type: 'error' })
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <style jsx>{`
-        @keyframes slideDown {
-          from {
-            opacity: 0;
-            transform: translateY(-10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-slideDown {
-          animation: slideDown 0.3s ease-out;
-        }
-      `}</style>
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button 
-                onClick={() => router.back()}
-                className="text-gray-600 hover:text-gray-800"
-              >
-                ← Back
-              </button>
-              <h1 className="text-2xl font-bold text-gray-900">Delivery Challan</h1>
-            </div>
-          </div>
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-2 sm:px-4 md:px-8">
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-6">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 flex justify-between items-center px-6 py-4">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Add Delivery Challan</h1>
+          <button
+            type="button"
+            onClick={() => router.push('/dashboard/delivery-challan')}
+            className="text-gray-400 hover:text-gray-600 text-2xl"
+            aria-label="Cancel"
+          >
+            ✕
+          </button>
         </div>
 
         {/* Main Form */}
@@ -333,314 +643,357 @@ export default function CreateSalesOrderPage() {
           )}
 
           {/* Customer and Date Section */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            {/* Customer Search */}
-            <div className="relative">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Search by Name/Phone *
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={formData.customer}
-                  onChange={(e) => {
-                    setFormData(prev => ({ ...prev, customer: e.target.value }))
-                    setSearchDropdownOpen(true)
-                  }}
-                  onFocus={() => setSearchDropdownOpen(true)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Search by Name/Phone"
-                />
-                <button 
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2"
-                  onClick={() => setSearchDropdownOpen(!searchDropdownOpen)}
-                >
-                  ▼
-                </button>
-                
-                {/* Dropdown */}
-                {searchDropdownOpen && (
-                  <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-lg mt-1 shadow-lg">
-                    {customers
-                      .filter(customer => 
-                        customer.toLowerCase().includes(formData.customer.toLowerCase())
-                      )
-                      .map((customer, index) => (
-                        <button
-                          key={index}
-                          className="w-full text-left px-4 py-2 hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg"
-                          onClick={() => handleCustomerSelect(customer)}
-                        >
-                          {customer}
-                        </button>
-                      ))
-                    }
-                    <button
-                      className="w-full text-left px-4 py-2 text-blue-600 hover:bg-gray-50 border-t"
-                      onClick={() => {
-                        setSearchDropdownOpen(false)
-                        // Add new customer logic here
-                      }}
-                    >
-                      + Add New Customer
-                    </button>
-                  </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            {/* Left: Customer and Phone, consistent with sale add */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-blue-600 mb-2">Customer *</label>
+                <div className="relative customer-search-container">
+                  <input
+                    type="text"
+                    value={formData.customer}
+                    onChange={(e) => {
+                      setFormData(prev => ({ ...prev, customer: e.target.value }))
+                      setSearchDropdownOpen(true)
+                    }}
+                    onFocus={() => {
+                      fetchCustomerSuggestions();
+                      setSearchDropdownOpen(true);
+                    }}
+                    onBlur={() => setTimeout(() => setSearchDropdownOpen(false), 200)}
+                    className="w-full px-4 py-3 border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-500 focus:outline-none transition-all duration-200"
+                    placeholder="Search or enter customer name"
+                  />
+                  {searchDropdownOpen && (
+                    <div className="absolute left-0 right-0 mt-1 w-full z-50">
+                      {customerSuggestions.length > 0 ? (
+                        <ul className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                          {customerSuggestions
+                            .filter((party: any) =>
+                              party.name.toLowerCase().includes(formData.customer.toLowerCase()) ||
+                              (party.phone && party.phone.includes(formData.customer))
+                            )
+                            .map((party: any, index: number) => (
+                              <li
+                                key={party._id || index}
+                                className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
+                                onMouseDown={() => {
+                                  setFormData(prev => ({ ...prev, customer: party.name, phone: party.phone || '' }));
+                                  setSearchDropdownOpen(false);
+                                }}
+                              >
+                                {party.name} {party.phone && <span className="text-xs text-gray-400">({party.phone})</span>}
+                              </li>
+                            ))}
+                        </ul>
+                      ) : (
+                        <div className="bg-white border border-blue-200 rounded-lg shadow-lg px-4 py-2 text-gray-400">No customers found.</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {partyBalance !== null && (
+                  <div className={`text-xs mt-1 font-semibold ${partyBalance < 0 ? 'text-red-600' : 'text-green-600'}`}>Balance: PKR {Math.abs(partyBalance).toLocaleString()}</div>
+                )}
+                {error && !formData.customer.trim() && (
+                  <p className="text-xs text-red-500 mt-1">Customer is required</p>
                 )}
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                <input
+                  type="text"
+                  value={formData.phone}
+                  onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
+                  placeholder="Phone number"
+                />
+              </div>
             </div>
-
-            {/* Ref No */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Ref No.</label>
-              <input
-                type="text"
-                value={formData.refNo}
-                onChange={(e) => setFormData(prev => ({ ...prev, refNo: e.target.value }))}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-
-            {/* Invoice Date */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Invoice Date</label>
-              <input
-                type="date"
-                value={formData.invoiceDate}
-                onChange={(e) => setFormData(prev => ({ ...prev, invoiceDate: e.target.value }))}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
+            {/* Right: Invoice Date and Due Date vertically, small size */}
+            <div className="flex flex-col gap-4 items-end justify-start">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Date</label>
+                                    <input
+                      type="date"
+                      value={formData.invoiceDate}
+                      onChange={(e) => setFormData(prev => ({ ...prev, invoiceDate: e.target.value }))}
+                      className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
+                                    <input
+                      type="date"
+                      value={formData.dueDate}
+                      onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
+                      className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    />
+              </div>
             </div>
           </div>
 
-          {/* Items Table */}
-          <div className="mb-8">
-            <div className="overflow-x-auto">
-              <table className="w-full border border-gray-300 rounded-lg">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 w-12">#</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">ITEM</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 w-20">QTY</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 w-24">UNIT</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 w-32">PRICE/UNIT</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 w-32">AMOUNT</th>
-                    <th className="px-4 py-3 w-12"></th>
+
+
+
+
+          {/* Items Table Section */}
+          <div className={`bg-white px-6 py-6 w-full rounded-b-2xl`}>
+            <div className="flex justify-between items-center mb-4">
+                              <h2 className="text-lg font-semibold text-blue-800 flex items-center gap-2">
+                <span>🛒</span> Items
+              </h2>
+              <button
+                type="button"
+                onClick={addRow}
+                                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-sm"
+              >
+                <span className="text-xl">+</span> Add Row
+              </button>
+            </div>
+                          <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 z-10">
+                                      <tr className="border-b border-gray-200 bg-blue-100">
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-8">#</th>
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700">ITEM</th>
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-20">QTY</th>
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">UNIT</th>
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">PRICE/UNIT</th>
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">AMOUNT</th>
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-8"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {formData.items.map((item, index) => (
-                    <tr key={index} className="border-t border-gray-200">
-                      <td className="px-4 py-3 text-sm">{index + 1}</td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="text"
-                          value={item.item}
-                          onChange={(e) => updateItem(index, 'item', e.target.value)}
-                          className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="Enter item name"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.qty}
-                          onChange={(e) => updateItem(index, 'qty', parseFloat(e.target.value) || 0)}
-                          className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={item.unit}
-                          onChange={(e) => updateItem(index, 'unit', e.target.value)}
-                          className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        >
-                          {unitOptions.map(unit => (
-                            <option key={unit} value={unit}>{unit}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.price}
-                          onChange={(e) => updateItem(index, 'price', parseFloat(e.target.value) || 0)}
-                          className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="0.00"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-sm font-medium">₹{item.amount.toFixed(2)}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {formData.items.length > 1 && (
-                          <button
-                            onClick={() => removeRow(index)}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </td>
-                    </tr>
+                    <ItemRow
+                      key={item.id}
+                      item={item}
+                      index={index}
+                      handleItemChange={updateItem}
+                      showItemSuggestions={showItemSuggestions}
+                      setShowItemSuggestions={setShowItemSuggestions}
+                      itemSuggestions={itemSuggestions}
+                      deleteRow={removeRow}
+                      formData={formData}
+                      fetchItemSuggestions={fetchItemSuggestions}
+                    />
                   ))}
                 </tbody>
               </table>
             </div>
-            
-            <div className="mt-4">
-              <button
-                onClick={addRow}
-                className="px-4 py-2 text-blue-600 border border-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
-              >
-                ADD ROW
-              </button>
-            </div>
-
-            {/* Total Section */}
-            <div className="flex justify-end mt-6">
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <div className="text-right">
-                  <div className="text-2xl font-bold">TOTAL</div>
-                  <div className="text-3xl font-bold text-blue-600">₹{grandTotal.toFixed(2)}</div>
-                </div>
-              </div>
-            </div>
           </div>
 
-          {/* Additional Options */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            {/* Left Side - Description and Image */}
-            <div className="space-y-4">
+
+
+          {/* Image Upload & Description Section */}
+          <div className="bg-gray-50 px-6 py-6 w-full">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <button 
-                  onClick={() => setShowDescription(!showDescription)}
-                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 mb-3"
-                  type="button"
-                >
-                  <span>📝</span>
-                  <span>ADD DESCRIPTION</span>
-                  <span className={`transform transition-transform ${showDescription ? 'rotate-90' : ''}`}>▶</span>
-                </button>
-                
-                {showDescription && (
-                  <div className="mt-3 animate-slideDown">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-                    <textarea
-                      rows={4}
-                      value={formData.description}
-                      onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                      placeholder="Enter description or terms and conditions..."
+                <label className="block text-sm font-medium text-gray-700 mb-2">Add Image</label>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    id="imageUpload"
+                    disabled={imageUploading}
+                  />
+                  <label
+                    htmlFor="imageUpload"
+                    className={`flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-200 ${
+                      imageUploading
+                        ? 'border-blue-300 bg-blue-50 text-blue-700 cursor-not-allowed'
+                        : uploadedImage 
+                        ? 'border-green-500 bg-green-50 text-green-700' 
+                        : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span>{imageUploading ? '⏳' : uploadedImage ? '✅' : '🖼️'}</span>
+                    <span className="font-medium">
+                      {imageUploading ? 'Uploading...' : uploadedImage ? 'Image Added' : 'Add Image'}
+                    </span>
+                  </label>
+                  {uploadedImage && (
+                    <button
+                      type="button"
+                      onClick={removeImage}
+                      className="flex items-center gap-2 px-3 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-all duration-200"
+                    >
+                      <span>🗑️</span>
+                      <span className="font-medium">Remove</span>
+                    </button>
+                  )}
+                </div>
+                {uploadedImage && (
+                  <div className="mt-4">
+                    <img
+                      src={uploadedImage}
+                      alt="Uploaded preview"
+                      className="max-w-full sm:max-w-xs max-h-32 object-cover border border-gray-300 rounded-lg shadow-sm"
                     />
                   </div>
                 )}
               </div>
-              
               <div>
-                <button 
-                  onClick={() => setShowImage(!showImage)}
-                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 mb-3"
-                  type="button"
-                >
-                  <span>📷</span>
-                  <span>ADD IMAGE</span>
-                  <span className={`transform transition-transform ${showImage ? 'rotate-90' : ''}`}>▶</span>
-                </button>
-                
-                {showImage && (
-                  <div className="mt-3 animate-slideDown">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Upload Image</label>
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Description / Notes</label>
+                <textarea
+                  value={formData.description}
+                  onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Add any additional notes or description for this delivery challan..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  rows={4}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Summary Section */}
+          <div className="bg-white px-6 py-8 w-full rounded-xl shadow-sm mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+              {/* Discount */}
+              <div>
+                <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                  <span>💸</span> Discount
+                </label>
+                <div className="flex flex-row items-center gap-2">
+                  <div className="flex flex-col flex-1">
+                    <div className="flex flex-row gap-2">
                       <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => setFormData(prev => ({ ...prev, image: e.target.files?.[0] || null }))}
-                        className="hidden"
-                        id="image-upload"
+                        type="number"
+                        name="discount"
+                        value={formData.discount}
+                        onChange={e => setFormData(prev => ({ ...prev, discount: Number(e.target.value) }))}
+                        className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
                       />
-                      <label htmlFor="image-upload" className="cursor-pointer">
-                        <div className="text-gray-400 mb-2">
-                          <span className="text-4xl">📷</span>
-                        </div>
-                        <div className="text-sm text-gray-600">
-                          Click to upload an image
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          PNG, JPG up to 5MB
-                        </div>
-                      </label>
-                      {formData.image instanceof File && (
-                        <div className="mt-3 text-sm text-green-600">
-                          Selected: {formData.image.name}
-                        </div>
-                      )}
+                      <CustomDropdown
+                        options={[
+                          { value: '%', label: '%' },
+                          { value: 'PKR', label: '(PKR)' },
+                        ]}
+                        value={formData.discountType}
+                        onChange={e => setFormData(prev => ({ ...prev, discountType: e }))}
+                        className="w-28 min-w-[72px] mb-1 h-11 border-2 border-blue-100 rounded-lg"
+                      />
+                    </div>
+                    <div className="text-xs text-gray-500 min-h-[24px] mt-1">
+                      {formData.discount && !isNaN(Number(formData.discount)) ? (
+                        <>
+                          Discount: 
+                          {formData.discountType === '%'
+                            ? `${formData.discount}% = PKR ${(subtotal * formData.discount / 100).toFixed(2)}`
+                            : `PKR ${Number(formData.discount).toFixed(2)}`}
+                        </>
+                      ) : null}
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right Side - Discount and Tax */}
-            <div className="space-y-4">
-              <div className="flex items-center space-x-4">
-                <label className="text-sm font-medium text-gray-700">Discount</label>
-                <div className="flex items-center space-x-2">
-                  <select
-                    value={formData.discountType}
-                    onChange={(e) => setFormData(prev => ({ ...prev, discountType: e.target.value }))}
-                    className="border border-gray-300 rounded px-2 py-1"
-                  >
-                    <option value="%">%</option>
-                    <option value="Rs">Rs</option>
-                  </select>
-                  <input
-                    type="number"
-                    min="0"
-                    value={formData.discount}
-                    onChange={(e) => setFormData(prev => ({ ...prev, discount: parseFloat(e.target.value) || 0 }))}
-                    className="w-20 border border-gray-300 rounded px-2 py-1"
-                    placeholder="0"
-                  />
                 </div>
               </div>
-
-              <div className="flex items-center space-x-4">
-                <label className="text-sm font-medium text-gray-700">Tax</label>
-                <select
-                  value={formData.tax}
-                  onChange={(e) => setFormData(prev => ({ ...prev, tax: e.target.value }))}
-                  className="border border-gray-300 rounded px-3 py-2"
-                >
-                  {taxOptions.map(tax => (
-                    <option key={tax} value={tax}>{tax}</option>
-                  ))}
-                </select>
-                <span className="text-sm text-gray-600">₹{taxAmount.toFixed(2)}</span>
+              {/* Tax */}
+              <div>
+                <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                  <span>🧾</span> Tax
+                </label>
+                <div className="flex flex-row items-center gap-2">
+                  <input
+                    type="number"
+                    name="tax"
+                    value={formData.tax}
+                    onChange={e => setFormData(prev => ({ ...prev, tax: e.target.value }))}
+                    className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                  <CustomDropdown
+                    options={[
+                      { value: '%', label: '%' },
+                      { value: 'PKR', label: '(PKR)' },
+                    ]}
+                    value={formData.taxType}
+                    onChange={e => setFormData(prev => ({ ...prev, taxType: e }))}
+                    className="w-28 min-w-[72px] mb-1 h-11 border-2 border-blue-100 rounded-lg"
+                  />
+                </div>
+                <div className="text-xs text-gray-500 min-h-[24px] mt-1">
+                  {formData.tax && !isNaN(Number(formData.tax)) ? (
+                    <>
+                      Tax: {formData.taxType === '%'
+                        ? `${formData.tax}% = PKR ${((subtotal - (formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount))) * Number(formData.tax) / 100).toFixed(2)}`
+                        : `PKR ${Number(formData.tax).toFixed(2)}`}
+                    </>
+                  ) : null}
+                </div>
+              </div>
+              {/* Payment Type (optional, can be left out if not in sale order) */}
+              <div>
+                <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                  <span>💳</span> Payment Type
+                </label>
+                <div className="flex flex-col">
+                  <CustomDropdown
+                    options={[
+                      { value: 'Credit', label: 'Credit' },
+                      { value: 'Cash', label: 'Cash' },
+                    ]}
+                    value="Credit"
+                    onChange={e => {}}
+                    className="mb-1 border-2 border-blue-100 rounded-lg h-11"
+                  />
+                  <div className="text-xs text-gray-500 min-h-[24px] mt-1"></div>
+                </div>
+              </div>
+              {/* Totals */}
+              <div className="md:col-span-1 flex flex-col items-end gap-2">
+                <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full min-w-[220px]">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex justify-between text-xs text-gray-600">
+                      <span>Sub Total</span>
+                      <span>PKR {subtotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-600">
+                      <span>Discount</span>
+                      <span>- PKR {(formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount)).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-600">
+                      <span>Tax</span>
+                      <span>+ PKR {(formData.taxType === '%' ? ((subtotal - (formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount))) * Number(formData.tax) / 100) : Number(formData.tax)).toFixed(2)}</span>
+                    </div>
+                    <div className="border-t border-blue-200 my-2"></div>
+                    <div className="flex justify-between text-lg font-bold text-blue-900">
+                      <span>Grand Total</span>
+                      <span>PKR {(subtotal - (formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount)) + (formData.taxType === '%' ? ((subtotal - (formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount))) * Number(formData.tax) / 100) : Number(formData.tax))).toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex justify-end space-x-4">
-            <button
-              onClick={handleShare}
-              className="px-6 py-3 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors flex items-center space-x-2"
-            >
-              <span>Share</span>
-              <span>▼</span>
-            </button>
-            
-            <button
-              onClick={handleSave}
-              disabled={isLoading || !formData.customer.trim()}
-              className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? 'Saving...' : 'Save'}
-            </button>
-          </div>
+        </div>
+        {/* Submit Button */}
+        <div className="flex justify-end gap-4 px-6 py-6 bg-gray-50 border-t border-gray-200 w-full">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isLoading || !formData.customer.trim()}
+            className={`px-8 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 ${isLoading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+          >
+            {isLoading ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <span>Save</span>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>

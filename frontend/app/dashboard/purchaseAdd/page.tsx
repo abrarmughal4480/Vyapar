@@ -2,8 +2,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import ReactDOM from 'react-dom';
-import Toast from '../../../components/Toast';
+import Toast from '../../components/Toast';
 import { Plus, ChevronDown, Calendar, Info, Camera } from 'lucide-react';
+import { getToken } from '../../lib/auth';
+import { fetchPartiesByUserId, getPartyBalance } from '../../../http/parties';
+import { getUserItems } from '../../../http/items';
+import { createPurchase } from '../../../http/purchases';
+import { createPurchaseOrder, updatePurchaseOrder } from '../../../http/purchaseOrders';
+import { jwtDecode } from 'jwt-decode';
 
 // Type definitions
 interface Discount {
@@ -147,6 +153,10 @@ type PurchaseItem = {
 
 export default function AddPurchasePage() {
   const router = useRouter();
+  const [pageTitle, setPageTitle] = useState('Add Purchase Bill');
+  const [pageType, setPageType] = useState<'purchase-bill' | 'purchase-order'>('purchase-bill');
+  const [originalOrderId, setOriginalOrderId] = useState<string | null>(null);
+  const [originalOrderDueDate, setOriginalOrderDueDate] = useState<string | null>(null);
   const [formData, setFormData] = useState<FormData>({
     billNumber: 'Purchase #1',
     billDate: '19/06/2025',
@@ -168,14 +178,13 @@ export default function AddPurchasePage() {
   const [showPartyDropdown, setShowPartyDropdown] = useState<boolean>(false);
   const [showDescription, setShowDescription] = useState<boolean>(false);
   const [showImageSection, setShowImageSection] = useState<boolean>(false);
-  const [parties] = useState<{ name: string; phone: string; balance: string }[]>([
-    { name: 'manaN', phone: '2345678', balance: '4556864' }
-  ]);
 
   const [newPurchase, setNewPurchase] = useState({
     partyName: '',
     phoneNo: '',
     billDate: '',
+    invoiceDate: new Date().toISOString().split('T')[0],
+    dueDate: new Date().toISOString().split('T')[0],
     items: [
       { id: 1, item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 },
       { id: 2, item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
@@ -194,13 +203,126 @@ export default function AddPurchasePage() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
+  const [parties, setParties] = useState<any[]>([]);
+  const [showPartySuggestions, setShowPartySuggestions] = useState(false);
   const [showItemSuggestions, setShowItemSuggestions] = useState<{[id: number]: boolean}>({});
   const [itemSuggestions, setItemSuggestions] = useState<any[]>([]);
   const [partyBalance, setPartyBalance] = useState<number|null>(null);
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null);
   const [formErrors, setFormErrors] = useState<any>({});
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  const itemInputRefs = useRef<{[id: number]: HTMLInputElement | null}>({});
+  const [redirectTo, setRedirectTo] = useState('/dashboard/purchase');
+  
+  // Check if opened from different contexts
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const fromContext = urlParams.get('from');
+      const orderDataParam = urlParams.get('orderData');
+      const convertFromOrder = urlParams.get('convertFromOrder');
+      
+      if (fromContext === 'purchase-order') {
+        setPageTitle('Add Purchase Order');
+        setPageType('purchase-order');
+        
+        // If order data is provided, populate the form
+        if (orderDataParam) {
+          try {
+            const orderData = JSON.parse(decodeURIComponent(orderDataParam));
+            setOriginalOrderId(orderData._id);
+            setOriginalOrderDueDate(orderData.dueDate || null);
+            setNewPurchase(prev => ({
+              ...prev,
+              partyName: orderData.supplierName || '',
+              phoneNo: orderData.phoneNo || '',
+              items: orderData.items?.map((item: any, index: number) => ({
+                id: index + 1,
+                item: item.item || '',
+                itemCode: item.itemCode || '',
+                qty: item.qty?.toString() || '',
+                unit: item.unit || 'NONE',
+                customUnit: item.customUnit || '',
+                price: item.price?.toString() || '',
+                amount: item.amount || 0
+              })) || prev.items,
+              orderDate: orderData.orderDate || new Date().toISOString().split('T')[0],
+              dueDate: orderData.dueDate || new Date().toISOString().split('T')[0]
+            }));
+          } catch (error) {
+            console.error('Error parsing order data:', error);
+          }
+        }
+      } else if (convertFromOrder === 'true' && orderDataParam) {
+        // Handle conversion from purchase order
+        setPageTitle('Add Purchase Bill');
+        setPageType('purchase-bill');
+        
+        try {
+          const orderData = JSON.parse(orderDataParam);
+          setOriginalOrderId(orderData.sourceOrderId);
+          setOriginalOrderDueDate(orderData.dueDate || null);
+          setNewPurchase(prev => ({
+            ...prev,
+            partyName: orderData.supplierName || '',
+            phoneNo: orderData.phoneNo || '',
+            items: orderData.items?.map((item: any, index: number) => ({
+              id: index + 1,
+              item: item.item || '',
+              itemCode: item.itemCode || '',
+              qty: item.qty?.toString() || '',
+              unit: item.unit || 'NONE',
+              customUnit: item.customUnit || '',
+              price: item.price?.toString() || '',
+              amount: item.amount || 0
+            })) || prev.items,
+            discount: orderData.discount || '',
+            discountType: orderData.discountType || '%',
+            tax: orderData.tax || '',
+            taxType: orderData.taxType || '%',
+            paymentType: orderData.paymentType || 'Credit',
+            description: orderData.description || ''
+          }));
+        } catch (error) {
+          console.error('Error parsing order data:', error);
+        }
+      } else if (fromContext === 'purchase-bills') {
+        setPageTitle('Add Purchase Bill');
+        setPageType('purchase-bill');
+      }
+    }
+  }, []);
+
+  // Fetch parties and items on component mount
+  useEffect(() => {
+    const initializeData = async () => {
+      await fetchPartySuggestions();
+      await fetchItemSuggestions();
+    };
+    initializeData();
+  }, []); // fetchPartySuggestions and fetchItemSuggestions are stable functions
+
+  // Clear party balance when party name changes
+  useEffect(() => {
+    if (!newPurchase.partyName) {
+      setPartyBalance(null);
+      return;
+    }
+    fetchPartyBalance(newPurchase.partyName);
+  }, [newPurchase.partyName]);
+
+  useEffect(() => {
+    if (!newPurchase.partyName || !parties.length) return;
+    const matchedParty = parties.find(
+      (p) => p.name && p.name.toLowerCase() === newPurchase.partyName.toLowerCase()
+    );
+    if (matchedParty && matchedParty.phone && newPurchase.phoneNo !== matchedParty.phone) {
+      setNewPurchase((prev) => ({
+        ...prev,
+        phoneNo: matchedParty.phone
+      }));
+    }
+  }, [newPurchase.partyName, parties]);
 
   const addRow = () => {
     const newRow: Item = {
@@ -232,7 +354,7 @@ export default function AddPurchasePage() {
   };
 
   const calculateTotal = () => {
-    return items.reduce((sum, item) => sum + item.amount, 0);
+    return newPurchase.items.reduce((sum, item) => sum + (item.amount || 0), 0);
   };
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -321,19 +443,66 @@ export default function AddPurchasePage() {
     setNewPurchase(prev => ({ ...prev, items: prev.items.filter(item => item.id !== id) }));
   };
 
-  // Suggestions (simulate with static data for now)
-  const fetchCustomerSuggestions = () => {
-    setCustomers([
-      { _id: 1, name: 'ABC Supplier', phone: '1234567890' },
-      { _id: 2, name: 'XYZ Traders', phone: '9876543210' }
-    ]);
+  // Fetch parties from API
+  const fetchPartySuggestions = async () => {
+    try {
+      const token = getToken();
+      if (!token) {
+        setToast({ message: 'Authentication required', type: 'error' });
+        return;
+      }
+      const response = await fetchPartiesByUserId(token);
+      // Handle both response formats: { data: [...] } or direct array
+      const partiesData = response.data || response || [];
+      setParties(partiesData);
+      console.log('Fetched parties:', partiesData);
+    } catch (error) {
+      console.error('Error fetching parties:', error);
+      setToast({ message: 'Failed to fetch parties', type: 'error' });
+    }
   };
 
-  const fetchItemSuggestions = () => {
-    setItemSuggestions([
-      { _id: 1, name: 'Item A', unit: 'KG', purchasePrice: 100 },
-      { _id: 2, name: 'Item B', unit: 'PCS', purchasePrice: 50 }
-    ]);
+  // Fetch party balance
+  const fetchPartyBalance = async (partyName: string) => {
+    try {
+      const token = getToken();
+      if (!token) return;
+      const response = await getPartyBalance(partyName, token);
+      const balance = response.balance || response || 0;
+      setPartyBalance(balance);
+      console.log('Party balance for', partyName, ':', balance);
+    } catch (error) {
+      console.error('Error fetching party balance:', error);
+      setPartyBalance(null);
+    }
+  };
+
+  const fetchItemSuggestions = async () => {
+    const token = getToken();
+    if (!token) {
+      console.log('No token found for fetching items');
+      return;
+    }
+    try {
+      const response = await getUserItems(token);
+      console.log('Fetched items response:', response);
+      
+      // Handle different response formats
+      let items = [];
+      if (response && response.success && response.items) {
+        items = response.items;
+      } else if (Array.isArray(response)) {
+        items = response;
+      } else if (response && response.data) {
+        items = response.data;
+      }
+      
+      console.log('Processed items:', items);
+      setItemSuggestions(items || []);
+    } catch (error) {
+      console.error('Error fetching items:', error);
+      setItemSuggestions([]);
+    }
   };
 
   // Totals calculation
@@ -363,33 +532,111 @@ export default function AddPurchasePage() {
     if (!validateForm()) return;
     setLoading(true);
     try {
-      // Save to localStorage
-      const prev = JSON.parse(localStorage.getItem('purchases') || '[]');
-      const purchaseData = {
-        ...newPurchase,
-        items: newPurchase.items.filter(
-          item =>
+      const token = getToken();
+      if (!token) {
+        throw new Error('Authentication token not found');
+      }
+
+      // Prepare common data
+      const commonData = {
+        supplierName: newPurchase.partyName,
+        phoneNo: newPurchase.phoneNo,
+        items: newPurchase.items
+          .filter(item => 
             item.item &&
             item.qty &&
             item.price &&
             !isNaN(Number(item.qty)) &&
             !isNaN(Number(item.price))
-        ),
-        description: newPurchase.description,
-        imageUrl: uploadedImage,
-        total: grandTotal,
-        createdAt: new Date().toISOString(),
-        status: 'Draft',
-        id: Date.now()
+          )
+          .map(item => ({
+            item: item.item,
+            qty: Number(item.qty),
+            unit: item.unit === 'NONE' ? 'Piece' : item.unit,
+            price: Number(item.price),
+            amount: Number(item.amount),
+            customUnit: item.customUnit || ''
+          })),
+        discount: newPurchase.discount || 0,
+        discountType: newPurchase.discountType || '%',
+        tax: newPurchase.tax || 0,
+        taxType: newPurchase.taxType || '%',
+        paymentType: newPurchase.paymentType || 'Credit',
+        description: newPurchase.description || '',
+        imageUrl: uploadedImage || '',
+        orderDate: newPurchase.invoiceDate,
+        dueDate: newPurchase.dueDate ? new Date(newPurchase.dueDate).toISOString() : null
       };
-      localStorage.setItem('purchases', JSON.stringify([...prev, purchaseData]));
-      setToast({ message: 'Purchase saved successfully!', type: 'success' });
-      setTimeout(() => router.push('/dashboard/purchase'), 1200);
+
+      console.log('Due date being sent:', {
+        originalDueDate: newPurchase.dueDate,
+        convertedDueDate: newPurchase.dueDate ? new Date(newPurchase.dueDate).toISOString() : null,
+        commonData: commonData
+      });
+
+      let response;
+      let successMessage;
+      let redirectPath;
+
+      if (pageType === 'purchase-order') {
+        // Create purchase order
+        const orderData = {
+          ...commonData,
+          orderDate: new Date().toISOString().split('T')[0],
+          dueDate: new Date().toISOString().split('T')[0],
+          status: 'Created'
+        };
+        
+        response = await createPurchaseOrder(token, orderData);
+        successMessage = 'Purchase order created successfully!';
+        redirectPath = '/dashboard/purchase-order';
+      } else {
+        // Create purchase bill
+        response = await createPurchase(commonData, token);
+        successMessage = 'Purchase bill created successfully!';
+        redirectPath = '/dashboard/purchase';
+        
+        // If this was a conversion from purchase order, update the original order status and invoice number
+        if (originalOrderId) {
+          try {
+            // Use the actual purchase bill number for invoiceNumber
+            const billNumber = response.data?.billNumber || '';
+            await updatePurchaseOrder(token, originalOrderId, { 
+              status: 'Completed',
+              invoiceNumber: billNumber,
+              convertedToInvoice: response.data?._id || null,
+              dueDate: originalOrderDueDate ? new Date(originalOrderDueDate).toISOString() : (newPurchase.dueDate ? new Date(newPurchase.dueDate).toISOString() : null)
+            });
+            successMessage = 'Purchase bill created and order completed successfully!';
+          } catch (error) {
+            console.error('Error updating purchase order status:', error);
+            // Don't fail the whole operation if status update fails
+          }
+        }
+      }
+      
+      if (response.success) {
+        setToast({ message: successMessage, type: 'success' });
+        setTimeout(() => router.push(redirectTo), 1200);
+      } else {
+        throw new Error(response.message || 'Failed to create purchase');
+      }
     } catch (err: any) {
-      setToast({ message: err.message || 'Failed to save purchase', type: 'error' });
+      console.error('Purchase creation error:', err);
+      setToast({ message: err.message || 'Failed to create purchase', type: 'error' });
+    } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('convertFromOrder') === 'true') {
+        setRedirectTo('/dashboard/purchase-order');
+      }
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-2 sm:px-4 md:px-8">
@@ -397,75 +644,125 @@ export default function AddPurchasePage() {
       <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-6">
         {/* Sticky Header - match sale add page */}
         <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 flex justify-between items-center px-6 py-4">
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Add Purchase</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">{pageTitle}</h1>
           <button
             type="button"
-            onClick={() => router.push('/dashboard/purchase')}
+            onClick={() => router.push(redirectTo)}
             className="text-gray-400 hover:text-gray-600 text-2xl"
             aria-label="Cancel"
           >
             ✕
           </button>
         </div>
-        {/* Supplier Section - match sale add page */}
+        {/* Supplier and Date Section - match sale add page */}
         <form onSubmit={handleSubmit} className="divide-y divide-gray-200 w-full">
           <div className="bg-gray-50 px-6 py-6 w-full">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-blue-600 mb-2">Party *</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    name="partyName"
-                    value={newPurchase.partyName}
-                    onChange={handleInputChange}
-                    onFocus={() => {
-                      fetchCustomerSuggestions();
-                      setShowCustomerSuggestions(true);
-                    }}
-                    onBlur={() => setTimeout(() => setShowCustomerSuggestions(false), 200)}
-                    className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${formErrors.partyName ? 'border-red-300 bg-red-50' : 'border-blue-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-200 focus:outline-none`}
-                    placeholder="Search or enter supplier name"
-                  />
-                  {showCustomerSuggestions && (
-                    <div className="absolute left-0 right-0 mt-1 w-full z-50">
-                      {customers.length > 0 ? (
-                        <ul className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                          {customers.map((c) => (
-                            <li
-                              key={c._id}
-                              className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
-                              onMouseDown={() => {
-                                setNewPurchase(prev => ({ ...prev, partyName: c.name, phoneNo: c.phone }));
-                                setShowCustomerSuggestions(false);
-                              }}
-                            >
-                              {c.name} {c.phone && <span className="text-xs text-gray-400">({c.phone})</span>}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <div className="bg-white border border-blue-200 rounded-lg shadow-lg px-4 py-2 text-gray-400">No suppliers found.</div>
-                      )}
+            <div className={`grid gap-6 ${pageType === 'purchase-order' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+              {/* Supplier and Phone - Full width for purchase bills */}
+              <div className={`grid gap-4 ${pageType === 'purchase-order' ? 'grid-cols-2' : 'grid-cols-1 md:grid-cols-2'}`}>
+                <div>
+                  <label className="block text-sm font-medium text-blue-600 mb-2">Supplier *</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      name="partyName"
+                      value={newPurchase.partyName}
+                      onChange={handleInputChange}
+                      onFocus={() => {
+                        fetchPartySuggestions();
+                        setShowPartySuggestions(true);
+                      }}
+                      onBlur={() => setTimeout(() => setShowPartySuggestions(false), 200)}
+                      className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${formErrors.partyName ? 'border-red-300 bg-red-50' : 'border-blue-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-200 focus:outline-none`}
+                      placeholder="Search or enter supplier name"
+                    />
+                    {showPartySuggestions && (
+                      <div className="absolute left-0 right-0 mt-1 w-full z-50">
+                        {parties.length > 0 ? (
+                          <ul className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                            {parties.map((party: any) => (
+                              <li
+                                key={party._id}
+                                className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
+                                onMouseDown={() => {
+                                  setNewPurchase(prev => ({ 
+                                    ...prev, 
+                                    partyName: party.name, 
+                                    phoneNo: party.phone || '' 
+                                  }));
+                                  setShowPartySuggestions(false);
+                                  fetchPartyBalance(party.name);
+                                }}
+                              >
+                                {party.name} {party.phone && <span className="text-xs text-gray-400">({party.phone})</span>}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className="bg-white border border-blue-200 rounded-lg shadow-lg px-4 py-2 text-gray-400">No suppliers found.</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {partyBalance !== null && (
+                    <div className={`text-xs mt-1 font-semibold ${partyBalance < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      Balance: PKR {Math.abs(partyBalance).toLocaleString()}
                     </div>
                   )}
+                  {formErrors.partyName && <p className="text-xs text-red-500 mt-1">{formErrors.partyName}</p>}
                 </div>
-                {partyBalance !== null && (
-                  <div className="text-xs text-blue-700 mt-1 font-semibold">Balance: PKR {partyBalance.toLocaleString()}</div>
-                )}
-                {formErrors.partyName && <p className="text-xs text-red-500 mt-1">{formErrors.partyName}</p>}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                  <input
+                    type="text"
+                    name="phoneNo"
+                    value={newPurchase.phoneNo}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
+                    placeholder="Phone number"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
-                <input
-                  type="text"
-                  name="phoneNo"
-                  value={newPurchase.phoneNo}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
-                  placeholder="Phone number"
-                />
-              </div>
+              {/* Right: Invoice Date and Due Date - Only for Purchase Orders */}
+              {pageType === 'purchase-order' && (
+                <div className="flex flex-col gap-4 items-end justify-start">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Date</label>
+                    <input
+                      type="date"
+                      name="invoiceDate"
+                      value={newPurchase.invoiceDate || new Date().toISOString().split('T')[0]}
+                      onChange={handleInputChange}
+                      className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
+                    <input
+                      type="date"
+                      name="dueDate"
+                      value={newPurchase.dueDate || new Date().toISOString().split('T')[0]}
+                      onChange={handleInputChange}
+                      className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+              {/* Due Date for Purchase Bills */}
+              {pageType === 'purchase-bill' && (
+                <div className="flex flex-col gap-4 items-end justify-start">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
+                    <input
+                      type="date"
+                      name="dueDate"
+                      value={newPurchase.dueDate || new Date().toISOString().split('T')[0]}
+                      onChange={handleInputChange}
+                      className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           {/* Items Table Section - match sale add page */}
@@ -497,22 +794,24 @@ export default function AddPurchasePage() {
                 </thead>
                 <tbody>
                   {newPurchase.items.map((item, index) => {
-                    const inputRef = useRef<HTMLInputElement>(null);
-                    const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
-
-                    const handleFocus = () => {
-                      fetchItemSuggestions();
+                    const handleFocus = async (event: React.FocusEvent<HTMLInputElement>) => {
+                      console.log('Item input focused, fetching suggestions...');
+                      await fetchItemSuggestions();
+                      console.log('Setting showItemSuggestions to true for item:', item.id);
                       setShowItemSuggestions(prev => ({ ...prev, [item.id]: true }));
-                      if (inputRef.current) {
-                        const rect = inputRef.current.getBoundingClientRect();
-                        setDropdownStyle({
-                          position: 'absolute',
-                          top: rect.bottom + window.scrollY,
-                          left: rect.left + window.scrollX,
-                          width: rect.width,
-                          zIndex: 9999
-                        });
-                      }
+                      
+                      const rect = event.target.getBoundingClientRect();
+                      const style: React.CSSProperties = {
+                        position: 'absolute',
+                        top: rect.bottom + window.scrollY + 4,
+                        left: rect.left + window.scrollX,
+                        width: rect.width,
+                        zIndex: 9999,
+                        maxHeight: '200px',
+                        overflowY: 'auto' as const
+                      };
+                      console.log('Setting dropdown style:', style);
+                      setDropdownStyle(style);
                     };
 
                     return (
@@ -523,7 +822,6 @@ export default function AddPurchasePage() {
                         <td className="py-2 px-2 font-medium">{index + 1}</td>
                         <td className="py-2 px-2">
                           <input
-                            ref={inputRef}
                             type="text"
                             value={item.item}
                             onChange={e => handleItemChange(item.id, 'item', e.target.value)}
@@ -532,24 +830,65 @@ export default function AddPurchasePage() {
                             className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
                             placeholder="Enter item name..."
                           />
-                          {showItemSuggestions[item.id] && itemSuggestions.length > 0 && typeof window !== 'undefined' && ReactDOM.createPortal(
+                          {showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
                             <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                              {itemSuggestions
-                                .filter(i => i.name.toLowerCase().includes(item.item.toLowerCase()))
+                              
+                              {itemSuggestions.length > 0 ? (
+                                itemSuggestions
+                                  .filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()))
                                 .map(i => (
                                   <li
                                     key={i._id}
-                                    className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
+                                      className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
                                     onMouseDown={() => {
+                                      console.log('Selected item:', i);
                                       handleItemChange(item.id, 'item', i.name);
-                                      handleItemChange(item.id, 'unit', i.unit);
-                                      handleItemChange(item.id, 'price', i.purchasePrice);
+                                      // Map the unit to dropdown options
+                                      let mappedUnit = 'NONE';
+                                      if (i.unit) {
+                                        const unitMap: { [key: string]: string } = {
+                                          'Piece': 'PCS',
+                                          'Kg': 'KG',
+                                          'Gram': 'KG',
+                                          'Liter': 'LITER',
+                                          'Meter': 'METER',
+                                          'Box': 'BOX',
+                                          'Packet': 'PACKET',
+                                          'Dozen': 'DOZEN',
+                                          'Unit': 'UNIT'
+                                        };
+                                        mappedUnit = unitMap[i.unit] || i.unit.toUpperCase();
+                                      }
+                                      handleItemChange(item.id, 'unit', mappedUnit);
+                                      handleItemChange(item.id, 'price', i.purchasePrice || 0);
                                       setShowItemSuggestions(prev => ({ ...prev, [item.id]: false }));
                                     }}
                                   >
-                                    {i.name} <span className="text-xs text-gray-400">({i.unit}, PKR {i.purchasePrice})</span>
+                                                          <div className="flex justify-between items-center">
+                      <span className="font-medium text-gray-800">{i.name}</span>
+                      <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.purchasePrice || 0} • Qty: {i.stock || 0}</span>
+                    </div>
                                   </li>
-                                ))}
+                                  ))
+                              ) : (
+                                <li className="px-4 py-3 text-center">
+                                  <div className="text-gray-500 text-sm">
+                                    {itemSuggestions.length === 0 ? (
+                                      <div>
+                                        <div className="text-gray-400 mb-1">📦</div>
+                                        <div>No items available</div>
+                                        <div className="text-xs text-gray-400 mt-1">Add items in the Items section first</div>
+                                      </div>
+                                    ) : (
+                                      <div>
+                                        <div className="text-gray-400 mb-1">🔍</div>
+                                        <div>No matching items</div>
+                                        <div className="text-xs text-gray-400 mt-1">Try a different search term</div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </li>
+                              )}
                             </ul>,
                             document.body
                           )}

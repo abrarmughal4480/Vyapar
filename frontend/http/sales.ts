@@ -39,4 +39,13 @@ export const getSalesStatsByUser = async (userId: string, token: string) => {
     },
   });
   return data;
+};
+
+export const getSalesOverview = async (userId: string, token: string) => {
+  const { data } = await api.get(`/api/sales/overview/${userId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  return data;
 }; 

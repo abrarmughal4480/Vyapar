@@ -132,13 +132,17 @@ function ItemRow({
     setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: true }));
     if (inputRef.current) {
       const rect = inputRef.current.getBoundingClientRect();
-      setDropdownStyle({
+      const style: React.CSSProperties = {
         position: 'absolute',
-        top: rect.bottom + window.scrollY,
+        top: rect.bottom + window.scrollY + 4,
         left: rect.left + window.scrollX,
         width: rect.width,
-        zIndex: 9999
-      });
+        zIndex: 9999,
+        maxHeight: '200px',
+        overflowY: 'auto' as const
+      };
+      console.log('Setting dropdown style:', style);
+      setDropdownStyle(style);
     }
   };
 
@@ -158,24 +162,65 @@ function ItemRow({
           className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
           placeholder="Enter item name..."
         />
-        {showItemSuggestions[item.id] && itemSuggestions.length > 0 && typeof window !== 'undefined' && ReactDOM.createPortal(
+        {showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
           <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-            {itemSuggestions
-              .filter((i: any) => i.name.toLowerCase().includes(item.item.toLowerCase()))
+
+            {itemSuggestions.length > 0 ? (
+              itemSuggestions
+                .filter((i: any) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()))
               .map((i: any) => (
                 <li
                   key={i._id}
-                  className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
+                    className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
                   onMouseDown={() => {
+                    console.log('Selected item:', i);
                     handleItemChange(item.id, 'item', i.name);
-                    handleItemChange(item.id, 'unit', i.unit);
-                    handleItemChange(item.id, 'price', i.salePrice);
+                    // Map the unit to dropdown options
+                    let mappedUnit = 'NONE';
+                    if (i.unit) {
+                      const unitMap: { [key: string]: string } = {
+                        'Piece': 'PCS',
+                        'Kg': 'KG',
+                        'Gram': 'KG',
+                        'Liter': 'LITER',
+                        'Meter': 'METER',
+                        'Box': 'BOX',
+                        'Packet': 'PACKET',
+                        'Dozen': 'DOZEN',
+                        'Unit': 'UNIT'
+                      };
+                      mappedUnit = unitMap[i.unit] || i.unit.toUpperCase();
+                    }
+                    handleItemChange(item.id, 'unit', mappedUnit);
+                    handleItemChange(item.id, 'price', i.salePrice || 0);
                     setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                   }}
                 >
-                  {i.name} <span className="text-xs text-gray-400">({i.unit}, PKR {i.salePrice})</span>
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-gray-800">{i.name}</span>
+                      <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock || 0}</span>
+                    </div>
                 </li>
-              ))}
+                ))
+            ) : (
+              <li className="px-4 py-3 text-center">
+                <div className="text-gray-500 text-sm">
+                  {itemSuggestions.length === 0 ? (
+                    <div>
+                      <div className="text-gray-400 mb-1">📦</div>
+                      <div>No items available</div>
+                      <div className="text-xs text-gray-400 mt-1">Add items in the Items section first</div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="text-gray-400 mb-1">🔍</div>
+                      <div>No matching items</div>
+                      <div className="text-xs text-gray-400 mt-1">Try a different search term</div>
+                    </div>
+                  )}
+                </div>
+              </li>
+            )}
           </ul>,
           document.body
         )}
@@ -257,6 +302,8 @@ const AddSalePage = () => {
   });
   const [sourceOrderId, setSourceOrderId] = useState<string | null>(null);
   const [sourceOrderNumber, setSourceOrderNumber] = useState<string | null>(null);
+  const [sourceChallanId, setSourceChallanId] = useState<string | null>(null);
+  const [sourceChallanNumber, setSourceChallanNumber] = useState<string | null>(null);
   const [quotationId, setQuotationId] = useState<string | null>(null);
   const [showDescription, setShowDescription] = useState(false);
   const [description, setDescription] = useState('');
@@ -292,15 +339,32 @@ const AddSalePage = () => {
   const [invoiceNo, setInvoiceNo] = useState<string | null>(null);
   const [nextInvoiceNo, setNextInvoiceNo] = useState<string | null>(null);
 
-  // Handle quotation data from URL parameters
+  // Fetch items on component mount
+  useEffect(() => {
+    const initializeData = async () => {
+      await fetchItemSuggestions();
+    };
+    initializeData();
+  }, []);
+
+  // Handle quotation and challan data from URL parameters
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const quotationParam = urlParams.get('quotation');
+      const convertFromChallan = urlParams.get('convertFromChallan');
+      const challanDataParam = urlParams.get('challanData');
       
-      if (quotationParam) {
-        try {
-          const quotationData = JSON.parse(decodeURIComponent(quotationParam));
+              if (quotationParam) {
+          try {
+            // Handle both encoded and non-encoded data
+            let quotationData;
+            try {
+              quotationData = JSON.parse(decodeURIComponent(quotationParam));
+            } catch (decodeError) {
+              // If decodeURIComponent fails, try parsing directly
+              quotationData = JSON.parse(quotationParam);
+            }
           
           // Pre-fill the form with quotation data
           setNewSale(prev => ({
@@ -330,6 +394,55 @@ const AddSalePage = () => {
           console.error('Error parsing quotation data:', error);
           setToast({ 
             message: 'Error loading quotation data. Please fill the form manually.', 
+            type: 'error' 
+          });
+        }
+      } else if (convertFromChallan === 'true' && challanDataParam) {
+        try {
+          // Handle both encoded and non-encoded data
+          let challanData;
+          try {
+            challanData = JSON.parse(decodeURIComponent(challanDataParam));
+          } catch (decodeError) {
+            // If decodeURIComponent fails, try parsing directly
+            challanData = JSON.parse(challanDataParam);
+          }
+          
+          // Pre-fill the form with challan data
+          setNewSale(prev => ({
+            ...prev,
+            partyName: challanData.partyName || '',
+            phoneNo: challanData.phoneNo || '',
+            items: challanData.items?.map((item: any, index: number) => ({
+              id: index + 1,
+              item: item.item || '',
+              qty: item.qty?.toString() || '',
+              unit: item.unit || 'NONE',
+              customUnit: item.customUnit || '',
+              price: item.price?.toString() || '',
+              amount: item.amount || 0
+            })) || prev.items,
+            discount: challanData.discount || '0',
+            discountType: challanData.discountType || '%',
+            tax: challanData.tax || '0',
+            taxType: challanData.taxType || '%',
+            paymentType: challanData.paymentType || 'Credit'
+          }));
+          
+          setDescription(challanData.description || '');
+          setSourceChallanId(challanData.sourceChallanId || null);
+          setSourceChallanNumber(challanData.sourceChallanNumber || null);
+          
+          // Show success message
+          setToast({ 
+            message: `Delivery Challan ${challanData.sourceChallanNumber} data loaded successfully! You can now convert it to a sale.`, 
+            type: 'success' 
+          });
+        } catch (error) {
+          console.error('Error parsing challan data:', error);
+          console.error('Raw challan data param:', challanDataParam);
+          setToast({ 
+            message: 'Error loading challan data. Please fill the form manually.', 
             type: 'error' 
           });
         }
@@ -469,6 +582,46 @@ const AddSalePage = () => {
               type: 'success' 
             });
           }
+        } else if (sourceChallanId) {
+          // If this was converted from a delivery challan, update the challan status
+          try {
+            console.log('=== CONVERTING DELIVERY CHALLAN TO SALE ===');
+            console.log('Source Challan ID:', sourceChallanId);
+            console.log('Source Challan Number:', sourceChallanNumber);
+            console.log('Sale Invoice No:', result.sale.invoiceNo);
+            console.log('Token:', token ? 'Present' : 'Missing');
+            
+            // Import the function to update delivery challan status
+            const { updateDeliveryChallanStatus } = await import('../../../../http/deliveryChallan');
+            const updateResult = await updateDeliveryChallanStatus(sourceChallanId, 'Close', token, result.sale.invoiceNo);
+            console.log('Update result:', updateResult);
+            
+            if (updateResult.success) {
+              setToast({ 
+                message: `Sale saved! Invoice No: ${result.sale.invoiceNo || ''}. Delivery Challan converted successfully.`, 
+                type: 'success' 
+              });
+              // Redirect back to delivery challan page with success parameters
+              setTimeout(() => {
+                router.push(`/dashboard/delivery-challan?conversionSuccess=true&challanId=${sourceChallanId}`);
+              }, 2000);
+            } else {
+              console.error('Update failed:', updateResult);
+              setToast({ 
+                message: `Sale saved! Invoice No: ${result.sale.invoiceNo || ''}. Note: Could not update delivery challan status.`, 
+                type: 'success' 
+              });
+              setTimeout(() => router.push('/dashboard/sale'), 2000);
+            }
+          } catch (updateError) {
+            console.error('Error updating delivery challan:', updateError);
+            console.error('Error details:', updateError.response?.data);
+            setToast({ 
+              message: `Sale saved! Invoice No: ${result.sale.invoiceNo || ''}. Note: Could not update delivery challan status.`, 
+              type: 'success' 
+            });
+            setTimeout(() => router.push('/dashboard/sale'), 2000);
+          }
         } else {
           setToast({ message: `Sale saved! Invoice No: ${result.sale.invoiceNo || ''}`, type: 'success' });
         }
@@ -501,9 +654,30 @@ const AddSalePage = () => {
   const fetchItemSuggestions = async () => {
     const token =
       (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
-    const items = await getUserItems(token);
-    console.log('Fetched items:', items);
-    setItemSuggestions(items);
+    if (!token) {
+      console.log('No token found for fetching items');
+      return;
+    }
+    try {
+      const response = await getUserItems(token);
+      console.log('Fetched items response:', response);
+      
+      // Handle different response formats
+      let items = [];
+      if (response && response.success && response.items) {
+        items = response.items;
+      } else if (Array.isArray(response)) {
+        items = response;
+      } else if (response && response.data) {
+        items = response.data;
+      }
+      
+      console.log('Processed items:', items);
+      setItemSuggestions(items || []);
+    } catch (error) {
+      console.error('Error fetching items:', error);
+      setItemSuggestions([]);
+    }
   };
 
   // Handle URL parameters for converting from sales order

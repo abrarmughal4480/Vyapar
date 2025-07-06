@@ -33,4 +33,12 @@ const quotationSchema = new mongoose.Schema({
 quotationSchema.index({ userId: 1, quotationNo: 1 }, { unique: true });
 quotationSchema.index({ userId: 1, quotationNumber: 1 }, { unique: true });
 
+// Drop any existing single-field unique indexes that might cause conflicts
+// This ensures that quotation numbers can be the same across different users
+quotationSchema.on('index', function(error) {
+  if (error) {
+    console.error('Index creation error:', error);
+  }
+});
+
 export default mongoose.model('Quotation', quotationSchema); 

@@ -2,6 +2,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus, MoreVertical, Search, Filter, Download, X, ChevronDown, Calendar, Share2, Save, Info, Camera, Image, Settings } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { getToken, getUserIdFromToken } from '../../lib/auth';
+import { getPurchasesByUser, getPurchaseStatsByUser } from '../../../http/purchases';
+import { jwtDecode } from 'jwt-decode';
 
 // Type definitions
 interface Discount {
@@ -46,6 +49,36 @@ interface BillData extends FormData {
   total: number;
   createdAt: string;
   status: string;
+}
+
+// Database purchase interface
+interface PurchaseData {
+  _id: string;
+  userId: string;
+  supplierName: string;
+  phoneNo: string;
+  items: Array<{
+    item: string;
+    qty: number;
+    unit: string;
+    price: number;
+    amount: number;
+    customUnit?: string;
+  }>;
+  discount: number;
+  discountType: string;
+  discountValue: number;
+  tax: number;
+  taxType: string;
+  taxValue: number;
+  grandTotal: number;
+  billNo: string;
+  paymentType: string;
+  description: string;
+  imageUrl: string;
+  createdAt: string;
+  balance: number;
+  paid: number;
 }
 
 interface PurchaseSaleFormPageProps {
@@ -575,8 +608,14 @@ function PurchaseSaleFormPage({ onClose, onSave, type = 'purchase' }: PurchaseSa
 
 export default function PurchaseBillsPage() {
   const [businessName, setBusinessName] = useState<string>('Enter Business Name');
-  const [purchases, setPurchases] = useState<BillData[]>([]);
+  const [purchases, setPurchases] = useState<PurchaseData[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalGrandTotal: 0,
+    totalBalance: 0,
+    totalPaid: 0
+  });
   const router = useRouter();
 
   // Add state for filterType, dateFrom, dateTo
@@ -622,15 +661,53 @@ export default function PurchaseBillsPage() {
     };
   }, [showDateDropdown]);
 
+  // Fetch purchases and stats from API
   React.useEffect(() => {
-    const stored = localStorage.getItem('purchases');
-    if (stored) {
-      setPurchases(JSON.parse(stored));
-    }
+    const fetchPurchases = async () => {
+      try {
+        setLoading(true);
+        const token = getToken();
+        if (!token) {
+          console.error('No authentication token found');
+          return;
+        }
+
+        // Get userId from token
+        const userId = getUserIdFromToken();
+
+        if (!userId) {
+          console.error('No user ID found in token');
+          return;
+        }
+
+        // Fetch purchases
+        const purchasesResponse = await getPurchasesByUser(userId, token);
+        if (purchasesResponse.success) {
+          setPurchases(purchasesResponse.purchases || []);
+        }
+
+        // Fetch stats
+        const statsResponse = await getPurchaseStatsByUser(userId, token);
+        if (statsResponse.success) {
+          setStats(statsResponse.stats || {
+            totalGrandTotal: 0,
+            totalBalance: 0,
+            totalPaid: 0
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching purchases:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPurchases();
   }, []);
 
   const handleAddPurchase = () => {
-    router.push('/dashboard/purchase/add');
+    // Navigate to purchase add page with purchase bills context
+    router.push('/dashboard/purchaseAdd?from=purchase-bills');
   };
 
   const getDateRange = (filterType: string) => {
@@ -719,18 +796,18 @@ export default function PurchaseBillsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6">
           <div className="bg-gradient-to-br from-blue-100 to-blue-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
             <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-blue-500 text-white mb-3 text-xl">🛒</div>
-            <div className="text-2xl font-bold text-blue-700">PKR {purchases.reduce((sum: number, p: BillData) => sum + (p.total || 0), 0).toLocaleString()}</div>
+            <div className="text-2xl font-bold text-blue-700">PKR {purchases.reduce((sum: number, p: PurchaseData) => sum + (p.grandTotal || 0), 0).toLocaleString()}</div>
             <div className="text-sm text-gray-500">Total Purchases</div>
           </div>
           <div className="bg-gradient-to-br from-green-100 to-green-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
             <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-green-500 text-white mb-3 text-xl">⬆️</div>
-            <div className="text-2xl font-bold text-green-700">PKR 0</div>
+            <div className="text-2xl font-bold text-green-700">PKR {purchases.reduce((sum: number, p: PurchaseData) => sum + (p.paid || 0), 0).toLocaleString()}</div>
             <div className="text-sm text-gray-500">Total Paid</div>
           </div>
           <div className="bg-gradient-to-br from-orange-100 to-orange-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
             <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-orange-500 text-white mb-3 text-xl">🧾</div>
-            <div className="text-2xl font-bold text-orange-700">PKR 0</div>
-            <div className="text-sm text-gray-500">Total Balance</div>
+            <div className="text-2xl font-bold text-orange-700">PKR {purchases.reduce((sum: number, p: PurchaseData) => sum + (p.balance || 0), 0).toLocaleString()}</div>
+            <div className="text-sm text-gray-500">Balance Due</div>
           </div>
         </div>
 
@@ -849,18 +926,67 @@ export default function PurchaseBillsPage() {
                   <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Payment Type</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Amount</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Balance Due</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Status</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {/* Dummy Row 1 */}
-                <tr className="hover:bg-blue-50/40 transition-all bg-white">
-                  <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">2024-06-20</td>
-                  <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">PUR-001</td>
-                  <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">ABC Supplier</td>
-                  <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">Cash</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">PKR 12,000</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-orange-600 whitespace-nowrap text-center">PKR 0</td>
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                      Loading purchases...
+                  </td>
+                </tr>
+                ) : purchases.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                      No purchases found. Create your first purchase bill!
+                    </td>
+                  </tr>
+                ) : (
+                  purchases
+                    .filter(purchase => {
+                      // Search filter
+                      const searchLower = searchTerm.toLowerCase();
+                      const matchesSearch = 
+                        purchase.supplierName.toLowerCase().includes(searchLower) ||
+                        purchase.billNo.toLowerCase().includes(searchLower);
+                      
+                      // Status filter
+                      let matchesStatus = true;
+                      if (statusFilter === 'Paid') {
+                        matchesStatus = purchase.balance === 0;
+                      } else if (statusFilter === 'Pending') {
+                        matchesStatus = purchase.balance > 0;
+                      } else if (statusFilter === 'Overdue') {
+                        matchesStatus = purchase.balance > 0;
+                      }
+                      
+                      return matchesSearch && matchesStatus;
+                    })
+                    .map((purchase, index) => {
+                      const date = new Date(purchase.createdAt);
+                      const formattedDate = date.toLocaleDateString('en-GB');
+                      
+                      return (
+                        <tr key={purchase._id} className={`hover:bg-blue-50/40 transition-all ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                          <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{formattedDate}</td>
+                          <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">{purchase.billNo}</td>
+                          <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{purchase.supplierName}</td>
+                          <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{purchase.paymentType}</td>
+                          <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">PKR {purchase.grandTotal.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-sm font-semibold text-orange-600 whitespace-nowrap text-center">PKR {purchase.balance.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
+                            {(() => {
+                              if (purchase.balance === 0) {
+                                return <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">Paid</span>;
+                              } else if (purchase.paid > 0) {
+                                return <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-semibold">Partial</span>;
+                              } else {
+                                return <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-xs font-semibold">Unpaid</span>;
+                              }
+                            })()}
+                          </td>
                   <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
                     <div className="flex justify-center gap-2">
                       <button className="text-green-600 hover:text-green-900">View</button>
@@ -869,22 +995,9 @@ export default function PurchaseBillsPage() {
                     </div>
                   </td>
                 </tr>
-                {/* Dummy Row 2 */}
-                <tr className="hover:bg-blue-50/40 transition-all bg-gray-50">
-                  <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">2024-06-19</td>
-                  <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">PUR-002</td>
-                  <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">XYZ Traders</td>
-                  <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">Card</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">PKR 8,500</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-orange-600 whitespace-nowrap text-center">PKR 1,000</td>
-                  <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
-                    <div className="flex justify-center gap-2">
-                      <button className="text-green-600 hover:text-green-900">View</button>
-                      <button className="text-blue-600 hover:text-blue-900">Print</button>
-                      <button className="text-gray-600 hover:text-gray-900">Share</button>
-                    </div>
-                  </td>
-                </tr>
+                      );
+                    })
+                )}
               </tbody>
             </table>
           </div>

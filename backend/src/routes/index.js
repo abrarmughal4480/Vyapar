@@ -4,17 +4,23 @@ import authMiddleware from '../middlewares/authMiddleware.js';
 import partiesRoutes from './parties.js';
 import * as itemsController from '../controllers/itemsController.js';
 import saleRoutes from './sale.js';
+import purchaseRoutes from './purchase.js';
 import partiesController from '../controllers/partiesController.js';
 import saleOrderRoutes from './saleOrder.js';
+import purchaseOrderRoutes from './purchaseOrder.js';
 import quotationRoutes from './quotation.js';
+import deliveryChallanRoutes from './deliveryChallan.js';
 
 const router = express.Router();
 
 router.use('/auth', authRoutes);
 router.use('/parties', authMiddleware, partiesRoutes);
 router.use('/api/sales', saleRoutes);
+router.use('/api/purchases', purchaseRoutes);
 router.use('/api/sale-orders', saleOrderRoutes);
-router.use('/quotations', quotationRoutes);
+router.use('/api/purchase-orders', purchaseOrderRoutes);
+router.use('/api/delivery-challan', deliveryChallanRoutes);
+router.use('/quotations', authMiddleware, quotationRoutes);
 
 // Dashboard stats route
 router.get('/dashboard/stats', authMiddleware, async (req, res) => {

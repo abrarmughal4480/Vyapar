@@ -27,12 +27,19 @@ export const createParty = async (partyData: PartyData, token: string): Promise<
 };
 
 export const fetchPartiesByUserId = async (token: string): Promise<any> => {
-  const response = await api.get('/parties', {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  return response.data;
+  console.log('fetchPartiesByUserId called with token length:', token?.length);
+  try {
+    const response = await api.get('/parties', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    console.log('Parties API response:', response);
+    return response.data;
+  } catch (error) {
+    console.error('Parties API error:', error);
+    throw error;
+  }
 };
 
 export const updateParty = async (id: string, partyData: PartyData, token: string): Promise<any> => {

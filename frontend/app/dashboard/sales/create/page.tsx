@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useLayoutEffect, useRef } from
 import { useRouter } from 'next/navigation'
 import { getToken } from '../../../lib/auth'
 import { createSaleOrder } from '../../../../http/saleOrders'
-import { getCustomerParties } from '../../../../http/parties'
+import { getCustomerParties, getPartyBalance } from '../../../../http/parties'
 import { getUserItems } from '../../../../http/items'
 import ReactDOM from 'react-dom'
 import Toast from '../../../components/Toast'
@@ -165,6 +165,7 @@ export default function CreateSalesOrderPage() {
   // Add state for items and suggestions
   const [itemSuggestions, setItemSuggestions] = useState<any[]>([])
   const [showItemSuggestions, setShowItemSuggestions] = useState<{[id: number]: boolean}>({})
+  const [partyBalance, setPartyBalance] = useState<number|null>(null)
 
   // Fetch items for suggestions
   const fetchItemSuggestions = async () => {
@@ -172,9 +173,43 @@ export default function CreateSalesOrderPage() {
     if (!token) return;
     try {
       const items = await getUserItems(token);
+      console.log('Fetched items for suggestions:', items);
       setItemSuggestions(items || []);
-    } catch {}
+    } catch (error) {
+      console.error('Error fetching item suggestions:', error);
+      setItemSuggestions([]);
+    }
   };
+
+  // Debug effect to log item suggestions changes
+  useEffect(() => {
+    console.log('Item suggestions updated:', itemSuggestions);
+  }, [itemSuggestions]);
+
+  // Fetch item suggestions on component mount
+  useEffect(() => {
+    console.log('Component mounted, fetching initial item suggestions...');
+    fetchItemSuggestions();
+  }, []);
+
+  // Fetch party balance when customer changes
+  useEffect(() => {
+    const fetchBalance = async () => {
+      if (!formData.customer) {
+        setPartyBalance(null);
+        return;
+      }
+      const token = getToken();
+      if (!token) return;
+      try {
+        const balance = await getPartyBalance(formData.customer, token);
+        setPartyBalance(balance);
+      } catch (err) {
+        setPartyBalance(null);
+      }
+    };
+    fetchBalance();
+  }, [formData.customer]);
 
   // Save sales order
   const handleSave = async () => {
@@ -273,13 +308,15 @@ export default function CreateSalesOrderPage() {
     const updateDropdownPosition = () => {
       if (inputRef.current) {
         const rect = inputRef.current.getBoundingClientRect();
-        setDropdownStyle({
+        const style = {
           position: 'absolute',
           top: rect.bottom + window.scrollY + 4,
           left: rect.left + window.scrollX + 4,
           width: rect.width,
           zIndex: 9999
-        });
+        };
+        console.log('Dropdown position:', style);
+        setDropdownStyle(style);
       }
     };
 
@@ -307,8 +344,14 @@ export default function CreateSalesOrderPage() {
     }, [showItemSuggestions[item.id]]);
 
     const handleFocus = () => {
+      console.log('Item input focused, fetching suggestions...');
+      console.log('Item ID:', item.id);
       fetchItemSuggestions();
-      setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: true }));
+      setShowItemSuggestions((prev: any) => {
+        const newState = { ...prev, [item.id]: true };
+        console.log('Updated showItemSuggestions:', newState);
+        return newState;
+      });
       updateDropdownPosition();
     };
 
@@ -320,33 +363,89 @@ export default function CreateSalesOrderPage() {
             ref={inputRef}
             type="text"
             value={item.item}
-            onChange={e => handleItemChange(item.id, 'item', e.target.value)}
+            onChange={e => {
+              console.log('Item input changed:', e.target.value);
+              handleItemChange(item.id, 'item', e.target.value);
+            }}
             onFocus={handleFocus}
-            onBlur={() => setTimeout(() => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false })), 200)}
+            onBlur={() => {
+              console.log('Item input blurred');
+              setTimeout(() => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false })), 200);
+            }}
             className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
             placeholder="Enter item name..."
+            data-testid={`item-input-${item.id}`}
           />
-          {showItemSuggestions[item.id] && itemSuggestions.length > 0 && typeof window !== 'undefined' && ReactDOM.createPortal(
+          {showItemSuggestions[item.id] && typeof window !== 'undefined' && (() => {
+            console.log('Rendering item suggestions dropdown for item', item.id);
+            console.log('showItemSuggestions:', showItemSuggestions);
+            console.log('itemSuggestions length:', itemSuggestions.length);
+            console.log('itemSuggestions:', itemSuggestions);
+            console.log('Dropdown style:', dropdownStyle);
+            return ReactDOM.createPortal(
             <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-              {itemSuggestions
-                .filter((i: any) => i.name.toLowerCase().includes(item.item.toLowerCase()))
-                .map((i: any) => (
-                  <li
-                    key={i._id}
-                    className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
-                    onMouseDown={() => {
-                      handleItemChange(item.id, 'item', i.name);
-                      handleItemChange(item.id, 'unit', i.unit);
-                      handleItemChange(item.id, 'price', i.salePrice);
-                      setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
-                    }}
-                  >
-                    {i.name} <span className="text-xs text-gray-400">({i.unit}, PKR {i.salePrice})</span>
-                  </li>
-                ))}
+              {itemSuggestions.length > 0 ? (
+                (() => {
+                  const filteredItems = itemSuggestions.filter((i: any) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
+                  console.log('Filtered items for search term:', item.item, 'Result:', filteredItems);
+                  return filteredItems.map((i: any) => (
+                    <li
+                      key={i._id}
+                      className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
+                      onMouseDown={() => {
+                        console.log('Selected item:', i);
+                        handleItemChange(item.id, 'item', i.name);
+                        // Map the unit to dropdown options
+                        let mappedUnit = 'NONE';
+                        if (i.unit) {
+                          const unitMap: { [key: string]: string } = {
+                            'Piece': 'PCS',
+                            'Kg': 'KG',
+                            'Gram': 'KG',
+                            'Liter': 'LITER',
+                            'Meter': 'METER',
+                            'Box': 'BOX',
+                            'Packet': 'PACKET',
+                            'Dozen': 'DOZEN',
+                            'Unit': 'UNIT'
+                          };
+                          mappedUnit = unitMap[i.unit] || i.unit.toUpperCase();
+                        }
+                        handleItemChange(item.id, 'unit', mappedUnit);
+                        handleItemChange(item.id, 'price', i.salePrice || 0);
+                        setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+                      }}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium text-gray-800">{i.name}</span>
+                        <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock || 0}</span>
+                      </div>
+                    </li>
+                  ));
+                })()
+              ) : (
+                <li className="px-4 py-3 text-center">
+                  <div className="text-gray-500 text-sm">
+                    {itemSuggestions.length === 0 ? (
+                      <div>
+                        <div className="text-gray-400 mb-1">📦</div>
+                        <div>No items available</div>
+                        <div className="text-xs text-gray-400 mt-1">Add items in the Items section first</div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="text-gray-400 mb-1">🔍</div>
+                        <div>No matching items</div>
+                        <div className="text-xs text-gray-400 mt-1">Try a different search term</div>
+                      </div>
+                    )}
+                  </div>
+                </li>
+              )}
             </ul>,
             document.body
-          )}
+          );
+          })()}
         </td>
         <td className="py-2 px-2">
           <input
@@ -594,6 +693,9 @@ export default function CreateSalesOrderPage() {
                     </div>
                   )}
                 </div>
+                {partyBalance !== null && (
+                  <div className={`text-xs mt-1 font-semibold ${partyBalance < 0 ? 'text-red-600' : 'text-green-600'}`}>Balance: PKR {Math.abs(partyBalance).toLocaleString()}</div>
+                )}
                 {error && !formData.customer.trim() && (
                   <p className="text-xs text-red-500 mt-1">Customer is required</p>
                 )}

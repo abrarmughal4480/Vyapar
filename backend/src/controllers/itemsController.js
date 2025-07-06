@@ -31,10 +31,14 @@ export const getItemsByLoggedInUser = async (req, res) => {
   try {
     const userId = req.user && (req.user._id || req.user.id);
     console.log('Fetching items for userId:', userId); // Debug log
+    console.log('Request headers:', req.headers);
+    console.log('User object:', req.user);
     if (!userId) return res.status(401).json({ success: false, message: 'User not authenticated' });
     const items = await Item.find({ userId });
-    res.json({ success: true, items });
+    console.log('Found items:', items);
+    res.json({ success: true, data: items });
   } catch (err) {
+    console.error('Error in getItemsByLoggedInUser:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };

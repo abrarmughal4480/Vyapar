@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
+import Toast from '../../components/Toast'
 
 interface Expense {
   id: string
@@ -129,6 +130,7 @@ export default function ExpensesPage() {
   const [selectedCategory, setSelectedCategory] = useState('')
   const [dateRange, setDateRange] = useState({ from: '', to: '' })
   const [isLoading, setIsLoading] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   const [newExpense, setNewExpense] = useState<Omit<Expense, 'id'>>({
     category: '',
@@ -190,7 +192,10 @@ export default function ExpensesPage() {
   }
 
   const handleAddExpense = async () => {
-    if (!validateExpense()) return
+    if (!validateExpense()) {
+      setToast({ message: 'Please fill in all required fields', type: 'error' })
+      return
+    }
 
     setIsLoading(true)
 
@@ -208,6 +213,9 @@ export default function ExpensesPage() {
       setExpenses(prev => [expense, ...prev])
       setIsModalOpen(false)
       resetForm()
+      setToast({ message: 'Expense added successfully!', type: 'success' })
+    } catch (error) {
+      setToast({ message: 'Failed to add expense. Please try again.', type: 'error' })
     } finally {
       setIsLoading(false)
     }
@@ -261,7 +269,7 @@ export default function ExpensesPage() {
   })
 
   const exportExpenses = () => {
-    alert('Export functionality would be implemented here')
+    setToast({ message: 'Export functionality would be implemented here', type: 'success' })
   }
 
   return (
@@ -718,6 +726,15 @@ export default function ExpensesPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
       )}
     </div>
   )

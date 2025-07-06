@@ -341,7 +341,7 @@ export default function CreateSalesOrderPage() {
       };
       const res = await createQuotation(quotationPayload, token);
       if (res && res.success) {
-        alert('Quotation created successfully!');
+        setToast({ message: 'Quotation created successfully!', type: 'success' });
         router.push('/dashboard/quotation');
       } else {
         setError(res?.message || 'Failed to save quotation');
@@ -356,7 +356,7 @@ export default function CreateSalesOrderPage() {
 
   // Handle share functionality
   const handleShare = () => {
-    alert('Share functionality to be implemented')
+    setToast({ message: 'Share functionality to be implemented', type: 'success' })
   }
 
   const fetchCustomerSuggestions = async () => {

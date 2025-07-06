@@ -1,6 +1,9 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, MoreVertical, Search, Filter, Download, X, ChevronDown, Calendar, Share2, Save, Info, Camera } from 'lucide-react';
+import { getToken } from '../../lib/auth';
+import { getUserPurchaseOrders, updatePurchaseOrder } from '../../../http/purchaseOrders';
+import { useRouter } from 'next/navigation';
 
 // Purchase Form Page Component
 function PurchaseFormPage({ onClose, onSave }: { onClose: () => void; onSave?: (data: any) => void }) {
@@ -9,6 +12,7 @@ function PurchaseFormPage({ onClose, onSave }: { onClose: () => void; onSave?: (
     billDate: '19/06/2025',
     party: '',
     phoneNo: '',
+    balance: '',
     paymentType: 'Cash',
     discount: { percentage: '', amount: '' },
     tax: 'NONE',
@@ -135,7 +139,12 @@ function PurchaseFormPage({ onClose, onSave }: { onClose: () => void; onSave?: (
                       <button
                         key={index}
                         onClick={() => {
-                          setFormData({...formData, party: party.name});
+                          setFormData({
+                            ...formData,
+                            party: party.name,
+                            phoneNo: party.phone,
+                            balance: party.balance
+                          });
                           setShowPartyDropdown(false);
                         }}
                         className="w-full p-2 text-left hover:bg-gray-50"
@@ -147,6 +156,12 @@ function PurchaseFormPage({ onClose, onSave }: { onClose: () => void; onSave?: (
                   </div>
                 )}
               </div>
+              {/* Show balance if available */}
+              {formData.balance !== undefined && formData.balance !== '' && (
+                <div className={`mt-1 text-sm font-semibold ${parseFloat(formData.balance) < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  ₹{Math.abs(parseFloat(formData.balance)).toLocaleString('en-IN')}
+                </div>
+              )}
             </div>
 
             {/* Right Side - Bill Details */}
@@ -297,6 +312,7 @@ function SaleFormPage({ onClose, onSave }: { onClose: () => void; onSave?: (data
     billDate: '19/06/2025',
     party: '',
     phoneNo: '',
+    balance: '',
     paymentType: 'Cash',
     discount: { percentage: '', amount: '' },
     tax: 'NONE',
@@ -583,10 +599,11 @@ function SaleFormPage({ onClose, onSave }: { onClose: () => void; onSave?: (data
 function PurchaseOrderFormPage({ onClose, onSave, type = 'purchase-order' }: { onClose: () => void; onSave?: (data: any) => void; type?: string }) {
   const [formData, setFormData] = useState({
     orderNumber: '1',
-    orderDate: '19/06/2025',
-    dueDate: '19/06/2025',
+    orderDate: new Date().toLocaleDateString('en-GB'), // Today's date
+    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB'), // 7 days from today
     party: '',
     phoneNo: '',
+    balance: '',
     paymentType: 'Cash',
     discount: { percentage: '', amount: '' },
     tax: 'NONE',
@@ -642,16 +659,45 @@ function PurchaseOrderFormPage({ onClose, onSave, type = 'purchase-order' }: { o
   };
 
   const handleSave = () => {
+    // Convert date strings to proper Date objects
+    const parseDate = (dateStr: string) => {
+      const [day, month, year] = dateStr.split('/');
+      return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    };
+
+    console.log('Form data before processing:', {
+      formData: formData,
+      items: items,
+      orderDate: formData.orderDate,
+      dueDate: formData.dueDate
+    });
+
+    const orderDate = parseDate(formData.orderDate);
+    const dueDate = parseDate(formData.dueDate);
+    
+    // Set due date to end of day (23:59:59)
+    dueDate.setHours(23, 59, 59, 999);
+
+    console.log('Parsed dates:', {
+      orderDate: orderDate,
+      dueDate: dueDate,
+      orderDateISO: orderDate.toISOString(),
+      dueDateISO: dueDate.toISOString()
+    });
+
     const orderData = {
       id: Date.now(),
       type: type,
       ...formData,
+      orderDate: orderDate.toISOString(),
+      dueDate: dueDate.toISOString(),
+      supplierPhone: formData.phoneNo,
       items: items.filter(item => item.item || item.qty || item.price),
       total: calculateTotal(),
       createdAt: new Date().toISOString()
     };
     
-    console.log('Saving order:', orderData);
+    console.log('Final order data being saved:', orderData);
     
     if (onSave) {
       onSave(orderData);
@@ -730,7 +776,12 @@ function PurchaseOrderFormPage({ onClose, onSave, type = 'purchase-order' }: { o
                       <button
                         key={index}
                         onClick={() => {
-                          setFormData({...formData, party: party.name});
+                          setFormData({
+                            ...formData,
+                            party: party.name,
+                            phoneNo: party.phone,
+                            balance: party.balance
+                          });
                           setShowPartyDropdown(false);
                         }}
                         className="w-full p-2 text-left hover:bg-gray-50"
@@ -742,6 +793,12 @@ function PurchaseOrderFormPage({ onClose, onSave, type = 'purchase-order' }: { o
                   </div>
                 )}
               </div>
+              {/* Show balance if available */}
+              {formData.balance !== undefined && formData.balance !== '' && (
+                <div className={`mt-1 text-sm font-semibold ${parseFloat(formData.balance) < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  ₹{Math.abs(parseFloat(formData.balance)).toLocaleString('en-IN')}
+                </div>
+              )}
             </div>
 
             {/* Right Side - Order Details */}
@@ -757,7 +814,10 @@ function PurchaseOrderFormPage({ onClose, onSave, type = 'purchase-order' }: { o
                     <input
                       type="text"
                       value={formData.orderDate}
-                      onChange={(e) => setFormData({...formData, orderDate: e.target.value})}
+                      onChange={(e) => {
+                        console.log('Order date changed to:', e.target.value);
+                        setFormData({...formData, orderDate: e.target.value});
+                      }}
                       className="w-full p-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs text-right"
                     />
                     <Calendar className="absolute right-1 top-1 h-2 w-2 text-gray-400" />
@@ -769,7 +829,10 @@ function PurchaseOrderFormPage({ onClose, onSave, type = 'purchase-order' }: { o
                     <input
                       type="text"
                       value={formData.dueDate}
-                      onChange={(e) => setFormData({...formData, dueDate: e.target.value})}
+                      onChange={(e) => {
+                        console.log('Due date changed to:', e.target.value);
+                        setFormData({...formData, dueDate: e.target.value});
+                      }}
                       className="w-full p-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs text-right"
                     />
                     <Calendar className="absolute right-1 top-1 h-2 w-2 text-gray-400" />
@@ -1016,11 +1079,40 @@ function PurchaseOrderFormPage({ onClose, onSave, type = 'purchase-order' }: { o
 }
 
 export default function PurchaseOrderPage() {
+  const router = useRouter();
   const [businessName, setBusinessName] = useState('Enter Business Name');
   const [orders, setOrders] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [formType, setFormType] = useState('purchase-order'); // 'purchase-order', 'purchase', 'sale'
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [convertingOrder, setConvertingOrder] = useState<string | null>(null);
+
+  // Fetch purchase orders from database
+  useEffect(() => {
+    const fetchPurchaseOrders = async () => {
+      try {
+        setLoading(true);
+        const token = getToken();
+        if (!token) {
+          setError('Authentication required');
+          setLoading(false);
+          return;
+        }
+
+        const purchaseOrders = await getUserPurchaseOrders(token);
+        setOrders(purchaseOrders || []);
+      } catch (err: any) {
+        console.error('Error fetching purchase orders:', err);
+        setError('Failed to fetch purchase orders');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPurchaseOrders();
+  }, []);
 
   const handleAddPurchaseOrder = () => {
     setFormType('purchase-order');
@@ -1033,17 +1125,112 @@ export default function PurchaseOrderPage() {
   };
 
   const handleAddPurchase = () => {
-    setFormType('purchase');
-    setShowForm(true);
+    // Navigate to purchase add page with purchase-order context
+    window.location.href = '/dashboard/purchaseAdd?from=purchase-order';
   };
+
+  // Convert purchase order to purchase
+  const handleConvertToPurchase = (order: any) => {
+    setConvertingOrder(order._id);
+    
+    // Prepare purchase data from order
+    const purchaseData = {
+      supplierName: order.supplierName || '',
+      phoneNo: order.supplierPhone || order.phoneNo || '', // Use supplierPhone from purchase order
+      dueDate: order.dueDate || '', // Include due date
+      items: order.items?.map((item: any, index: number) => ({
+        id: index + 1,
+        item: item.item || '',
+        qty: item.qty?.toString() || '',
+        unit: item.unit || 'NONE',
+        customUnit: item.customUnit || '',
+        price: item.price?.toString() || '',
+        amount: item.amount || 0
+      })) || [
+        { id: 1, item: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 },
+        { id: 2, item: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
+      ],
+      discount: order.discount?.toString() || '',
+      discountType: order.discountType || '%',
+      tax: order.tax?.toString() || '',
+      taxType: order.taxType || '%',
+      paymentType: order.paymentType || 'Credit',
+      description: order.description || '',
+      sourceOrderId: order._id, // Track the original order
+      sourceOrderNumber: order.orderNumber
+    };
+
+    // Navigate to purchase add page with data
+    const queryParams = new URLSearchParams({
+      convertFromOrder: 'true',
+      orderData: JSON.stringify(purchaseData)
+    });
+    
+    router.push(`/dashboard/purchaseAdd?${queryParams.toString()}`);
+  };
+
+  // Get status with overdue logic
+  const getOrderStatus = (order: any) => {
+    if (order.status === 'Completed') return 'Order Completed';
+    
+    if (order.dueDate) {
+      const dueDate = new Date(order.dueDate);
+      const today = new Date();
+      if (dueDate < today && order.status !== 'Completed') {
+        return 'Overdue';
+      }
+    }
+    
+    return order.status || 'Draft';
+  };
+
+  // Get status color
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'Order Completed':
+        return 'bg-green-100 text-green-800';
+      case 'Overdue':
+        return 'bg-red-100 text-red-800';
+      case 'Completed':
+        return 'bg-green-100 text-green-800';
+      case 'Draft':
+        return 'bg-gray-100 text-gray-800';
+      default:
+        return 'bg-yellow-100 text-yellow-800';
+    }
+  };
+
+  // Refresh orders when returning from add page
+  useEffect(() => {
+    const handleFocus = () => {
+      refreshOrders();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
 
   const closeForm = () => {
     setShowForm(false);
   };
 
   const saveOrder = (orderData: any) => {
+    console.log('saveOrder called with data:', orderData);
     setOrders(prev => [...prev, orderData]);
     setShowForm(false);
+  };
+
+  // Refresh orders after adding new one
+  const refreshOrders = async () => {
+    try {
+      const token = getToken();
+      if (!token) return;
+      
+      const purchaseOrders = await getUserPurchaseOrders(token);
+      setOrders(purchaseOrders || []);
+    } catch (err: any) {
+      console.error('Error refreshing purchase orders:', err);
+    }
   };
 
   if (showForm) {
@@ -1126,7 +1313,25 @@ export default function PurchaseOrderPage() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {orders.length === 0 ? (
+        {loading ? (
+          /* Loading State */
+          <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <p className="text-gray-600">Loading purchase orders...</p>
+          </div>
+        ) : error ? (
+          /* Error State */
+          <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
+            <div className="text-red-500 mb-4">⚠️</div>
+            <p className="text-red-600 mb-4">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Try Again
+            </button>
+          </div>
+        ) : orders.length === 0 ? (
           /* Empty State */
           <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
             {/* Shopping Cart Illustration */}
@@ -1243,45 +1448,68 @@ export default function PurchaseOrderPage() {
                         Amount
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
+                        Balance
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {orders.map((order) => (
-                      <tr key={order.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {order.orderNumber}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {order.party || 'N/A'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {order.orderDate}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {order.dueDate || 'N/A'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          ₹{order.total.toFixed(2)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                            {order.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <div className="flex flex-col sm:flex-row gap-1 sm:gap-2">
-                            <button className="text-blue-600 hover:text-blue-900 text-xs sm:text-sm">Edit</button>
-                            <button className="text-green-600 hover:text-green-900 text-xs sm:text-sm">Convert</button>
-                            <button className="text-red-600 hover:text-red-900 text-xs sm:text-sm">Delete</button>
+                    {orders.map((order) => {
+                      const orderStatus = getOrderStatus(order);
+                      return (
+                        <tr key={order._id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {order.orderNumber}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {order.supplierName || 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {order.orderDate ? new Date(order.orderDate).toLocaleDateString() : 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            ₹{order.total ? order.total.toFixed(2) : '0.00'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            ₹{order.balance ? order.balance.toFixed(2) : '0.00'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(orderStatus)}`}>
+                              {orderStatus}
+                            </span>
+                          </td>
+                                                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                          <div className="flex justify-center">
+                            {orderStatus === 'Order Completed' && order.invoiceNumber ? (
+                              <span className="text-blue-600 text-sm font-medium">
+                                Invoice: {order.invoiceNumber}
+                              </span>
+                            ) : orderStatus !== 'Order Completed' ? (
+                              <button 
+                                onClick={() => handleConvertToPurchase(order)}
+                                disabled={convertingOrder === order._id}
+                                className={`text-green-600 hover:text-green-800 text-sm font-medium ${
+                                  convertingOrder === order._id ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                              >
+                                Convert to Purchase
+                              </button>
+                            ) : (
+                              <span className="text-gray-400 text-sm">-</span>
+                            )}
                           </div>
                         </td>
-                      </tr>
-                    ))}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

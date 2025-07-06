@@ -33,8 +33,16 @@ export async function updateItem(userId: string, itemId: string, data: any) {
 }
 
 export const getUserItems = async (token: string) => {
-  const res = await api.get('/items', {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  return res.data.items;
+  try {
+    console.log('Fetching items with token:', token ? 'Token present' : 'No token');
+    console.log('API base URL:', process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000');
+    const res = await api.get('/items', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    console.log('Items API response:', res.data);
+    return res.data.data || res.data || [];
+  } catch (error) {
+    console.error('Error fetching items:', error);
+    return [];
+  }
 }; 

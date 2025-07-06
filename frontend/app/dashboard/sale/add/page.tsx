@@ -8,6 +8,7 @@ import { createSale } from '../../../../http/sales';
 import { getCustomerParties, getPartyBalance } from '../../../../http/parties';
 import { getUserItems } from '../../../../http/items';
 import api from '../../../../http/api';
+import { API_ENDPOINTS } from '../../../lib/api';
 // Import any other needed components or hooks
 
 interface SaleItem {
@@ -750,7 +751,7 @@ const AddSalePage = () => {
       try {
         const token =
           (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
-        const res = await api.get('/api/sales/next-invoice-no', {
+        const res = await api.get(API_ENDPOINTS.NEXT_INVOICE_NO, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setNextInvoiceNo(res.data.nextInvoiceNo);

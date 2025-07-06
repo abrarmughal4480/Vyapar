@@ -19,10 +19,16 @@ async function dbConnect() {
   }
 }
 
-// Allow requests from frontend (port 3000)
+// CORS configuration - Allow both localhost and live frontend
+const allowedOrigins = [
+  'http://localhost:3000', // Local development
+  'https://vyapaarr.vercel.app', // Live frontend URL
+  process.env.FRONTEND_URL // Environment variable for additional URLs
+].filter(Boolean); // Remove any undefined values
+
 const app = express();
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: allowedOrigins,
   credentials: true
 }));
 
@@ -32,4 +38,5 @@ app.use('/', routes);
 const PORT = config.port;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log('CORS allowed origins:', allowedOrigins);
 }); 

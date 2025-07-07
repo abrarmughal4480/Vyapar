@@ -15,12 +15,14 @@ export default function DashboardLayout({
     <SidebarContext.Provider value={{ isCollapsed, setIsCollapsed }}>
       <div className="min-h-screen bg-gray-50">
         {/* Sidebar for desktop */}
-        <Sidebar />
+        <div className="print:hidden">
+          <Sidebar />
+        </div>
         
         {/* Main content area */}
         <div className={`transition-all duration-300 ease-in-out ${isCollapsed ? 'lg:ml-16' : 'lg:ml-64'}`}>
           {/* Header for mobile */}
-          <div className="lg:hidden">
+          <div className="lg:hidden print:hidden">
             <Header />
           </div>
           
@@ -31,7 +33,9 @@ export default function DashboardLayout({
         </div>
         
         {/* Bottom navigation for mobile */}
-        <BottomNavigation />
+        <div className="print:hidden">
+          <BottomNavigation />
+        </div>
       </div>
     </SidebarContext.Provider>
   )

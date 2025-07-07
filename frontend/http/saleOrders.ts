@@ -26,4 +26,11 @@ export const convertSaleOrderToInvoice = async (orderId: string, token: string) 
     headers: { Authorization: `Bearer ${token}` }
   });
   return data;
+};
+
+export const deleteSaleOrder = async (orderId: string, token: string) => {
+  const { data } = await api.delete(`/api/sale-orders/${orderId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
 }; 

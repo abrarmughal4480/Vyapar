@@ -48,4 +48,11 @@ export const getNextBillNo = async (token: string) => {
     },
   });
   return data;
+};
+
+export const deletePurchase = async (purchaseId: string, token: string) => {
+  const { data } = await api.delete(`/api/purchases/${purchaseId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
 }; 

@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import ReactDOM from 'react-dom'
-import { getQuotationsForUser } from '../../../http/quotations'
+import { getQuotationsForUser, deleteQuotation } from '../../../http/quotations'
 import { getToken } from '../../lib/auth'
+import TableActionMenu from '@/app/components/TableActionMenu'
+import ConfirmDialog from '@/app/components/ConfirmDialog'
 
 // Vyapar-style status badge component
 function StatusBadge({ status }: { status: string }) {
@@ -402,6 +404,14 @@ export default function QuotationPage() {
     return matchesSearch && matchesStatus && matchesDate;
   });
 
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [quotationToDelete, setQuotationToDelete] = useState<any>(null);
+
+  const handleDeleteQuotation = (quotation: any) => {
+    setQuotationToDelete(quotation);
+    setDeleteDialogOpen(true);
+  };
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       {/* Error Display */}
@@ -646,11 +656,20 @@ export default function QuotationPage() {
                     <StatusBadge status={quotation.status} />
                   </td>
                   <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
-                    <QuotationActions 
-                      quotation={quotation}
-                      onConvertToSale={handleConvertToSale}
-                      onConvertToSaleOrder={handleConvertToSaleOrder}
-                    />
+                    <div className="flex justify-between items-center w-full max-w-[220px] mx-auto">
+                      <QuotationActions
+                        quotation={quotation}
+                        onConvertToSale={handleConvertToSale}
+                        onConvertToSaleOrder={handleConvertToSaleOrder}
+                      />
+                      <div className="ml-auto">
+                        <TableActionMenu
+                          onEdit={() => router.push(`/dashboard/quotation/create?id=${quotation.id}`)}
+                          onDelete={() => handleDeleteQuotation(quotation)}
+                          onView={() => { setViewQuotation(quotation); setShowViewModal(true); }}
+                        />
+                      </div>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -664,6 +683,31 @@ export default function QuotationPage() {
         open={showViewModal}
         onClose={() => setShowViewModal(false)}
         quotation={viewQuotation}
+      />
+
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        title="Delete Quotation?"
+        description={`Are you sure you want to delete quotation ${quotationToDelete?.number || quotationToDelete?.id}? This action cannot be undone.`}
+        onCancel={() => { setDeleteDialogOpen(false); setQuotationToDelete(null); }}
+        onConfirm={async () => {
+          if (!quotationToDelete || !quotationToDelete.id) return;
+          try {
+            setLoading(true);
+            const token = getToken();
+            await deleteQuotation(quotationToDelete.id, String(token || ''));
+            setQuotations(prev => prev.filter(q => q.id !== quotationToDelete.id));
+            setDeleteDialogOpen(false);
+            setQuotationToDelete(null);
+            await loadQuotationsFromAPI(); // For consistency
+          } catch (error) {
+            setDeleteDialogOpen(false);
+            setQuotationToDelete(null);
+          } finally {
+            setLoading(false);
+          }
+        }}
+        loading={loading}
       />
     </div>
   )

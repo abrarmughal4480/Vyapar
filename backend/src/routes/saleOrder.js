@@ -4,7 +4,8 @@ import {
   createSaleOrder,
   getSaleOrdersByUser,
   updateSaleOrderStatus,
-  convertSaleOrderToInvoice
+  convertSaleOrderToInvoice,
+  deleteSaleOrder
 } from '../controllers/saleOrderController.js';
 
 const router = express.Router();
@@ -17,5 +18,7 @@ router.get('/', authMiddleware, getSaleOrdersByUser);
 router.put('/:orderId/status', authMiddleware, updateSaleOrderStatus);
 // Convert to invoice
 router.post('/:orderId/convert', authMiddleware, convertSaleOrderToInvoice);
+// Delete sale order
+router.delete('/:orderId', authMiddleware, deleteSaleOrder);
 
 export default router; 

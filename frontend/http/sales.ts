@@ -48,4 +48,11 @@ export const getSalesOverview = async (userId: string, token: string) => {
     },
   });
   return data;
+};
+
+export const deleteSale = async (saleId: string, token: string) => {
+  const { data } = await api.delete(`/api/sales/${saleId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
 }; 

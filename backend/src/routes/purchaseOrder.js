@@ -7,7 +7,8 @@ import {
   convertPurchaseOrderToInvoice,
   updatePurchaseOrderTotals,
   updatePurchaseOrder,
-  fixCompletedPurchaseOrders
+  fixCompletedPurchaseOrders,
+  deletePurchaseOrder
 } from '../controllers/purchaseOrderController.js';
 
 const router = express.Router();
@@ -35,5 +36,8 @@ router.put('/:orderId', updatePurchaseOrder);
 
 // Fix completed purchase orders without invoice numbers
 router.post('/fix-completed', fixCompletedPurchaseOrders);
+
+// Delete a purchase order
+router.delete('/:orderId', deletePurchaseOrder);
 
 export default router; 

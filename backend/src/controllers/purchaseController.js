@@ -173,4 +173,19 @@ export const getPurchaseStatsByUser = async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+};
+
+// Delete a purchase by ID
+export const deletePurchase = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    const { purchaseId } = req.params;
+    const purchase = await Purchase.findOneAndDelete({ _id: purchaseId, userId });
+    if (!purchase) {
+      return res.status(404).json({ success: false, message: 'Purchase not found or not authorized' });
+    }
+    res.json({ success: true, message: 'Purchase deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 }; 

@@ -1,4 +1,5 @@
 import SaleOrder from '../models/saleOrder.js';
+import mongoose from 'mongoose';
 
 // Create a new sale order
 export const createSaleOrder = async (req, res) => {
@@ -79,9 +80,47 @@ export const convertSaleOrderToInvoice = async (req, res) => {
   }
 };
 
+// Delete a sale order by ID
+export const deleteSaleOrder = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    const { orderId } = req.params;
+    console.log("Delete sale order request: orderId =", orderId, "userId =", userId);
+    // Try to find by _id only first
+    const saleOrderById = await SaleOrder.findOne({ _id: orderId });
+    console.log("Sale order found by _id only:", saleOrderById);
+    if (saleOrderById) {
+      console.log("Sale order userId in DB:", saleOrderById.userId, "Type:", typeof saleOrderById.userId);
+      console.log("Request userId:", userId, "Type:", typeof userId);
+    }
+    // Defensive ObjectId cast
+    let objectUserId;
+    if (typeof userId === 'string' && mongoose.Types.ObjectId.isValid(userId)) {
+      objectUserId = new mongoose.Types.ObjectId(userId);
+    } else if (userId instanceof mongoose.Types.ObjectId) {
+      objectUserId = userId;
+    } else {
+      console.log("Invalid userId for ObjectId cast:", userId);
+      return res.status(400).json({ success: false, message: 'Invalid userId' });
+    }
+    const saleOrder = await SaleOrder.findOneAndDelete({ _id: orderId, userId: objectUserId });
+    if (!saleOrder) {
+      return res.status(404).json({ success: false, message: 'Sale order not found or not authorized' });
+    }
+    res.json({ success: true, message: 'Sale order deleted successfully' });
+  } catch (err) {
+    console.error('Delete sale order error:', err);
+    if (err && err.stack) {
+      console.error('Stack trace:', err.stack);
+    }
+    res.status(500).json({ success: false, message: err && err.message ? err.message : 'Internal server error', error: err });
+  }
+};
+
 export default {
   createSaleOrder,
   getSaleOrdersByUser,
   updateSaleOrderStatus,
   convertSaleOrderToInvoice,
+  deleteSaleOrder,
 }; 

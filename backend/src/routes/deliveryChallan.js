@@ -4,7 +4,8 @@ import {
   createDeliveryChallan,
   getDeliveryChallansByUser,
   updateDeliveryChallanStatus,
-  getDeliveryChallanById
+  getDeliveryChallanById,
+  deleteDeliveryChallan
 } from '../controllers/deliveryChallanController.js';
 
 const router = express.Router();
@@ -17,5 +18,7 @@ router.get('/', authMiddleware, getDeliveryChallansByUser);
 router.get('/:challanId', authMiddleware, getDeliveryChallanById);
 // Update status
 router.put('/:challanId/status', authMiddleware, updateDeliveryChallanStatus);
+// Delete delivery challan
+router.delete('/:challanId', authMiddleware, deleteDeliveryChallan);
 
 export default router; 

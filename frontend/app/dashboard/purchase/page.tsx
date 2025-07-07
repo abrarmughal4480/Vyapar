@@ -3,8 +3,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Plus, MoreVertical, Search, Filter, Download, X, ChevronDown, Calendar, Share2, Save, Info, Camera, Image, Settings } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getToken, getUserIdFromToken } from '../../lib/auth';
-import { getPurchasesByUser, getPurchaseStatsByUser } from '../../../http/purchases';
+import { getPurchasesByUser, getPurchaseStatsByUser, deletePurchase } from '../../../http/purchases';
 import { jwtDecode } from 'jwt-decode';
+import TableActionMenu from '../../components/TableActionMenu';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 // Type definitions
 interface Discount {
@@ -661,6 +663,11 @@ export default function PurchaseBillsPage() {
     };
   }, [showDateDropdown]);
 
+  // Add state for confirm dialog
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [purchaseToDelete, setPurchaseToDelete] = useState<PurchaseData | null>(null);
+
   // Fetch purchases and stats from API
   React.useEffect(() => {
     const fetchPurchases = async () => {
@@ -683,7 +690,11 @@ export default function PurchaseBillsPage() {
         // Fetch purchases
         const purchasesResponse = await getPurchasesByUser(userId, token);
         if (purchasesResponse.success) {
-          setPurchases(purchasesResponse.purchases || []);
+          const mapped = (purchasesResponse.purchases || []).map((purchase: any) => ({
+            ...purchase,
+            id: purchase._id || purchase.id,
+          }));
+          setPurchases(mapped);
         }
 
         // Fetch stats
@@ -766,6 +777,33 @@ export default function PurchaseBillsPage() {
       setDateTo('');
     }
     setShowDateDropdown(false);
+  };
+
+  // Delete handler
+  const handleDeletePurchase = (purchase: PurchaseData) => {
+    setPurchaseToDelete(purchase);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDeletePurchase = async () => {
+    if (!purchaseToDelete) return;
+    setDeleteLoading(true);
+    try {
+      const token = getToken();
+      if (!token) {
+        setDeleteLoading(false);
+        return;
+      }
+      await deletePurchase(purchaseToDelete._id, token);
+      setPurchases((prev) => prev.filter((p) => p._id !== purchaseToDelete._id));
+      setShowDeleteDialog(false);
+      setPurchaseToDelete(null);
+      // Optionally, refresh purchases from backend here
+    } catch (err: any) {
+      // Optionally, show error
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   return (
@@ -920,14 +958,14 @@ export default function PurchaseBillsPage() {
             <table className="w-full min-w-[900px]">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Bill #</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Supplier</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Date</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Invoice no</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Party Name</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Payment Type</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Amount</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Balance Due</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Paid</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Balance</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Status</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Actions</th>
+                  <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -935,12 +973,12 @@ export default function PurchaseBillsPage() {
                   <tr>
                     <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
                       Loading purchases...
-                  </td>
-                </tr>
+                    </td>
+                  </tr>
                 ) : purchases.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
-                      No purchases found. Create your first purchase bill!
+                    <td colSpan={8} className="px-6 py-8 text-center text-gray-500 text-lg font-medium">
+                      {loading ? 'Loading purchase bills...' : 'No purchase bills found. Create your first purchase!'}
                     </td>
                   </tr>
                 ) : (
@@ -964,45 +1002,54 @@ export default function PurchaseBillsPage() {
                       
                       return matchesSearch && matchesStatus;
                     })
-                    .map((purchase, index) => {
-                      const date = new Date(purchase.createdAt);
-                      const formattedDate = date.toLocaleDateString('en-GB');
-                      
-                      return (
-                        <tr key={purchase._id} className={`hover:bg-blue-50/40 transition-all ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                          <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{formattedDate}</td>
-                          <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">{purchase.billNo}</td>
-                          <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{purchase.supplierName}</td>
-                          <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{purchase.paymentType}</td>
-                          <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">PKR {purchase.grandTotal.toLocaleString()}</td>
-                          <td className="px-6 py-4 text-sm font-semibold text-orange-600 whitespace-nowrap text-center">PKR {purchase.balance.toLocaleString()}</td>
-                          <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
-                            {(() => {
-                              if (purchase.balance === 0) {
-                                return <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">Paid</span>;
-                              } else if (purchase.paid > 0) {
-                                return <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-semibold">Partial</span>;
-                              } else {
-                                return <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-xs font-semibold">Unpaid</span>;
-                              }
-                            })()}
-                          </td>
-                  <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
-                    <div className="flex justify-center gap-2">
-                      <button className="text-green-600 hover:text-green-900">View</button>
-                      <button className="text-blue-600 hover:text-blue-900">Print</button>
-                      <button className="text-gray-600 hover:text-gray-900">Share</button>
-                    </div>
-                  </td>
-                </tr>
-                      );
-                    })
+                    .map((purchase: PurchaseData, idx: number) => (
+                      <tr key={purchase._id || idx} className={`hover:bg-blue-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                        <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">
+                          {purchase.billNo}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-left">
+                          <div className="text-sm text-gray-900">{purchase.supplierName}</div>
+                          <div className="text-xs text-gray-500">{purchase.phoneNo}</div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">
+                          {purchase.createdAt ? new Date(purchase.createdAt).toLocaleDateString('en-IN') : 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">
+                          PKR {purchase.grandTotal?.toLocaleString() || '0'}
+                        </td>
+                        <td className="px-6 py-4 text-sm font-semibold text-green-700 whitespace-nowrap text-center">
+                          PKR {purchase.paid?.toLocaleString() || '0'}
+                        </td>
+                        <td className="px-6 py-4 text-sm font-semibold text-orange-700 whitespace-nowrap text-center">
+                          PKR {purchase.balance?.toLocaleString() || '0'}
+                        </td>
+                        <td className="px-6 py-4 text-sm font-semibold text-center">
+                          <span className={`px-3 py-1 text-xs font-medium rounded-full border ${purchase.balance === 0 ? 'bg-green-100 text-green-800 border-green-200' : 'bg-orange-100 text-orange-800 border-orange-200'}`}>{purchase.balance === 0 ? 'Paid' : 'Unpaid'}</span>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          <TableActionMenu
+                            onEdit={() => router.push(`/dashboard/purchaseAdd?id=${purchase._id}`)}
+                            onDelete={() => handleDeletePurchase(purchase)}
+                          />
+                        </td>
+                      </tr>
+                    ))
                 )}
               </tbody>
             </table>
           </div>
         </div>
       </div>
+      <ConfirmDialog
+        open={showDeleteDialog}
+        title="Delete Purchase Bill?"
+        description={purchaseToDelete ? `Are you sure you want to delete purchase bill ${purchaseToDelete.billNo}? This action cannot be undone.` : ''}
+        onCancel={() => setShowDeleteDialog(false)}
+        onConfirm={confirmDeletePurchase}
+        loading={deleteLoading}
+        confirmText="Delete"
+        cancelText="Cancel"
+      />
     </>
   );
 }

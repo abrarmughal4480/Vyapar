@@ -1,12 +1,13 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, BarChart3, Printer, Settings, ChevronDown, Eye, Edit, MoreHorizontal, Trash2 } from 'lucide-react';
-import { getSalesByUser, getSalesStatsByUser, getSaleById } from '@/http/sales';
+import { getSalesByUser, getSalesStatsByUser, getSaleById, deleteSale } from '@/http/sales';
 import { jwtDecode } from 'jwt-decode';
 import PaymentInModal from '../../components/PaymentInModal';
 import ReactDOM from 'react-dom';
 import { createPopper } from '@popperjs/core';
 import Toast from '../../components/Toast';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 const SaleInvoicesPage = () => {  const [filterType, setFilterType] = useState('All');
   const [firmFilter, setFirmFilter] = useState('All Firms');
@@ -65,6 +66,8 @@ const SaleInvoicesPage = () => {  const [filterType, setFilterType] = useState('
   }, []);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [saleToDelete, setSaleToDelete] = useState<any>(null);
 
   // Load transactions and stats on component mount
   useEffect(() => {
@@ -653,24 +656,10 @@ Your Business Name`;
     return newSale.items.reduce((sum, item) => sum + item.amount, 0);
   };
 
-  const handleDeleteTransaction = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this sale?')) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      // Dummy delete logic
-      setToast({ message: 'Sale deleted successfully!', type: 'success' });
-      
-      // Reload transactions and stats
-      await loadStats();
-    } catch (error) {
-      console.error('Error deleting sale:', error);
-      setToast({ message: 'Error deleting sale', type: 'error' });
-    } finally {
-      setLoading(false);
-    }
+  const handleDeleteTransaction = async (id: string) => {
+    const transaction = transactions.find((t) => t._id === id || t.id === id);
+    setSaleToDelete(transaction);
+    setDeleteDialogOpen(true);
   };
 
   const handleEditTransaction = async (transaction: any) => {
@@ -1181,7 +1170,7 @@ Your Business Name`;
                               <TableActionMenu
                                 transaction={transaction}
                                 onEdit={() => handleEditTransaction(transaction)}
-                                onDelete={() => handleDeleteTransaction(transaction.id)}
+                                onDelete={() => handleDeleteTransaction(transaction._id || transaction.id)}
                                 onReceivePayment={() => handleReceivePayment(transaction)}
                               />
                             </div>
@@ -1224,6 +1213,32 @@ Your Business Name`;
         total={typeof selectedTransaction?.grandTotal === 'number' ? selectedTransaction.grandTotal : 0}
         dueBalance={typeof selectedTransaction?.balance === 'number' ? selectedTransaction.balance : 0}
         saleId={selectedTransaction?._id || selectedTransaction?.id || ''}
+      />
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        title="Delete Sale?"
+        description={`Are you sure you want to delete sale ${saleToDelete?.invoiceNo || saleToDelete?.id || saleToDelete?._id}? This action cannot be undone.`}
+        onCancel={() => { setDeleteDialogOpen(false); setSaleToDelete(null); }}
+        onConfirm={async () => {
+          if (!saleToDelete) return;
+          try {
+            setLoading(true);
+            const token = (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+            await deleteSale(saleToDelete._id || saleToDelete.id, token);
+            // Optimistically remove from local state for instant UI
+            setTransactions(prev => prev.filter(t => (t._id || t.id) !== (saleToDelete._id || saleToDelete.id)));
+            setToast({ message: 'Sale deleted successfully!', type: 'success' });
+            // Then reload from backend for data consistency
+            await loadStats();
+          } catch (error) {
+            setToast({ message: 'Error deleting sale', type: 'error' });
+          } finally {
+            setLoading(false);
+            setDeleteDialogOpen(false);
+            setSaleToDelete(null);
+          }
+        }}
+        loading={loading}
       />
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />

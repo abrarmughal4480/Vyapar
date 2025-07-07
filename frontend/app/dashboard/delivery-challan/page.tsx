@@ -3,7 +3,9 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { getToken } from '../../lib/auth'
-import { getDeliveryChallans, updateDeliveryChallanStatus } from '../../../http/deliveryChallan'
+import { getDeliveryChallans, updateDeliveryChallanStatus, deleteDeliveryChallan } from '../../../http/deliveryChallan'
+import TableActionMenu from '../../components/TableActionMenu'
+import ConfirmDialog from '../../components/ConfirmDialog'
 
 interface DeliveryChallanItem {
   id: string
@@ -63,6 +65,9 @@ export default function DeliveryChallanPage() {
   const [dateTo, setDateTo] = useState('')
   const [showDateDropdown, setShowDateDropdown] = useState(false)
   const [filterType, setFilterType] = useState('All')
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [challanToDelete, setChallanToDelete] = useState<DeliveryChallan | null>(null)
 
   const dateRanges = [
     { value: 'All', label: 'All Time' },
@@ -81,17 +86,21 @@ export default function DeliveryChallanPage() {
       const token = getToken();
       if (!token) {
         setErrorMessage('User not authenticated');
+        setDeliveryChallans([]);
         return;
       }
-
       const result = await getDeliveryChallans(token);
       
       if (result.success && Array.isArray(result.data)) {
-        setDeliveryChallans(result.data);
-        console.log(`Loaded ${result.data.length} delivery challans successfully`);
-        console.log('Delivery challans data:', result.data);
+        const mapped = result.data.map((challan: any) => ({
+          ...challan,
+          id: challan._id || challan.id,
+        }));
+        setDeliveryChallans(mapped);
+        console.log(`Loaded ${mapped.length} delivery challans successfully`);
+        console.log('Delivery challans data:', mapped);
         // Log each challan's status and invoice number
-        result.data.forEach((challan: any, index: number) => {
+        mapped.forEach((challan: any, index: number) => {
           console.log(`Challan ${index + 1}:`, {
             id: challan.id,
             challanNumber: challan.challanNumber,
@@ -354,6 +363,34 @@ export default function DeliveryChallanPage() {
     };
   }, [fetchDeliveryChallans]);
 
+  // Delete handler
+  const handleDeleteChallan = (challan: DeliveryChallan) => {
+    setChallanToDelete(challan);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDeleteChallan = async () => {
+    if (!challanToDelete) return;
+    setDeleteLoading(true);
+    try {
+      const token = getToken();
+      if (!token) {
+        setErrorMessage('User not authenticated');
+        setDeleteLoading(false);
+        return;
+      }
+      await deleteDeliveryChallan(challanToDelete.id, token);
+      setDeliveryChallans((prev) => prev.filter((c) => c.id !== challanToDelete.id));
+      setShowDeleteDialog(false);
+      setChallanToDelete(null);
+      fetchDeliveryChallans();
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to delete delivery challan');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   if (isInitializing) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
@@ -595,12 +632,13 @@ export default function DeliveryChallanPage() {
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Amount</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Status</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Actions</th>
+                <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filteredChallans.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500 text-lg font-medium">
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500 text-lg font-medium">
                     {isLoading ? 'Loading delivery challans...' : 'No delivery challans found. Create your first challan!'}
                   </td>
                 </tr>
@@ -640,12 +678,19 @@ export default function DeliveryChallanPage() {
                           </button>
                         ) : challan.invoiceNumber ? (
                           <span className="text-green-600 text-sm font-medium">
-                            Convert to {challan.invoiceNumber}
+                            Converted to {challan.invoiceNumber}
                           </span>
                         ) : (
                           <span className="text-gray-400 text-sm">-</span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      <TableActionMenu
+                        onEdit={() => router.push(`/dashboard/delivery-challan/create?id=${challan.id}`)}
+                        onDelete={() => handleDeleteChallan(challan)}
+                        onView={() => openPreview(challan)}
+                      />
                     </td>
                   </tr>
                 ))
@@ -789,6 +834,18 @@ export default function DeliveryChallanPage() {
           </div>
         </div>
       )}
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog
+        open={showDeleteDialog}
+        title="Delete Delivery Challan?"
+        description={challanToDelete ? `Are you sure you want to delete delivery challan ${challanToDelete.challanNumber}? This action cannot be undone.` : ''}
+        onCancel={() => setShowDeleteDialog(false)}
+        onConfirm={confirmDeleteChallan}
+        loading={deleteLoading}
+        confirmText="Delete"
+        cancelText="Cancel"
+      />
     </div>
   )
 }

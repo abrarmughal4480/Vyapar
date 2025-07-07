@@ -69,4 +69,11 @@ export const fixCompletedPurchaseOrders = async (token: string) => {
     console.error('Error fixing completed purchase orders:', error);
     throw error;
   }
+};
+
+export const deletePurchaseOrderById = async (orderId: string, token: string) => {
+  const { data } = await api.delete(`/api/purchase-orders/${orderId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
 }; 

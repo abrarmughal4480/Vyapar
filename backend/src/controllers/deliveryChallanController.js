@@ -138,9 +138,25 @@ export const getDeliveryChallanById = async (req, res) => {
   }
 };
 
+// Delete a delivery challan by ID
+export const deleteDeliveryChallan = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    const { challanId } = req.params;
+    const challan = await DeliveryChallan.findOneAndDelete({ _id: challanId, userId });
+    if (!challan) {
+      return res.status(404).json({ success: false, message: 'Delivery challan not found or not authorized' });
+    }
+    res.json({ success: true, message: 'Delivery challan deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 export default {
   createDeliveryChallan,
   getDeliveryChallansByUser,
   updateDeliveryChallanStatus,
   getDeliveryChallanById,
+  deleteDeliveryChallan,
 }; 

@@ -1,5 +1,5 @@
 import express from 'express';
-import { createQuotation, getQuotationsForUser, updateQuotationStatus, fixQuotationIndexes } from '../controllers/quotationController.js';
+import { createQuotation, getQuotationsForUser, updateQuotationStatus, fixQuotationIndexes, deleteQuotation } from '../controllers/quotationController.js';
 import mongoose from 'mongoose';
 
 const router = express.Router();
@@ -10,6 +10,8 @@ router.post('/', createQuotation);
 router.get('/', getQuotationsForUser);
 // Update quotation status
 router.put('/:id/status', updateQuotationStatus);
+// Delete a quotation
+router.delete('/:id', deleteQuotation);
 
 // Temporary route to fix database indexes
 router.post('/fix-indexes', async (req, res) => {

@@ -2,8 +2,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, MoreVertical, Search, Filter, Download, X, ChevronDown, Calendar, Share2, Save, Info, Camera, Settings } from 'lucide-react';
 import { getToken } from '../../lib/auth';
-import { getUserPurchaseOrders, updatePurchaseOrder, fixCompletedPurchaseOrders } from '../../../http/purchaseOrders';
+import { getUserPurchaseOrders, updatePurchaseOrder, fixCompletedPurchaseOrders, deletePurchaseOrderById } from '../../../http/purchaseOrders';
 import { useRouter } from 'next/navigation';
+import TableActionMenu from '../../components/TableActionMenu';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 // Purchase Form Page Component
 function PurchaseFormPage({ onClose, onSave }: { onClose: () => void; onSave?: (data: any) => void }) {
@@ -1101,6 +1103,10 @@ export default function PurchaseOrderPage() {
   const [dateTo, setDateTo] = useState('');
   const dateDropdownRef = useRef<HTMLDivElement>(null);
   const dateDropdownButtonRef = useRef<HTMLButtonElement>(null);
+  // Add state for confirm dialog
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [orderToDelete, setOrderToDelete] = useState<any | null>(null);
 
   // Fetch purchase orders from database
   useEffect(() => {
@@ -1334,6 +1340,33 @@ export default function PurchaseOrderPage() {
     }
   };
 
+  // Delete handler
+  const handleDeleteOrder = (order: any) => {
+    setOrderToDelete(order);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDeleteOrder = async () => {
+    if (!orderToDelete) return;
+    setDeleteLoading(true);
+    try {
+      const token = getToken();
+      if (!token) {
+        setDeleteLoading(false);
+        return;
+      }
+      await deletePurchaseOrderById(orderToDelete._id || orderToDelete.id, token);
+      setOrders((prev) => prev.filter((o) => (o._id || o.id) !== (orderToDelete._id || orderToDelete.id)));
+      setShowDeleteDialog(false);
+      setOrderToDelete(null);
+      // Optionally, refresh orders from backend here
+    } catch (err: any) {
+      // Optionally, show error
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   if (showForm) {
     if (formType === 'purchase-order') {
       return (
@@ -1521,24 +1554,25 @@ export default function PurchaseOrderPage() {
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Balance</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Status</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Actions</th>
+                <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={9} className="px-6 py-8 text-center text-gray-500">
                     Loading orders...
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-red-500">
+                  <td colSpan={9} className="px-6 py-8 text-center text-red-500">
                     {error}
                   </td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={9} className="px-6 py-8 text-center text-gray-500">
                     No purchase orders found. Create your first purchase order!
                   </td>
                 </tr>
@@ -1609,51 +1643,65 @@ export default function PurchaseOrderPage() {
 
                     return matchesSearch && matchesStatus && matchesDate;
                   })
-                  .map((order, index) => {
-                    return (
-                      <tr key={order._id} className={`hover:bg-blue-50/40 transition-all ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                        <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">{order.orderNumber}</td>
-                        <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{order.supplierName || 'N/A'}</td>
-                        <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{order.orderDate ? new Date(order.orderDate).toLocaleDateString() : 'N/A'}</td>
-                        <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{order.dueDate ? new Date(order.dueDate).toLocaleDateString() : 'N/A'}</td>
-                        <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">PKR {order.total ? order.total.toLocaleString() : '0.00'}</td>
-                        <td className="px-6 py-4 text-sm font-semibold text-orange-600 whitespace-nowrap text-center">PKR {order.balance ? order.balance.toLocaleString() : '0.00'}</td>
-                        <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(getOrderStatus(order))}`}>{getOrderStatus(order)}</span>
-                        </td>
-                        <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
-                          <div className="flex justify-center gap-2">
-                            {getOrderStatus(order) === 'Order Completed' ? (
-                              order.invoiceNumber ? (
-                                <span className="text-blue-600 text-sm font-medium">
-                                  Converted to {order.invoiceNumber}
-                                </span>
-                              ) : (
-                                <span className="text-orange-600 text-sm font-medium">
-                                  Completed (No Invoice)
-                                </span>
-                              )
+                  .map((order, idx) => (
+                    <tr key={order._id || order.id} className={`hover:bg-blue-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                      <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">{order.orderNumber}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{order.supplierName || 'N/A'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{order.orderDate ? new Date(order.orderDate).toLocaleDateString() : 'N/A'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{order.dueDate ? new Date(order.dueDate).toLocaleDateString() : 'N/A'}</td>
+                      <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">PKR {order.total ? order.total.toLocaleString() : '0.00'}</td>
+                      <td className="px-6 py-4 text-sm font-semibold text-orange-600 whitespace-nowrap text-center">PKR {order.balance ? order.balance.toLocaleString() : '0.00'}</td>
+                      <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(getOrderStatus(order))}`}>{getOrderStatus(order)}</span>
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
+                        <div className="flex justify-center gap-2">
+                          {getOrderStatus(order) === 'Order Completed' ? (
+                            order.invoiceNumber ? (
+                              <span className="text-blue-600 text-sm font-medium">
+                                Converted to {order.invoiceNumber}
+                              </span>
                             ) : (
-                              <button 
-                                onClick={() => handleConvertToPurchase(order)}
-                                disabled={convertingOrder === order._id}
-                                className={`text-green-600 hover:text-green-800 text-sm font-medium ${
-                                  convertingOrder === order._id ? 'opacity-50 cursor-not-allowed' : ''
-                                }`}
-                              >
-                                Convert to Purchase
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
+                              <span className="text-orange-600 text-sm font-medium">
+                                Completed (No Invoice)
+                              </span>
+                            )
+                          ) : (
+                            <button 
+                              onClick={() => handleConvertToPurchase(order)}
+                              disabled={convertingOrder === order._id}
+                              className={`text-green-600 hover:text-green-800 text-sm font-medium ${convertingOrder === order._id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                              Convert to Purchase
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <TableActionMenu
+                          onEdit={() => router.push(`/dashboard/purchase-order/create?id=${order._id || order.id}`)}
+                          onDelete={() => handleDeleteOrder(order)}
+                          // onView={() => ...} // Optional: implement view modal if needed
+                        />
+                      </td>
+                    </tr>
+                  ))
               )}
             </tbody>
           </table>
         </div>
       </div>
+      {/* Add ConfirmDialog at the end */}
+      <ConfirmDialog
+        open={showDeleteDialog}
+        title="Delete Purchase Order?"
+        description={orderToDelete ? `Are you sure you want to delete purchase order ${orderToDelete.orderNumber}? This action cannot be undone.` : ''}
+        onCancel={() => setShowDeleteDialog(false)}
+        onConfirm={confirmDeleteOrder}
+        loading={deleteLoading}
+        confirmText="Delete"
+        cancelText="Cancel"
+      />
     </div>
   );
 }

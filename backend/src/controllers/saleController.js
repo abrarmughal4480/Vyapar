@@ -198,4 +198,26 @@ export const getSalesOverview = async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+};
+
+// Delete a sale by ID
+export const deleteSale = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    const { saleId } = req.params;
+    console.log('Delete sale request by user:', userId, 'for saleId:', saleId);
+    const sale = await Sale.findOne({ _id: saleId });
+    console.log('Sale found:', sale);
+    if (!sale) {
+      return res.status(404).json({ success: false, message: 'Sale not found' });
+    }
+    if (String(sale.userId) !== String(userId)) {
+      console.log('UserId mismatch:', sale.userId, '!=', userId);
+      return res.status(403).json({ success: false, message: 'Not authorized to delete this sale' });
+    }
+    await Sale.deleteOne({ _id: saleId });
+    res.json({ success: true, message: 'Sale deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 }; 

@@ -292,4 +292,19 @@ export const fixQuotationIndexes = async () => {
     console.error('Error fixing indexes:', error);
     return { success: false, message: error.message };
   }
+};
+
+// Delete a quotation by ID
+export const deleteQuotation = async (req, res) => {
+  try {
+    const userId = req.user && (req.user._id || req.user.id);
+    const { id } = req.params;
+    const quotation = await Quotation.findOneAndDelete({ _id: id, userId });
+    if (!quotation) {
+      return res.status(404).json({ success: false, message: 'Quotation not found or not authorized' });
+    }
+    res.json({ success: true, message: 'Quotation deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 }; 

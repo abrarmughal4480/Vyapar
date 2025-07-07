@@ -59,4 +59,11 @@ export const updateDeliveryChallanStatus = async (challanId: string, status: str
     console.error('Full error:', error);
     throw error;
   }
+};
+
+export const deleteDeliveryChallan = async (challanId: string, token: string) => {
+  const { data } = await api.delete(`/api/delivery-challan/${challanId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
 }; 

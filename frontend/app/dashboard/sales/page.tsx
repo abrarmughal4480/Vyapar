@@ -3,7 +3,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { getToken } from '../../lib/auth'
-import { getSaleOrders, updateSaleOrderStatus, convertSaleOrderToInvoice } from '../../../http/saleOrders'
+import { getSaleOrders, updateSaleOrderStatus, convertSaleOrderToInvoice, deleteSaleOrder } from '../../../http/saleOrders'
+import TableActionMenu from '@/app/components/TableActionMenu'
+import ConfirmDialog from '@/app/components/ConfirmDialog'
+import { deleteSale } from '@/http/sales'
 
 // Status badge component
 function StatusBadge({ status, dueDate }: { status: string, dueDate?: string }) {
@@ -80,12 +83,19 @@ function formatDate(dateString: string | null | undefined): string {
 }
 
 // Sales Orders Table
-function SalesOrderTable({ salesOrders, onUpdateStatus, onConvertToInvoice, isLoading }: { 
+function SalesOrderTable({ salesOrders, onUpdateStatus, onConvertToInvoice, isLoading, handleEditSale, handleViewSale, loadSalesOrdersFromAPI }: { 
   salesOrders: any[], 
   onUpdateStatus: (orderId: string, newStatus: string) => void,
   onConvertToInvoice: (orderId: string) => void,
-  isLoading: boolean
+  isLoading: boolean,
+  handleEditSale: (order: any) => void,
+  handleViewSale: (order: any) => void,
+  loadSalesOrdersFromAPI: () => Promise<void>,
 }) {
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [saleToDelete, setSaleToDelete] = useState<any>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   return (
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100 mb-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-6 border-b border-gray-200 gap-4">
@@ -160,12 +170,42 @@ function SalesOrderTable({ salesOrders, onUpdateStatus, onConvertToInvoice, isLo
                       )}
                     </div>
                   </td>
+                  <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
+                    <TableActionMenu
+                      onEdit={() => handleEditSale(order)}
+                      onDelete={() => { setSaleToDelete(order); setDeleteDialogOpen(true); }}
+                      onView={() => handleViewSale(order)}
+                    />
+                  </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        title="Delete Sale Order?"
+        description={`Are you sure you want to delete sale order ${saleToDelete?.orderNumber || saleToDelete?.invoiceNo || saleToDelete?.id || saleToDelete?._id}? This action cannot be undone.`}
+        onCancel={() => { setDeleteDialogOpen(false); setSaleToDelete(null); }}
+        onConfirm={async () => {
+          setDeleteLoading(true);
+          try {
+            console.log('Deleting sale order:', saleToDelete);
+            const orderId = saleToDelete?._id || saleToDelete?.id;
+            if (!orderId) throw new Error('No sale order ID found');
+            const token = getToken();
+            if (!token) return;
+            await deleteSaleOrder(orderId, token);
+            await loadSalesOrdersFromAPI();
+            setDeleteDialogOpen(false);
+            setSaleToDelete(null);
+          } finally {
+            setDeleteLoading(false);
+          }
+        }}
+        loading={deleteLoading}
+      />
     </div>
   )
 }
@@ -181,6 +221,9 @@ export default function SalesOrderPage() {
   const [filterType, setFilterType] = useState('All')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [saleToDelete, setSaleToDelete] = useState<any>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
   
   const dateRanges = [
     { value: 'All', label: 'All Time' },
@@ -325,6 +368,15 @@ export default function SalesOrderPage() {
   const completedCount = filteredSalesOrders.filter(o => o.status === 'Completed').length;
   const draftCount = filteredSalesOrders.filter(o => o.status === 'Draft').length;
   const totalValue = filteredSalesOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+
+  function handleEditSale(order: any) {
+    // Implement navigation to edit page or open modal
+    alert('Edit Sale: ' + (order?.id || order?._id));
+  }
+  function handleViewSale(order: any) {
+    // Implement navigation to view page or open modal
+    alert('View Sale: ' + (order?.id || order?._id));
+  }
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -508,6 +560,9 @@ export default function SalesOrderPage() {
         onUpdateStatus={updateOrderStatus}
         onConvertToInvoice={convertToInvoice}
         isLoading={isLoading}
+        handleEditSale={handleEditSale}
+        handleViewSale={handleViewSale}
+        loadSalesOrdersFromAPI={loadSalesOrdersFromAPI}
       />
     </div>
   )

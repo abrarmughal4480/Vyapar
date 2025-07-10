@@ -3,7 +3,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'changeme';
-const JWT_EXPIRES_IN = '7d';
+const JWT_EXPIRES_IN = '100y';
 
 const generateToken = (user) => {
   return jwt.sign(

@@ -1,5 +1,5 @@
 import express from 'express';
-import { createPurchase, getPurchasesByUser, makePayment, getPurchaseStatsByUser, deletePurchase } from '../controllers/purchaseController.js';
+import { createPurchase, getPurchasesByUser, makePayment, getPurchaseStatsByUser, deletePurchase, updatePurchase } from '../controllers/purchaseController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import Purchase from '../models/purchase.js';
 
@@ -40,5 +40,7 @@ router.post('/payment-out', makePayment);
 router.get('/stats/:userId', authMiddleware, getPurchaseStatsByUser);
 
 router.delete('/:purchaseId', authMiddleware, deletePurchase);
+
+router.put('/update/:purchaseId', authMiddleware, updatePurchase);
 
 export default router; 

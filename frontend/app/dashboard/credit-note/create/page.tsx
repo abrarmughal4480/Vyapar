@@ -1,649 +1,863 @@
-'use client'
+"use client";
+import React, { useState, useEffect, useRef, RefObject } from 'react';
+import { useRouter } from 'next/navigation';
+import { Printer, Settings, MoreHorizontal } from 'lucide-react';
+import Toast from '../../../components/Toast';
+import ReactDOM from 'react-dom';
+import { getCustomerParties, getPartyBalance } from '../../../../http/parties';
+import { getUserItems } from '../../../../http/items';
 
-import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-
-// This would be saved as: /app/dashboard/sale-order/create/page.js or /pages/dashboard/sale-order/create.js
-
-interface FormData {
-  refNo: string;
-  invoiceDate: string;
-  customer: string;
-  phone: string;
-  items: { item: string; qty: number; unit: string; price: number; amount: number }[];
-  description: string;
-  image: File | null;
-  discount: number;
-  discountType: string;
-  tax: string;
-  taxAmount: number;
+interface CreditNoteItem {
+  id: number;
+  item: string;
+  qty: string;
+  unit: string;
+  price: string;
+  amount: number;
+  customUnit: string;
 }
 
-export default function CreateSalesOrderPage() {
-  const router = useRouter()
-  const [formData, setFormData] = useState<FormData>({
-    refNo: '1',
-    invoiceDate: new Date().toISOString().split('T')[0],
-    customer: '',
-    phone: '',
-    items: [
-      { item: '', qty: 1, unit: 'NONE', price: 0, amount: 0 },
-      { item: '', qty: 1, unit: 'NONE', price: 0, amount: 0 }
-    ],
-    description: '',
-    image: null,
-    discount: 0,
-    discountType: '%',
-    tax: 'NONE',
-    taxAmount: 0
-  })
-  
-  const [searchDropdownOpen, setSearchDropdownOpen] = useState(false)
-  const [customers, setCustomers] = useState([
-    'Customer 1 - 9876543210',
-    'Customer 2 - 9876543211', 
-    'Customer 3 - 9876543212'
-  ])
-  
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [authToken, setAuthToken] = useState('')
-  const [isInitialized, setIsInitialized] = useState(false)
-  const [showDescription, setShowDescription] = useState(false)
-  const [showImage, setShowImage] = useState(false)
+type DropdownOption = { value: string; label: string };
 
-  // Unit options
-  const unitOptions = ['NONE', 'PCS', 'KG', 'METER', 'LITER', 'BOX', 'DOZEN']
-  const taxOptions = ['NONE', 'GST 5%', 'GST 12%', 'GST 18%', 'GST 28%']
+interface CustomDropdownProps {
+  options: DropdownOption[];
+  value: string;
+  onChange: (val: string) => void;
+  className?: string;
+  placeholder?: string;
+  disabled?: boolean;
+}
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-
-  // Auth check
-  const checkAuth = useCallback(() => {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-
-    const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token');
-    const userData = localStorage.getItem('user') || localStorage.getItem('vypar_user_session');
-    
-    if (!token || !userData) {
-      console.log('No authentication found, redirecting to home');
-      router.push('/');
-      return null;
-    }
-
-    try {
-      const parsedUser = JSON.parse(userData);
-      
-      if (!parsedUser.id || !parsedUser.email || parsedUser.email === 'demo@vyparr.com') {
-        console.log('Invalid or demo user data, redirecting to home');
-        router.push('/');
-        return null;
-      }
-
-      let businessId = parsedUser.businessId;
-      if (!businessId) {
-        businessId = `biz_${parsedUser.id}_${Date.now()}`;
-        parsedUser.businessId = businessId;
-        localStorage.setItem('user', JSON.stringify(parsedUser));
-        localStorage.setItem('vypar_user_session', JSON.stringify(parsedUser));
-        localStorage.setItem('businessId', businessId);
-      }
-      
-      return {
-        token,
-        user: parsedUser,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      };
-    } catch (error) {
-      console.log('Error parsing user data, redirecting to home');
-      router.push('/');
-      return null;
-    }
-  }, [router]);
+function CustomDropdown({ options, value, onChange, className = '', placeholder = 'Select', disabled = false }: CustomDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const auth = checkAuth();
-      if (auth) {
-        setAuthToken(auth.token);
-        setIsInitialized(true);
-      }
+    function handleClickOutside(event: MouseEvent) {
+      if (!ref.current) return;
+      if (!(event.target instanceof Node)) return;
+      if (!ref.current.contains(event.target as Node)) setOpen(false);
     }
-  }, [checkAuth])
+    if (open) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
 
-  const getBusinessId = useCallback(() => {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-
-    const auth = checkAuth();
-    if (auth?.user?.businessId) {
-      return auth.user.businessId;
-    }
-    
-    return localStorage.getItem('businessId');
-  }, [checkAuth]);
-
-  // Calculate amount for each item
   useEffect(() => {
-    setFormData(prev => ({
-      ...prev,
-      items: prev.items.map(item => ({
-        ...item,
-        amount: item.qty * item.price
-      }))
-    }))
-  }, [])
-
-  // Calculate totals
-  const subtotal = formData.items.reduce((sum, item) => sum + item.amount, 0)
-  const discountAmount = formData.discountType === '%' 
-    ? (subtotal * formData.discount) / 100 
-    : formData.discount
-  const totalAfterDiscount = subtotal - discountAmount
-  const taxAmount = formData.tax !== 'NONE' 
-    ? (totalAfterDiscount * parseInt(formData.tax.split(' ')[1]?.replace('%', '') || '0')) / 100 
-    : 0
-  const grandTotal = totalAfterDiscount + taxAmount
-
-  // Update item in the form
-  const updateItem = (index: number, field: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      items: prev.items.map((item, i) => {
-        if (i === index) {
-          const updatedItem = { ...item, [field]: value }
-          if (field === 'qty' || field === 'price') {
-            updatedItem.amount = updatedItem.qty * updatedItem.price
-          }
-          return updatedItem
-        }
-        return item
-      })
-    }))
-  }
-
-  // Add new row
-  const addRow = () => {
-    setFormData(prev => ({
-      ...prev,
-      items: [...prev.items, { item: '', qty: 1, unit: 'NONE', price: 0, amount: 0 }]
-    }))
-  }
-
-  // Remove row
-  const removeRow = (index: number) => {
-    if (formData.items.length > 1) {
-      setFormData(prev => ({
-        ...prev,
-        items: prev.items.filter((_, i) => i !== index)
-      }))
+    if (open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setDropdownStyle({
+        position: 'absolute',
+        top: rect.bottom + window.scrollY + 6,
+        left: rect.left + window.scrollX + rect.width / 2 - (rect.width + 40) / 2,
+        width: rect.width + 40,
+        minWidth: rect.width,
+        zIndex: 1000,
+        maxHeight: '12rem',
+        overflowY: 'auto',
+      });
     }
-  }
-
-  // Handle customer selection
-  const handleCustomerSelect = (customer: string) => {
-    const [name, phone] = customer.split(' - ')
-    setFormData(prev => ({
-      ...prev,
-      customer: name,
-      phone: phone
-    }))
-    setSearchDropdownOpen(false)
-  }
-
-  // Save sales order
-  const handleSave = async () => {
-    if (!formData.customer.trim()) {
-      setError('Customer name is required')
-      return
-    }
-
-    if (formData.items.every(item => !item.item.trim())) {
-      setError('At least one item is required')
-      return
-    }
-
-    setIsLoading(true)
-    setError('')
-
-    try {
-      const businessId = getBusinessId();
-      if (!businessId) {
-        setError('Unable to determine business ID');
-        setIsLoading(false);
-        return;
-      }
-
-      const orderPayload = {
-        customerName: formData.customer,
-        customerPhone: formData.phone,
-        items: formData.items.filter(item => item.item.trim() && item.price > 0),
-        subtotal: subtotal,
-        tax: taxAmount,
-        total: grandTotal,
-        status: 'Created',
-        date: formData.invoiceDate,
-        refNo: formData.refNo,
-        discount: discountAmount,
-        description: formData.description
-      };
-
-      // Save to localStorage
-      const localStorageKey = `vyparr_sales_orders_${businessId}`;
-      const existingOrders = JSON.parse(localStorage.getItem(localStorageKey) || '[]');
-      
-      const newOrder = {
-        ...orderPayload,
-        id: `SO-${Date.now()}`,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      const updatedOrders = [newOrder, ...existingOrders];
-      localStorage.setItem(localStorageKey, JSON.stringify(updatedOrders));
-
-      // Try to sync with API
-      try {
-        const response = await fetch(`${API_BASE_URL}/sales/orders/${businessId}`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${authToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(orderPayload)
-        });
-        
-        if (response.ok) {
-          console.log('Sales order synced with API successfully');
-        }
-      } catch (apiError) {
-        console.log('API sync failed, but order saved locally:', apiError);
-      }
-
-      alert('Sales order created successfully!')
-      router.push('/dashboard/sale-order')
-    } catch (error) {
-      setError('Failed to save sales order')
-      console.error(error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  // Handle share functionality
-  const handleShare = () => {
-    alert('Share functionality to be implemented')
-  }
+  }, [open]);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <style jsx>{`
-        @keyframes slideDown {
-          from {
-            opacity: 0;
-            transform: translateY(-10px);
+    <div ref={ref} className={`relative ${disabled ? 'opacity-60 pointer-events-none' : ''} ${className}`}> 
+      <button
+        ref={btnRef}
+        type="button"
+        className={`w-full px-3 py-2 border-2 border-blue-100 rounded-lg bg-white flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-blue-200 appearance-none transition-all ${open ? 'ring-2 ring-blue-300' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        tabIndex={0}
+      >
+        <span className="truncate text-left">{options.find((o: DropdownOption) => o.value === value)?.label || placeholder}</span>
+        <span className={`ml-2 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}>
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+        </span>
+      </button>
+      {open && typeof window !== 'undefined' && ReactDOM.createPortal(
+        <ul
+          style={dropdownStyle}
+          className="bg-white border-2 border-blue-100 rounded-lg shadow-lg animate-fadeinup custom-dropdown-scrollbar"
+          onMouseDown={e => e.preventDefault()}
+        >
+          {options.map((opt: DropdownOption) => (
+            <li
+              key={opt.value}
+              className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'}`}
+              onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); }}
+              tabIndex={0}
+              onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { if (e.key === 'Enter') { onChange(opt.value); setOpen(false); }}}
+              aria-selected={value === opt.value}
+            >
+              {opt.label}
+            </li>
+          ))}
+        </ul>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+function ItemRow({
+  item,
+  index,
+  handleItemChange,
+  fetchItemSuggestions,
+  showItemSuggestions,
+  setShowItemSuggestions,
+  itemSuggestions,
+  deleteRow,
+  newCreditNote,
+  addNewRow
+}: {
+  item: CreditNoteItem;
+  index: number;
+  handleItemChange: (id: number, field: string, value: any) => void;
+  fetchItemSuggestions: () => void;
+  showItemSuggestions: { [id: number]: boolean };
+  setShowItemSuggestions: React.Dispatch<React.SetStateAction<{ [id: number]: boolean }>>;
+  itemSuggestions: any[];
+  deleteRow: (id: number) => void;
+  newCreditNote: any;
+  addNewRow: () => void;
+}) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [dropdownStyle, setDropdownStyle] = React.useState<React.CSSProperties>({});
+
+  const handleFocus = () => {
+    fetchItemSuggestions();
+    setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: true }));
+    if (inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
+      const style: React.CSSProperties = {
+        position: 'absolute',
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.left + window.scrollX,
+        width: rect.width,
+        zIndex: 9999,
+        maxHeight: '200px',
+        overflowY: 'auto' as const
+      };
+      console.log('Setting dropdown style:', style);
+      setDropdownStyle(style);
+    }
+  };
+
+  return (
+    <tr
+      className={`border-b border-gray-100 ${index % 2 === 0 ? 'bg-white' : 'bg-blue-50'} hover:bg-blue-100 transition-colors`}
+    >
+      <td className="py-2 px-2 font-medium">{index + 1}</td>
+      <td className="py-2 px-2">
+        <input
+          ref={inputRef}
+          type="text"
+          value={item.item}
+          onChange={e => handleItemChange(item.id, 'item', e.target.value)}
+          onFocus={handleFocus}
+          onBlur={() => setTimeout(() => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false })), 200)}
+          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+          placeholder="Enter item name..."
+          autoComplete="off"
+        />
+        {showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
+          <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+            {itemSuggestions.length > 0 ? (
+              itemSuggestions
+                .filter((i: any) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()))
+                .map((i: any) => (
+                  <li
+                    key={i._id}
+                    className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
+                    onMouseDown={() => {
+                      console.log('Selected item:', i);
+                      handleItemChange(item.id, 'item', i.name);
+                      handleItemChange(item.id, 'unit', i.unit || 'NONE');
+                      handleItemChange(item.id, 'price', i.salePrice || 0);
+                      handleItemChange(item.id, 'qty', '');
+                      setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+                    }}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-gray-800">{i.name}</span>
+                      <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.openingQuantity ?? (i.stock || 0)}</span>
+                    </div>
+                  </li>
+                ))
+            ) : (
+              <li className="px-4 py-3 text-center">
+                <div className="text-gray-500 text-sm">
+                  {itemSuggestions.length === 0 ? (
+                    <div>
+                      <div className="text-gray-400 mb-1">📦</div>
+                      <div>No items available</div>
+                      <div className="text-xs text-gray-400 mt-1">Add items in the Items section first</div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="text-gray-400 mb-1">🔍</div>
+                      <div>No matching items</div>
+                      <div className="text-xs text-gray-400 mt-1">Try a different search term</div>
+                    </div>
+                  )}
+                </div>
+              </li>
+            )}
+          </ul>,
+          document.body
+        )}
+      </td>
+      <td className="py-2 px-2">
+        <input
+          type="number"
+          value={item.qty}
+          min={0}
+          onChange={e => {
+            handleItemChange(item.id, 'qty', e.target.value);
+            if (
+              index === newCreditNote.items.length - 1 &&
+              e.target.value &&
+              !newCreditNote.items.some((row: { qty?: string }, idx: number) => idx > index && !row.qty)
+            ) {
+              addNewRow();
+            }
+          }}
+          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+          autoComplete="off"
+        />
+      </td>
+      <td className="py-2 px-2">
+        <CustomDropdown
+          options={[
+            { value: item.unit, label: item.unit },
+            { value: 'Custom', label: 'Custom' }
+          ]}
+          value={item.unit}
+          onChange={val => handleItemChange(item.id, 'unit', val)}
+        />
+        {item.unit === 'Custom' && (
+                  <input
+          type="text"
+          value={item.customUnit}
+          onChange={e => handleItemChange(item.id, 'customUnit', e.target.value)}
+          className="mt-2 w-full px-3 py-2 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+          placeholder="Enter custom unit"
+          autoComplete="off"
+        />
+        )}
+      </td>
+      <td className="py-2 px-2">
+        <input
+          type="number"
+          value={item.price}
+          min={0}
+          onChange={e => handleItemChange(item.id, 'price', e.target.value)}
+          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+          autoComplete="off"
+        />
+      </td>
+      <td className="py-2 px-2">
+        <span className="text-gray-900 font-semibold">{isNaN(item.amount) ? '0.00' : item.amount.toFixed(2)} {item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? item.unit : ''}</span>
+      </td>
+      <td className="py-2 px-2 flex gap-1">
+        {newCreditNote.items.length > 1 && (
+          <button
+            type="button"
+            className="text-red-600 hover:text-red-700 px-2 py-1 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 transition-colors"
+            onClick={() => deleteRow(item.id)}
+            title="Delete row"
+          >
+            –
+          </button>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+const CreateCreditNotePage = () => {
+  const router = useRouter();
+  const [newCreditNote, setNewCreditNote] = useState({
+    partyName: '',
+    phoneNo: '',
+    items: [
+      { id: 1, item: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
+    ],
+    discount: '',
+    discountType: '%',
+    tax: '',
+    taxType: '%',
+    reason: 'Return',
+    editingId: null
+  });
+  const [showDescription, setShowDescription] = useState(false);
+  const [description, setDescription] = useState('');
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
+  const [showItemSuggestions, setShowItemSuggestions] = useState<{[id: number]: boolean}>({});
+  const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null);
+  const [formErrors, setFormErrors] = useState<any>({});
+  const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([]);
+  const [itemSuggestions, setItemSuggestions] = useState<any[]>([]);
+  const [partyBalance, setPartyBalance] = useState<number|null>(null);
+
+  // Fetch items on component mount
+  useEffect(() => {
+    const initializeData = async () => {
+      await fetchItemSuggestions();
+    };
+    initializeData();
+  }, []);
+
+  // Validation
+  const validateForm = () => {
+    const errors: any = {};
+    if (!newCreditNote.partyName) errors.partyName = 'Customer is required';
+    const validItems = newCreditNote.items.filter(item => item.item && parseFloat(item.qty) > 0 && parseFloat(item.price) > 0);
+    if (validItems.length === 0) errors.items = 'At least one valid item is required';
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // Handlers
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setNewCreditNote(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleItemChange = (id: number, field: string, value: any) => {
+    console.log(`handleItemChange called: id=${id}, field=${field}, value=${value}`);
+    setNewCreditNote(prev => {
+      const updated = {
+        ...prev,
+        items: prev.items.map(item => {
+          if (item.id === id) {
+            let updated = { ...item, [field]: value };
+            if (field === 'unit' && value !== 'Custom') {
+              updated.customUnit = '';
+            }
+            updated.amount =
+              field === 'qty' || field === 'price'
+                ? (parseFloat(field === 'qty' ? value : item.qty) || 0) * (parseFloat(field === 'price' ? value : item.price) || 0)
+                : item.amount;
+            console.log(`Updated item ${id}:`, updated);
+            return updated;
           }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-slideDown {
-          animation: slideDown 0.3s ease-out;
-        }
-      `}</style>
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button 
-                onClick={() => router.back()}
-                className="text-gray-600 hover:text-gray-800"
-              >
-                ← Back
-              </button>
-              <h1 className="text-2xl font-bold text-gray-900">Credit-Note
-              </h1>
-            </div>
-          </div>
+          return item;
+        })
+      };
+      console.log('New credit note state:', updated);
+      return updated;
+    });
+  };
+
+  const addNewRow = () => {
+    setNewCreditNote((prev: any) => ({
+      ...prev,
+      items: [
+        ...prev.items,
+        { id: Date.now(), item: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
+      ]
+    }));
+  };
+
+  const deleteRow = (id: number) => {
+    if (newCreditNote.items.length === 1) return;
+    setNewCreditNote(prev => ({ ...prev, items: prev.items.filter(item => item.id !== id) }));
+  };
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setImageUploading(true);
+      setTimeout(() => {
+        setUploadedImage(URL.createObjectURL(file));
+        setImageUploading(false);
+      }, 1000);
+    }
+  };
+
+  const removeImage = () => setUploadedImage(null);
+
+  const calculateTotal = () => newCreditNote.items.reduce((sum, item) => sum + (item.amount || 0), 0);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+    setLoading(true);
+    try {
+      const token =
+        (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+      
+      const filteredItems = newCreditNote.items.filter(
+        item =>
+          item.item &&
+          item.qty &&
+          item.price &&
+          !isNaN(Number(item.qty)) &&
+          !isNaN(Number(item.price))
+      );
+      
+      const creditNoteData = {
+        ...newCreditNote,
+        items: filteredItems,
+        description,
+        imageUrl: uploadedImage,
+        tax: newCreditNote.tax === 'NONE' || newCreditNote.tax === '' ? 0 : newCreditNote.tax,
+      };
+      
+      // Simulate API call for now
+      setTimeout(() => {
+        setToast({ message: 'Credit note created successfully!', type: 'success' });
+        setLoading(false);
+        setTimeout(() => router.push('/dashboard/credit-note'), 1500);
+      }, 1000);
+      
+    } catch (err: any) {
+      setToast({ message: err.message || 'Failed to create credit note', type: 'error' });
+      setLoading(false);
+    }
+  };
+
+  const fetchCustomerSuggestions = async () => {
+    const token =
+      (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+    const customers = await getCustomerParties(token);
+    console.log('Fetched customers:', customers);
+    setCustomerSuggestions(customers);
+  };
+
+  const fetchItemSuggestions = async () => {
+    const token =
+      (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+    if (!token) {
+      console.log('No token found for fetching items');
+      return;
+    }
+    try {
+      const response = await getUserItems(token);
+      console.log('Fetched items response:', response);
+      
+      // Handle different response formats
+      let items = [];
+      if (response && response.success && response.items) {
+        items = response.items;
+      } else if (Array.isArray(response)) {
+        items = response;
+      } else if (response && response.data) {
+        items = response.data;
+      }
+      
+      console.log('Processed items:', items);
+      // Debug: Log each item's stock value
+      if (items && items.length > 0) {
+        console.log('Sample item data:', items[0]);
+        items.forEach((item: any, index: number) => {
+          console.log(`Item ${index + 1}: ${item.name}, Stock: ${item.stock}, OpeningQuantity: ${item.openingQuantity}`);
+        });
+      }
+      setItemSuggestions(items || []);
+    } catch (error) {
+      console.error('Error fetching items:', error);
+      setItemSuggestions([]);
+    }
+  };
+
+  // Fetch party balance when partyName changes
+  useEffect(() => {
+    const fetchBalance = async () => {
+      if (!newCreditNote.partyName) {
+        setPartyBalance(null);
+        return;
+      }
+      const token =
+        (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+      try {
+        const balance = await getPartyBalance(newCreditNote.partyName, token);
+        setPartyBalance(balance);
+      } catch (err) {
+        setPartyBalance(null);
+      }
+    };
+    fetchBalance();
+  }, [newCreditNote.partyName]);
+
+  // Totals calculation
+  const subTotal = calculateTotal();
+  let discountValue = 0;
+  if (newCreditNote.discount && !isNaN(Number(newCreditNote.discount))) {
+    if (newCreditNote.discountType === '%') {
+      discountValue = subTotal * Number(newCreditNote.discount) / 100;
+    } else {
+      discountValue = Number(newCreditNote.discount);
+    }
+  }
+  let taxValue = 0;
+  if (newCreditNote.tax && !isNaN(Number(newCreditNote.tax))) {
+    if (newCreditNote.taxType === '%') {
+      taxValue = (subTotal - discountValue) * Number(newCreditNote.tax) / 100;
+    } else if (newCreditNote.taxType === 'PKR') {
+      taxValue = Number(newCreditNote.tax);
+    }
+  }
+  const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-2 sm:px-4 md:px-8">
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-6">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 flex justify-between items-center px-6 py-4">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Create Credit Note</h1>
+          <button
+            type="button"
+            onClick={() => router.push('/dashboard/credit-note')}
+            className="text-gray-400 hover:text-gray-600 text-2xl"
+            aria-label="Cancel"
+          >
+            ✕
+          </button>
         </div>
-
-        {/* Main Form */}
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          {/* Error Display */}
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-              <div className="flex items-center">
-                <span className="text-red-600 mr-2">⚠️</span>
-                <div className="text-red-800">{error}</div>
-                <button 
-                  onClick={() => setError('')}
-                  className="ml-auto text-red-600 hover:text-red-800"
-                >
-                  ✕
-                </button>
+        <form onSubmit={handleSubmit} className="divide-y divide-gray-200 w-full">
+          {/* Customer Section */}
+          <div className="bg-gray-50 px-6 py-6 w-full">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-blue-600 mb-2">Customer *</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    name="partyName"
+                    value={newCreditNote.partyName}
+                    onChange={handleInputChange}
+                    onFocus={() => {
+                      fetchCustomerSuggestions();
+                      setShowCustomerSuggestions(true);
+                    }}
+                    onBlur={() => setTimeout(() => setShowCustomerSuggestions(false), 200)}
+                    className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${formErrors.partyName ? 'border-red-300 bg-red-50' : 'border-blue-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-200 focus:outline-none`}
+                    placeholder="Search or enter customer name"
+                    autoComplete="off"
+                  />
+                  {showCustomerSuggestions && (
+                    <div className="absolute left-0 right-0 mt-1 w-full z-50">
+                      {customerSuggestions.length > 0 ? (
+                        <ul className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                          {customerSuggestions.map((c) => (
+                            <li
+                              key={c._id}
+                              className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
+                              onMouseDown={() => {
+                                setNewCreditNote(prev => ({ ...prev, partyName: c.name, phoneNo: c.phone }));
+                                setShowCustomerSuggestions(false);
+                              }}
+                            >
+                              {c.name} {c.phone && <span className="text-xs text-gray-400">({c.phone})</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="bg-white border border-blue-200 rounded-lg shadow-lg px-4 py-2 text-gray-400">No customers found.</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {partyBalance !== null && (
+                  <div className={`text-xs mt-1 font-semibold ${partyBalance < 0 ? 'text-red-600' : 'text-green-600'}`}>Balance: PKR {Math.abs(partyBalance).toLocaleString()}</div>
+                )}
+                {formErrors.partyName && <p className="text-xs text-red-500 mt-1">{formErrors.partyName}</p>}
               </div>
-            </div>
-          )}
-
-          {/* Customer and Date Section */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            {/* Customer Search */}
-            <div className="relative">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Search by Name/Phone *
-              </label>
-              <div className="relative">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
                 <input
                   type="text"
-                  value={formData.customer}
-                  onChange={(e) => {
-                    setFormData(prev => ({ ...prev, customer: e.target.value }))
-                    setSearchDropdownOpen(true)
-                  }}
-                  onFocus={() => setSearchDropdownOpen(true)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Search by Name/Phone"
+                  name="phoneNo"
+                  value={newCreditNote.phoneNo}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
+                  placeholder="Phone number"
+                  autoComplete="off"
                 />
-                <button 
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2"
-                  onClick={() => setSearchDropdownOpen(!searchDropdownOpen)}
-                >
-                  ▼
-                </button>
-                
-                {/* Dropdown */}
-                {searchDropdownOpen && (
-                  <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-lg mt-1 shadow-lg">
-                    {customers
-                      .filter(customer => 
-                        customer.toLowerCase().includes(formData.customer.toLowerCase())
-                      )
-                      .map((customer, index) => (
-                        <button
-                          key={index}
-                          className="w-full text-left px-4 py-2 hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg"
-                          onClick={() => handleCustomerSelect(customer)}
-                        >
-                          {customer}
-                        </button>
-                      ))
-                    }
-                    <button
-                      className="w-full text-left px-4 py-2 text-blue-600 hover:bg-gray-50 border-t"
-                      onClick={() => {
-                        setSearchDropdownOpen(false)
-                        // Add new customer logic here
-                      }}
-                    >
-                      + Add New Customer
-                    </button>
-                  </div>
-                )}
               </div>
-            </div>
-
-            {/* Ref No */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Ref No.</label>
-              <input
-                type="text"
-                value={formData.refNo}
-                onChange={(e) => setFormData(prev => ({ ...prev, refNo: e.target.value }))}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-
-            {/* Invoice Date */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Invoice Date</label>
-              <input
-                type="date"
-                value={formData.invoiceDate}
-                onChange={(e) => setFormData(prev => ({ ...prev, invoiceDate: e.target.value }))}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
             </div>
           </div>
 
-          {/* Items Table */}
-          <div className="mb-8">
-            <div className="overflow-x-auto">
-              <table className="w-full border border-gray-300 rounded-lg">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 w-12">#</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">ITEM</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 w-20">QTY</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 w-24">UNIT</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 w-32">PRICE/UNIT</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 w-32">AMOUNT</th>
-                    <th className="px-4 py-3 w-12"></th>
+          {/* Items Table Section */}
+          <div className={`bg-white px-6 py-6 w-full rounded-b-2xl ${formErrors.items ? 'border-2 border-red-300' : ''}`}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold text-blue-800 flex items-center gap-2">
+                <span>🛒</span> Items
+              </h2>
+              <button
+                type="button"
+                onClick={addNewRow}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-sm"
+              >
+                <span className="text-xl">+</span> Add Row
+              </button>
+            </div>
+            <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 z-10">
+                  <tr className="border-b border-gray-200 bg-blue-100">
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-8">#</th>
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700">ITEM</th>
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-20">QTY</th>
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">UNIT</th>
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">PRICE/UNIT</th>
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">AMOUNT</th>
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-8"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {formData.items.map((item, index) => (
-                    <tr key={index} className="border-t border-gray-200">
-                      <td className="px-4 py-3 text-sm">{index + 1}</td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="text"
-                          value={item.item}
-                          onChange={(e) => updateItem(index, 'item', e.target.value)}
-                          className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="Enter item name"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.qty}
-                          onChange={(e) => updateItem(index, 'qty', parseFloat(e.target.value) || 0)}
-                          className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={item.unit}
-                          onChange={(e) => updateItem(index, 'unit', e.target.value)}
-                          className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        >
-                          {unitOptions.map(unit => (
-                            <option key={unit} value={unit}>{unit}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.price}
-                          onChange={(e) => updateItem(index, 'price', parseFloat(e.target.value) || 0)}
-                          className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="0.00"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-sm font-medium">₹{item.amount.toFixed(2)}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {formData.items.length > 1 && (
-                          <button
-                            onClick={() => removeRow(index)}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </td>
-                    </tr>
+                  {newCreditNote.items.map((item, index) => (
+                    <ItemRow
+                      key={item.id}
+                      item={item}
+                      index={index}
+                      handleItemChange={handleItemChange}
+                      fetchItemSuggestions={fetchItemSuggestions}
+                      showItemSuggestions={showItemSuggestions}
+                      setShowItemSuggestions={setShowItemSuggestions}
+                      itemSuggestions={itemSuggestions}
+                      deleteRow={deleteRow}
+                      newCreditNote={newCreditNote}
+                      addNewRow={addNewRow}
+                    />
                   ))}
                 </tbody>
               </table>
             </div>
-            
-            <div className="mt-4">
-              <button
-                onClick={addRow}
-                className="px-4 py-2 text-blue-600 border border-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
-              >
-                ADD ROW
-              </button>
-            </div>
-
-            {/* Total Section */}
-            <div className="flex justify-end mt-6">
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <div className="text-right">
-                  <div className="text-2xl font-bold">TOTAL</div>
-                  <div className="text-3xl font-bold text-blue-600">₹{grandTotal.toFixed(2)}</div>
-                </div>
-              </div>
-            </div>
+            {formErrors.items && <p className="text-xs text-red-500 mt-2">{formErrors.items}</p>}
           </div>
 
-          {/* Additional Options */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            {/* Left Side - Description and Image */}
-            <div className="space-y-4">
+          {/* Image Upload & Description Section */}
+          <div className="bg-gray-50 px-6 py-6 w-full">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <button 
-                  onClick={() => setShowDescription(!showDescription)}
-                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 mb-3"
-                  type="button"
-                >
-                  <span>📝</span>
-                  <span>ADD DESCRIPTION</span>
-                  <span className={`transform transition-transform ${showDescription ? 'rotate-90' : ''}`}>▶</span>
-                </button>
-                
-                {showDescription && (
-                  <div className="mt-3 animate-slideDown">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-                    <textarea
-                      rows={4}
-                      value={formData.description}
-                      onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                      placeholder="Enter description or terms and conditions..."
+                <label className="block text-sm font-medium text-gray-700 mb-2">Add Image</label>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    id="imageUpload"
+                    disabled={imageUploading}
+                  />
+                  <label
+                    htmlFor="imageUpload"
+                    className={`flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-200 ${
+                      imageUploading
+                        ? 'border-blue-300 bg-blue-50 text-blue-700 cursor-not-allowed'
+                        : uploadedImage 
+                        ? 'border-green-500 bg-green-50 text-green-700' 
+                        : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span>{imageUploading ? '⏳' : uploadedImage ? '✅' : '🖼️'}</span>
+                    <span className="font-medium">
+                      {imageUploading ? 'Uploading...' : uploadedImage ? 'Image Added' : 'Add Image'}
+                    </span>
+                  </label>
+                  {uploadedImage && (
+                    <button
+                      type="button"
+                      onClick={removeImage}
+                      className="flex items-center gap-2 px-3 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-all duration-200"
+                    >
+                      <span>🗑️</span>
+                      <span className="font-medium">Remove</span>
+                    </button>
+                  )}
+                </div>
+                {uploadedImage && (
+                  <div className="mt-4">
+                    <img
+                      src={uploadedImage}
+                      alt="Uploaded preview"
+                      className="max-w-full sm:max-w-xs max-h-32 object-cover border border-gray-300 rounded-lg shadow-sm"
                     />
                   </div>
                 )}
               </div>
-              
               <div>
-                <button 
-                  onClick={() => setShowImage(!showImage)}
-                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 mb-3"
-                  type="button"
-                >
-                  <span>📷</span>
-                  <span>ADD IMAGE</span>
-                  <span className={`transform transition-transform ${showImage ? 'rotate-90' : ''}`}>▶</span>
-                </button>
-                
-                {showImage && (
-                  <div className="mt-3 animate-slideDown">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Upload Image</label>
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Description / Notes</label>
+                <textarea
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  placeholder="Add any additional notes or description for this credit note..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  rows={4}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Summary Section */}
+          <div className="bg-white px-6 py-8 w-full rounded-xl shadow-sm mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+              {/* Discount */}
+              <div>
+                <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                  <span>💸</span> Discount
+                </label>
+                <div className="flex flex-row items-center gap-2">
+                  <div className="flex flex-col flex-1">
+                    <div className="flex flex-row gap-2">
                       <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => setFormData(prev => ({ ...prev, image: e.target.files?.[0] || null }))}
-                        className="hidden"
-                        id="image-upload"
+                        type="number"
+                        name="discount"
+                        value={newCreditNote.discount}
+                        onChange={handleInputChange}
+                        className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        autoComplete="off"
                       />
-                      <label htmlFor="image-upload" className="cursor-pointer">
-                        <div className="text-gray-400 mb-2">
-                          <span className="text-4xl">📷</span>
-                        </div>
-                        <div className="text-sm text-gray-600">
-                          Click to upload an image
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          PNG, JPG up to 5MB
-                        </div>
-                      </label>
-                      {formData.image instanceof File && (
-                        <div className="mt-3 text-sm text-green-600">
-                          Selected: {formData.image.name}
-                        </div>
-                      )}
+                      <CustomDropdown
+                        options={[
+                          { value: '%', label: '%' },
+                          { value: 'PKR', label: '(PKR)' }
+                        ]}
+                        value={newCreditNote.discountType}
+                        onChange={val => setNewCreditNote(prev => ({ ...prev, discountType: val }))}
+                        className="w-28 min-w-[72px] mb-1 h-11"
+                      />
+                    </div>
+                    <div className="text-xs text-gray-500 min-h-[24px] mt-1">
+                      {newCreditNote.discount && !isNaN(Number(newCreditNote.discount)) ? (
+                        <>
+                          Discount: 
+                          {newCreditNote.discountType === '%'
+                            ? `${newCreditNote.discount}% = PKR ${discountValue.toFixed(2)}`
+                            : `PKR ${discountValue.toFixed(2)}`}
+                        </>
+                      ) : null}
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right Side - Discount and Tax */}
-            <div className="space-y-4">
-              <div className="flex items-center space-x-4">
-                <label className="text-sm font-medium text-gray-700">Discount</label>
-                <div className="flex items-center space-x-2">
-                  <select
-                    value={formData.discountType}
-                    onChange={(e) => setFormData(prev => ({ ...prev, discountType: e.target.value }))}
-                    className="border border-gray-300 rounded px-2 py-1"
-                  >
-                    <option value="%">%</option>
-                    <option value="Rs">Rs</option>
-                  </select>
-                  <input
-                    type="number"
-                    min="0"
-                    value={formData.discount}
-                    onChange={(e) => setFormData(prev => ({ ...prev, discount: parseFloat(e.target.value) || 0 }))}
-                    className="w-20 border border-gray-300 rounded px-2 py-1"
-                    placeholder="0"
-                  />
                 </div>
               </div>
-
-              <div className="flex items-center space-x-4">
-                <label className="text-sm font-medium text-gray-700">Tax</label>
-                <select
-                  value={formData.tax}
-                  onChange={(e) => setFormData(prev => ({ ...prev, tax: e.target.value }))}
-                  className="border border-gray-300 rounded px-3 py-2"
-                >
-                  {taxOptions.map(tax => (
-                    <option key={tax} value={tax}>{tax}</option>
-                  ))}
-                </select>
-                <span className="text-sm text-gray-600">₹{taxAmount.toFixed(2)}</span>
+              {/* Tax */}
+              <div>
+                <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                  <span>🧾</span> Tax
+                </label>
+                <div className="flex flex-row items-center gap-2">
+                  <input
+                    type="number"
+                    name="tax"
+                    value={newCreditNote.tax}
+                    onChange={handleInputChange}
+                    className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    autoComplete="off"
+                  />
+                  <CustomDropdown
+                    options={[
+                      { value: '%', label: '%' },
+                      { value: 'PKR', label: '(PKR)' }
+                    ]}
+                    value={newCreditNote.taxType || '%'}
+                    onChange={val => setNewCreditNote(prev => ({ ...prev, taxType: val }))}
+                    className="w-28 min-w-[72px] mb-1 h-11"
+                  />
+                </div>
+                <div className="text-xs text-gray-500 min-h-[24px] mt-1">
+                  {newCreditNote.tax && !isNaN(Number(newCreditNote.tax)) ? (
+                    <>
+                      Tax: {newCreditNote.taxType === '%'
+                        ? `${newCreditNote.tax}% = PKR ${taxValue.toFixed(2)}`
+                        : `PKR ${taxValue.toFixed(2)}`}
+                    </>
+                  ) : null}
+                </div>
+              </div>
+              {/* Reason */}
+              <div>
+                <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                  <span>📝</span> Reason
+                </label>
+                <div className="flex flex-col">
+                  <CustomDropdown
+                    options={[
+                      { value: 'Return', label: 'Return' },
+                      { value: 'Damage', label: 'Damage' },
+                      { value: 'Quality Issue', label: 'Quality Issue' },
+                      { value: 'Other', label: 'Other' }
+                    ]}
+                    value={newCreditNote.reason}
+                    onChange={val => setNewCreditNote(prev => ({ ...prev, reason: val }))}
+                    className="mb-1"
+                  />
+                  <div className="text-xs text-gray-500 min-h-[24px] mt-1">
+                    {/* Reserved for future info text, keeps alignment consistent */}
+                  </div>
+                </div>
+              </div>
+              {/* Totals */}
+              <div className="md:col-span-1 flex flex-col items-end gap-2">
+                <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full min-w-[220px]">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex justify-between text-xs text-gray-600">
+                      <span>Sub Total</span>
+                      <span>PKR {subTotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-600">
+                      <span>Discount</span>
+                      <span>- PKR {discountValue.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-600">
+                      <span>Tax</span>
+                      <span>+ PKR {taxValue.toFixed(2)}</span>
+                    </div>
+                    <div className="border-t border-blue-200 my-2"></div>
+                    <div className="flex justify-between text-lg font-bold text-blue-900">
+                      <span>Grand Total</span>
+                      <span>PKR {grandTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex justify-end space-x-4">
+          {/* Submit Button */}
+          <div className="flex justify-end gap-4 px-6 py-6 bg-gray-50 border-t border-gray-200 w-full">
             <button
-              onClick={handleShare}
-              className="px-6 py-3 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors flex items-center space-x-2"
+              type="submit"
+              disabled={loading}
+              className={`px-6 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
+                loading 
+                  ? 'bg-gray-400 text-white cursor-not-allowed' 
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
             >
-              <span>Share</span>
-              <span>▼</span>
-            </button>
-            
-            <button
-              onClick={handleSave}
-              disabled={isLoading || !formData.customer.trim()}
-              className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? 'Saving...' : 'Save'}
+              {loading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Creating...</span>
+                </>
+              ) : (
+                <>
+                  <span>Create Credit Note</span>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </>
+              )}
             </button>
           </div>
-        </div>
+        </form>
       </div>
     </div>
-  )
-}
+  );
+};
+
+export default CreateCreditNotePage;

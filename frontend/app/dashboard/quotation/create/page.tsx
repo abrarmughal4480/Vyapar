@@ -121,8 +121,8 @@ export default function CreateSalesOrderPage() {
     customer: '',
     phone: '',
     items: [
-      { id: 1, item: '', qty: 1, unit: 'NONE', customUnit: '', price: 0, amount: 0 },
-      { id: 2, item: '', qty: 1, unit: 'NONE', customUnit: '', price: 0, amount: 0 }
+      { id: 1, item: '', qty: 0, unit: 'NONE', customUnit: '', price: 0, amount: 0 },
+      { id: 2, item: '', qty: 0, unit: 'NONE', customUnit: '', price: 0, amount: 0 }
     ],
     description: '',
     image: null,
@@ -246,7 +246,7 @@ export default function CreateSalesOrderPage() {
       ...prev,
       items: [
         ...prev.items,
-        { id: Date.now(), item: '', qty: 1, unit: 'NONE', customUnit: '', price: 0, amount: 0 }
+        { id: Date.now(), item: '', qty: 0, unit: 'NONE', customUnit: '', price: 0, amount: 0 }
       ]
     }));
   };
@@ -453,6 +453,9 @@ export default function CreateSalesOrderPage() {
                     onBlur={() => setTimeout(() => setSearchDropdownOpen(false), 200)}
                     className="w-full px-4 py-3 border-2 border-blue-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all"
                     placeholder="Search or enter customer name"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                   />
                   {searchDropdownOpen && (
                     <div className="absolute left-0 right-0 mt-1 w-full z-50">
@@ -491,6 +494,9 @@ export default function CreateSalesOrderPage() {
                   onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
                   placeholder="Phone number"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
                 />
               </div>
             </div>
@@ -542,6 +548,9 @@ export default function CreateSalesOrderPage() {
                             onBlur={() => setTimeout(() => setShowItemSuggestions(prev => ({ ...prev, [item.id]: false })), 200)}
                             className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
                             placeholder="Enter item name..."
+                            autoComplete="off"
+                            autoCorrect="off"
+                            spellCheck={false}
                           />
                           {showItemSuggestions[item.id] && itemSuggestions.length > 0 && typeof window !== 'undefined' && ReactDOM.createPortal(
                             <ul style={dropdownStyles[item.id] || {}} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto z-[1000]" >
@@ -553,12 +562,17 @@ export default function CreateSalesOrderPage() {
                                     className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
                                     onMouseDown={() => {
                                       updateItem(item.id, 'item', i.name);
-                                      updateItem(item.id, 'unit', i.unit);
-                                      updateItem(item.id, 'price', i.salePrice);
+                                      updateItem(item.id, 'unit', i.unit || 'NONE');
+                                      updateItem(item.id, 'price', i.salePrice || 0);
+                                      // Keep quantity empty when item is selected
+                                      updateItem(item.id, 'qty', 0);
                                       setShowItemSuggestions(prev => ({ ...prev, [item.id]: false }));
                                     }}
                                   >
-                                    {i.name} <span className="text-xs text-gray-400">({i.unit}, PKR {i.salePrice})</span>
+                                    <div className="flex justify-between items-center">
+                                      <span className="font-medium text-gray-800">{i.name}</span>
+                                      <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.openingQuantity ?? (i.stock || 0)}</span>
+                                    </div>
                                   </li>
                                 ))}
                             </ul>,
@@ -571,8 +585,22 @@ export default function CreateSalesOrderPage() {
                           type="number"
                           min="0"
                           value={item.qty}
-                          onChange={(e) => updateItem(item.id, 'qty', parseFloat(e.target.value) || 0)}
+                          onChange={(e) => {
+                            updateItem(item.id, 'qty', parseFloat(e.target.value) || 0);
+                            // If this is the last row and qty is not empty, add a new row
+                            if (
+                              index === formData.items.length - 1 &&
+                              e.target.value &&
+                              !formData.items.some((row: { qty?: number }, idx: number) => idx > index && !row.qty)
+                            ) {
+                              // Add a new row
+                              addRow();
+                            }
+                          }}
                           className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                          autoComplete="off"
+                          autoCorrect="off"
+                          spellCheck={false}
                         />
                       </td>
                       <td className="py-2 px-2">
@@ -580,6 +608,9 @@ export default function CreateSalesOrderPage() {
                           value={item.unit}
                           onChange={(e) => updateItem(item.id, 'unit', e.target.value)}
                           className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                          autoComplete="off"
+                          autoCorrect="off"
+                          spellCheck={false}
                         >
                           {unitOptions.map(unit => (
                             <option key={unit} value={unit}>{unit}</option>
@@ -594,6 +625,9 @@ export default function CreateSalesOrderPage() {
                           value={item.price}
                           onChange={(e) => updateItem(item.id, 'price', parseFloat(e.target.value) || 0)}
                           className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                          autoComplete="off"
+                          autoCorrect="off"
+                          spellCheck={false}
                         />
                       </td>
                       <td className="py-2 px-2">
@@ -677,6 +711,9 @@ export default function CreateSalesOrderPage() {
                   placeholder="Add any additional notes or description for this quotation..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                   rows={4}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
                 />
               </div>
             </div>
@@ -698,6 +735,9 @@ export default function CreateSalesOrderPage() {
                         value={formData.discount}
                         onChange={(e) => setFormData(prev => ({ ...prev, discount: parseFloat(e.target.value) || 0 }))}
                         className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        spellCheck={false}
                       />
                       <CustomDropdown
                         options={[
@@ -734,6 +774,9 @@ export default function CreateSalesOrderPage() {
                     value={formData.tax}
                     onChange={(e) => setFormData(prev => ({ ...prev, tax: e.target.value }))}
                     className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                   />
                   <CustomDropdown
                     options={[

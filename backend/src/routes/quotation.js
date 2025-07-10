@@ -1,6 +1,7 @@
 import express from 'express';
-import { createQuotation, getQuotationsForUser, updateQuotationStatus, fixQuotationIndexes, deleteQuotation } from '../controllers/quotationController.js';
+import { createQuotation, getQuotationsForUser, updateQuotationStatus, fixQuotationIndexes, deleteQuotation, updateQuotation } from '../controllers/quotationController.js';
 import mongoose from 'mongoose';
+import authMiddleware from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
 
@@ -23,5 +24,7 @@ router.post('/fix-indexes', async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
+router.put('/update/:quotationId', authMiddleware, updateQuotation);
 
 export default router; 

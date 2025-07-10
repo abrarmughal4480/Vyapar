@@ -2,8 +2,9 @@
 import Header from '../components/Header'
 import Sidebar from '../components/Sidebar'
 import BottomNavigation from '../components/BottomNavigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { SidebarContext } from '../contexts/SidebarContext'
+import { useRouter } from 'next/navigation'
 
 export default function DashboardLayout({
   children,
@@ -11,6 +12,13 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const router = useRouter();
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) {
+      router.replace('/');
+    }
+  }, [router]);
   return (
     <SidebarContext.Provider value={{ isCollapsed, setIsCollapsed }}>
       <div className="min-h-screen bg-gray-50">

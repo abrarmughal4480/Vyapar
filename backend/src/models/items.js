@@ -10,7 +10,13 @@ const itemSchema = new mongoose.Schema({
   purchasePrice: { type: Number },
   stock: { type: Number },
   minStock: { type: Number },
-  unit: { type: String },
+  unit: {
+    base: { type: String },
+    secondary: { type: String },
+    conversionFactor: { type: Number },
+    customBase: { type: String },
+    customSecondary: { type: String }
+  },
   sku: { type: String },
   description: { type: String },
   supplier: { type: String },
@@ -20,7 +26,8 @@ const itemSchema = new mongoose.Schema({
   openingQuantity: { type: Number },
   atPrice: { type: Number },
   asOfDate: { type: String },
-  location: { type: String }
+  location: { type: String },
+  wholesalePrice: { type: Number }
 });
 
 itemSchema.index({ userId: 1, itemId: 1 }, { unique: true });

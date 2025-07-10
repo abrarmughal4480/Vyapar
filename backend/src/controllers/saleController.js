@@ -2,6 +2,15 @@ import Sale from '../models/sale.js';
 import Item from '../models/items.js';
 import mongoose from 'mongoose';
 
+function getUnitDisplay(unit) {
+  if (!unit) return '';
+  const base = unit.base === 'custom' ? unit.customBase : unit.base;
+  const secondary = unit.secondary && unit.secondary !== 'None'
+    ? (unit.secondary === 'custom' ? unit.customSecondary : unit.secondary)
+    : '';
+  return secondary ? `${base} / ${secondary}` : base;
+}
+
 export const createSale = async (req, res) => {
   try {
     const { partyName, items } = req.body;
@@ -67,6 +76,14 @@ export const createSale = async (req, res) => {
     });
     await sale.save();
     
+    // Map unit fields for frontend
+    const saleObj = sale.toObject();
+    if (Array.isArray(saleObj.items)) {
+      saleObj.items = saleObj.items.map(item => ({
+        ...item,
+        unit: typeof item.unit === 'object' ? getUnitDisplay(item.unit) : item.unit
+      }));
+    }
     // If this sale was converted from a sales order, update the order status
     if (req.body.sourceOrderId) {
       try {
@@ -96,7 +113,7 @@ export const createSale = async (req, res) => {
       console.error('Failed to update party openingBalance:', err);
     }
     console.log(`Successfully created sale invoice for user: ${sale.userId}`);
-    res.status(201).json({ success: true, sale });
+    res.status(201).json({ success: true, sale: saleObj });
   } catch (err) {
     console.error('Sale creation error:', err);
     console.error('Request body:', req.body);
@@ -109,7 +126,17 @@ export const getSalesByUser = async (req, res) => {
     const { userId } = req.params;
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
     const sales = await Sale.find({ userId }).sort({ createdAt: -1 });
-    res.json({ success: true, sales });
+    const salesWithUnitString = sales.map(sale => {
+      const saleObj = sale.toObject();
+      if (Array.isArray(saleObj.items)) {
+        saleObj.items = saleObj.items.map(item => ({
+          ...item,
+          unit: typeof item.unit === 'object' ? getUnitDisplay(item.unit) : item.unit
+        }));
+      }
+      return saleObj;
+    });
+    res.json({ success: true, sales: salesWithUnitString });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -220,4 +247,86 @@ export const deleteSale = async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+};
+
+// Update a sale (full edit)
+export const updateSale = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    const { saleId } = req.params;
+    const updateData = req.body;
+
+    // 1. Fetch old sale
+    const oldSale = await Sale.findOne({ _id: saleId, userId });
+    if (!oldSale) return res.status(404).json({ success: false, message: 'Sale not found' });
+
+    // 2. Calculate new grandTotal
+    const items = updateData.items || [];
+    const subTotal = items.reduce((sum, item) => sum + (item.amount || 0), 0);
+    let discountValue = 0;
+    if (updateData.discount && !isNaN(Number(updateData.discount))) {
+      if (updateData.discountType === '%') {
+        discountValue = subTotal * Number(updateData.discount) / 100;
+      } else {
+        discountValue = Number(updateData.discount);
+      }
+    }
+    let taxType = updateData.taxType || '%';
+    let tax = updateData.tax || 0;
+    let taxValue = 0;
+    if (taxType === '%') {
+      taxValue = (subTotal - discountValue) * Number(tax) / 100;
+    } else if (taxType === 'PKR') {
+      taxValue = Number(tax);
+    }
+    const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
+
+    // 3. Update party balances
+    const Party = (await import('../models/parties.js')).default;
+    if (oldSale.partyName !== updateData.partyName) {
+      // Old party: minus old grandTotal
+      const oldParty = await Party.findOne({ name: oldSale.partyName, user: userId });
+      if (oldParty) {
+        oldParty.openingBalance = (oldParty.openingBalance || 0) - (oldSale.grandTotal || 0);
+        await oldParty.save();
+      }
+      // New party: plus new grandTotal
+      const newParty = await Party.findOne({ name: updateData.partyName, user: userId });
+      if (newParty) {
+        newParty.openingBalance = (newParty.openingBalance || 0) + grandTotal;
+        await newParty.save();
+      }
+    } else {
+      // Same party: adjust by difference
+      const party = await Party.findOne({ name: updateData.partyName, user: userId });
+      if (party) {
+        party.openingBalance = (party.openingBalance || 0) - (oldSale.grandTotal || 0) + grandTotal;
+        await party.save();
+      }
+    }
+
+    // 4. Update sale
+    // Calculate new balance
+    let received = typeof updateData.received === 'number' ? updateData.received : (oldSale.received || 0);
+    const balance = grandTotal - received;
+    const sale = await Sale.findOneAndUpdate(
+      { _id: saleId, userId },
+      { ...updateData, grandTotal, balance, updatedAt: new Date() },
+      { new: true }
+    );
+    if (!sale) return res.status(404).json({ success: false, message: 'Sale not found' });
+    res.json({ success: true, data: sale });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+export default {
+  createSale,
+  getSalesByUser,
+  receivePayment,
+  getSalesStatsByUser,
+  getSalesOverview,
+  deleteSale,
+  updateSale,
 }; 

@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Printer, Settings, MoreHorizontal } from 'lucide-react';
 import Toast from '../../../components/Toast';
 import ReactDOM from 'react-dom';
-import { createSale } from '../../../../http/sales';
+import { createSale, updateSale, getSaleById } from '../../../../http/sales';
 import { getCustomerParties, getPartyBalance } from '../../../../http/parties';
 import { getUserItems } from '../../../../http/items';
 import api from '../../../../http/api';
@@ -104,6 +104,15 @@ function CustomDropdown({ options, value, onChange, className = '', placeholder 
   );
 }
 
+function getUnitDisplay(unit: any) {
+  if (!unit) return '';
+  const base = unit.base === 'custom' ? unit.customBase : unit.base;
+  const secondary = unit.secondary && unit.secondary !== 'None'
+    ? (unit.secondary === 'custom' ? unit.customSecondary : unit.secondary)
+    : '';
+  return secondary ? `${base} / ${secondary}` : base;
+}
+
 function ItemRow({
   item,
   index,
@@ -113,7 +122,8 @@ function ItemRow({
   setShowItemSuggestions,
   itemSuggestions,
   deleteRow,
-  newSale
+  newSale,
+  addNewRow
 }: {
   item: SaleItem;
   index: number;
@@ -124,6 +134,7 @@ function ItemRow({
   itemSuggestions: any[];
   deleteRow: (id: number) => void;
   newSale: any;
+  addNewRow: () => void;
 }) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [dropdownStyle, setDropdownStyle] = React.useState<React.CSSProperties>({});
@@ -162,6 +173,7 @@ function ItemRow({
           onBlur={() => setTimeout(() => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false })), 200)}
           className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
           placeholder="Enter item name..."
+          autoComplete="off"
         />
         {showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
           <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
@@ -175,31 +187,20 @@ function ItemRow({
                     className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
                   onMouseDown={() => {
                     console.log('Selected item:', i);
+                    console.log('Setting quantity to stock value for item ID:', item.id);
                     handleItemChange(item.id, 'item', i.name);
-                    // Map the unit to dropdown options
-                    let mappedUnit = 'NONE';
-                    if (i.unit) {
-                      const unitMap: { [key: string]: string } = {
-                        'Piece': 'PCS',
-                        'Kg': 'KG',
-                        'Gram': 'KG',
-                        'Liter': 'LITER',
-                        'Meter': 'METER',
-                        'Box': 'BOX',
-                        'Packet': 'PACKET',
-                        'Dozen': 'DOZEN',
-                        'Unit': 'UNIT'
-                      };
-                      mappedUnit = unitMap[i.unit] || i.unit.toUpperCase();
-                    }
-                    handleItemChange(item.id, 'unit', mappedUnit);
+                    // Set the unit to the item's unit string from backend
+                    handleItemChange(item.id, 'unit', i.unit || 'NONE');
                     handleItemChange(item.id, 'price', i.salePrice || 0);
+                    // Keep quantity empty when item is selected
+                    handleItemChange(item.id, 'qty', '');
+                    console.log('Quantity should now be stock value for item:', item.id);
                     setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                   }}
                 >
                     <div className="flex justify-between items-center">
                       <span className="font-medium text-gray-800">{i.name}</span>
-                      <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock || 0}</span>
+                      <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.openingQuantity ?? (i.stock || 0)}</span>
                     </div>
                 </li>
                 ))
@@ -231,17 +232,26 @@ function ItemRow({
           type="number"
           value={item.qty}
           min={0}
-          onChange={e => handleItemChange(item.id, 'qty', e.target.value)}
+          onChange={e => {
+            handleItemChange(item.id, 'qty', e.target.value);
+            // If this is the last row and qty is not empty, add a new row
+            if (
+              index === newSale.items.length - 1 &&
+              e.target.value &&
+              !newSale.items.some((row: { qty?: string }, idx: number) => idx > index && !row.qty)
+            ) {
+              // Add a new row
+              addNewRow();
+            }
+          }}
           className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+          autoComplete="off"
         />
       </td>
       <td className="py-2 px-2">
         <CustomDropdown
           options={[
-            { value: 'NONE', label: 'NONE' },
-            { value: 'KG', label: 'KG' },
-            { value: 'PCS', label: 'PCS' },
-            { value: 'BOX', label: 'BOX' },
+            { value: item.unit, label: item.unit },
             { value: 'Custom', label: 'Custom' }
           ]}
           value={item.unit}
@@ -254,6 +264,7 @@ function ItemRow({
             onChange={e => handleItemChange(item.id, 'customUnit', e.target.value)}
             className="mt-2 w-full px-3 py-2 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
             placeholder="Enter custom unit"
+            autoComplete="off"
           />
         )}
       </td>
@@ -264,6 +275,7 @@ function ItemRow({
           min={0}
           onChange={e => handleItemChange(item.id, 'price', e.target.value)}
           className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+          autoComplete="off"
         />
       </td>
       <td className="py-2 px-2">
@@ -291,8 +303,7 @@ const AddSalePage = () => {
     partyName: '',
     phoneNo: '',
     items: [
-      { id: 1, item: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 },
-      { id: 2, item: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
+      { id: 1, item: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
     ],
     discount: '',
     discountType: '%',
@@ -468,32 +479,33 @@ const AddSalePage = () => {
   };
 
   const handleItemChange = (id: number, field: string, value: any) => {
-    setNewSale(prev => ({
-      ...prev,
-      items: prev.items.map(item => {
-        if (item.id === id) {
-          let updated = { ...item, [field]: value };
-          if (field === 'unit' && value !== 'Custom') {
-            updated.customUnit = '';
+    console.log(`handleItemChange called: id=${id}, field=${field}, value=${value}`);
+    setNewSale(prev => {
+      const updated = {
+        ...prev,
+        items: prev.items.map(item => {
+          if (item.id === id) {
+            let updated = { ...item, [field]: value };
+            if (field === 'unit' && value !== 'Custom') {
+              updated.customUnit = '';
+            }
+            updated.amount =
+              field === 'qty' || field === 'price'
+                ? (parseFloat(field === 'qty' ? value : item.qty) || 0) * (parseFloat(field === 'price' ? value : item.price) || 0)
+                : item.amount;
+            console.log(`Updated item ${id}:`, updated);
+            return updated;
           }
-          updated.amount =
-            field === 'qty' || field === 'price'
-              ? (parseFloat(field === 'qty' ? value : item.qty) || 0) * (parseFloat(field === 'price' ? value : item.price) || 0)
-              : item.amount;
-          return updated;
-        }
-        return item;
-      })
-    }));
+          return item;
+        })
+      };
+      console.log('New sale state:', updated);
+      return updated;
+    });
   };
 
   const addNewRow = () => {
-    const lastItem = newSale.items[newSale.items.length - 1];
-    if (!lastItem.item || !lastItem.qty || !lastItem.price) {
-      setToast({ message: 'Please fill the last row before adding a new one.', type: 'error' });
-      return;
-    }
-    setNewSale(prev => ({
+    setNewSale((prev: any) => ({
       ...prev,
       items: [
         ...prev.items,
@@ -547,7 +559,12 @@ const AddSalePage = () => {
         sourceOrderId, // Include the original order ID
         sourceOrderNumber // Include the original order number
       };
-      const result = await createSale(saleData, token);
+      let result;
+      if (newSale.editingId) {
+        result = await updateSale(newSale.editingId, saleData, token);
+      } else {
+        result = await createSale(saleData, token);
+      }
       if (result.success && result.sale && result.sale._id) {
         setInvoiceNo(result.sale.invoiceNo || null);
         
@@ -682,6 +699,13 @@ const AddSalePage = () => {
       }
       
       console.log('Processed items:', items);
+      // Debug: Log each item's stock value
+      if (items && items.length > 0) {
+        console.log('Sample item data:', items[0]);
+        items.forEach((item: any, index: number) => {
+          console.log(`Item ${index + 1}: ${item.name}, Stock: ${item.stock}, OpeningQuantity: ${item.openingQuantity}`);
+        });
+      }
       setItemSuggestions(items || []);
     } catch (error) {
       console.error('Error fetching items:', error);
@@ -703,8 +727,7 @@ const AddSalePage = () => {
             partyName: parsedData.partyName || '',
             phoneNo: parsedData.phoneNo || '',
             items: parsedData.items || [
-              { id: 1, item: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 },
-              { id: 2, item: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
+              { id: 1, item: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
             ],
             discount: parsedData.discount || '',
             discountType: parsedData.discountType || '%',
@@ -784,6 +807,43 @@ const AddSalePage = () => {
   const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
 
   // UI
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const editId = urlParams.get('editId');
+      if (editId) {
+        const token = localStorage.getItem('token') || '';
+        getSaleById(editId, token).then(result => {
+          if (result && result.success && result.sale) {
+            const saleData = result.sale;
+            setNewSale({
+              partyName: saleData.partyName || '',
+              phoneNo: saleData.phoneNo || '',
+              items: Array.isArray(saleData.items) ? saleData.items.map((item: any, idx: number) => ({
+                id: idx + 1,
+                item: item.item || '',
+                qty: item.qty || '',
+                unit: item.unit || 'NONE',
+                customUnit: item.customUnit || '',
+                price: item.price || '',
+                amount: item.amount || 0
+              })) : [],
+              discount: saleData.discount || '',
+              discountType: saleData.discountType || '%',
+              tax: saleData.tax || '',
+              taxType: saleData.taxType || '%',
+              paymentType: saleData.paymentType || 'Credit',
+              editingId: saleData._id || saleData.id || null
+            });
+            setDescription(saleData.description || '');
+            setUploadedImage(saleData.imageUrl || null);
+            setSaleStatus(saleData.status || 'Draft');
+          }
+        });
+      }
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-2 sm:px-4 md:px-8">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
@@ -833,6 +893,7 @@ const AddSalePage = () => {
                     onBlur={() => setTimeout(() => setShowCustomerSuggestions(false), 200)}
                     className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${formErrors.partyName ? 'border-red-300 bg-red-50' : 'border-blue-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-200 focus:outline-none`}
                     placeholder="Search or enter customer name"
+                    autoComplete="off"
                   />
                   {showCustomerSuggestions && (
                     <div className="absolute left-0 right-0 mt-1 w-full z-50">
@@ -871,6 +932,7 @@ const AddSalePage = () => {
                   onChange={handleInputChange}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
                   placeholder="Phone number"
+                  autoComplete="off"
                 />
               </div>
             </div>
@@ -916,6 +978,7 @@ const AddSalePage = () => {
                       itemSuggestions={itemSuggestions}
                       deleteRow={deleteRow}
                       newSale={newSale}
+                      addNewRow={addNewRow}
                     />
                   ))}
                 </tbody>
@@ -1004,6 +1067,7 @@ const AddSalePage = () => {
                         value={newSale.discount}
                         onChange={handleInputChange}
                         className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        autoComplete="off"
                       />
                       <CustomDropdown
                         options={[
@@ -1040,6 +1104,7 @@ const AddSalePage = () => {
                     value={newSale.tax}
                     onChange={handleInputChange}
                     className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    autoComplete="off"
                   />
                   <CustomDropdown
                     options={[

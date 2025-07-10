@@ -117,10 +117,39 @@ export const deleteSaleOrder = async (req, res) => {
   }
 };
 
+// Update a sale order by ID
+export const updateSaleOrder = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    const { orderId } = req.params;
+    const updateData = req.body;
+    // Only allow updating certain fields
+    const allowedFields = [
+      'customerName', 'customerPhone', 'customerAddress', 'items',
+      'subtotal', 'tax', 'total', 'balance', 'status', 'orderDate', 'dueDate'
+    ];
+    const update = {};
+    for (const key of allowedFields) {
+      if (updateData[key] !== undefined) update[key] = updateData[key];
+    }
+    update.updatedAt = new Date();
+    const saleOrder = await SaleOrder.findOneAndUpdate(
+      { _id: orderId, userId },
+      update,
+      { new: true }
+    );
+    if (!saleOrder) return res.status(404).json({ success: false, message: 'Sale order not found' });
+    res.json({ success: true, data: saleOrder });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
 export default {
   createSaleOrder,
   getSaleOrdersByUser,
   updateSaleOrderStatus,
   convertSaleOrderToInvoice,
   deleteSaleOrder,
+  updateSaleOrder,
 }; 

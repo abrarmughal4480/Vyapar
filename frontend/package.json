@@ -1,13 +1,16 @@
 {
-  "name": "vypar-app",
+  "name": "devease-digital",
   "version": "0.1.0",
   "private": true,
+  "description": "Devease Digital Business Manager",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "export": "next export",
     "lint": "next lint",
-    "tauri": "tauri dev",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
   },
   "dependencies": {
@@ -19,6 +22,7 @@
     "@radix-ui/react-select": "^2.2.5",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tabs": "^1.1.12",
+    "@tauri-apps/api": "^1.6.0",
     "axios": "^1.9.0",
     "class-variance-authority": "^0.7.1",
     "cloudinary": "^2.7.0",
@@ -46,6 +50,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0-rc.18",
     "@types/node": "^20.19.1",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",

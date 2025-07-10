@@ -188,4 +188,31 @@ export const deletePurchase = async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+};
+
+// Update a purchase (full edit)
+export const updatePurchase = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    const { purchaseId } = req.params;
+    const updateData = req.body;
+    const purchase = await Purchase.findOneAndUpdate(
+      { _id: purchaseId, userId },
+      { ...updateData, updatedAt: new Date() },
+      { new: true }
+    );
+    if (!purchase) return res.status(404).json({ success: false, message: 'Purchase not found' });
+    res.json({ success: true, data: purchase });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+export default {
+  createPurchase,
+  getPurchasesByUser,
+  makePayment,
+  getPurchaseStatsByUser,
+  deletePurchase,
+  updatePurchase,
 }; 

@@ -43,7 +43,7 @@ export default function SettingsPage() {
     name: 'John Doe',
     email: 'john@example.com',
     phone: '+91 98765 43210',
-    businessName: 'Vyapar Business',
+    businessName: 'Devease Digital Business',
     businessType: 'Retail',
     gstNumber: '27AABCU9603R1ZX',
     address: '123 Business Street',
@@ -195,7 +195,6 @@ export default function SettingsPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        setIsLoading(true)
         const auth = checkAuth()
         
         // Load user profile with fallback
@@ -223,8 +222,6 @@ export default function SettingsPage() {
       } catch (error) {
         console.error('Failed to load data:', error)
         // Continue with default data
-      } finally {
-        setIsLoading(false)
       }
     }
     
@@ -240,7 +237,6 @@ export default function SettingsPage() {
   }
 
   const handleSaveSettings = async () => {
-    setIsLoading(true)
     try {
       const auth = checkAuth()
       const result = await makeApiCall(`/settings/${auth.user.businessId}`, {
@@ -260,8 +256,6 @@ export default function SettingsPage() {
       console.error('Failed to save settings:', error)
       // Still mark as saved locally
       setHasUnsavedChanges(false)
-    } finally {
-      setIsLoading(false)
     }
   }
 
@@ -290,7 +284,6 @@ export default function SettingsPage() {
   }
 
   const handleExportData = async (format: string) => {
-    setIsLoading(true)
     try {
       const auth = checkAuth()
       const result = await makeApiCall(`/settings/export/${auth.user.businessId}`)
@@ -325,10 +318,8 @@ export default function SettingsPage() {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-    } finally {
-      setIsLoading(false)
-      setShowExportData(false)
     }
+    setShowExportData(false)
   }
 
   const handleRestoreData = () => {

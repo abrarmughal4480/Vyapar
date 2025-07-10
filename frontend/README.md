@@ -2,7 +2,7 @@
 
 This is the frontend (Next.js) for the Vyparr business management app.
 
-# Vypar - Business Management App
+# Devease Digital - Business Management App
 
 A complete business management solution built with Next.js 14 and TypeScript.
 

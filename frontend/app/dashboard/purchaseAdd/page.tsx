@@ -893,12 +893,14 @@ export default function AddPurchasePage() {
                                           }
                                           handleItemChange(item.id, 'unit', mappedUnit);
                                           handleItemChange(item.id, 'price', i.purchasePrice || 0);
+                                          // Keep quantity empty when item is selected
+                                          handleItemChange(item.id, 'qty', '');
                                           setShowItemSuggestions(prev => ({ ...prev, [item.id]: false }));
                                         }}
                                       >
                                                           <div className="flex justify-between items-center">
                         <span className="font-medium text-gray-800">{i.name}</span>
-                        <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.purchasePrice || 0} • Qty: {i.stock || 0}</span>
+                        <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.purchasePrice || 0} • Qty: {i.openingQuantity ?? (i.stock || 0)}</span>
                       </div>
                                       </li>
                                       ))
@@ -930,7 +932,18 @@ export default function AddPurchasePage() {
                                 type="number"
                                 value={item.qty}
                                 min={0}
-                                onChange={e => handleItemChange(item.id, 'qty', e.target.value)}
+                                onChange={e => {
+                                  handleItemChange(item.id, 'qty', e.target.value);
+                                  // If this is the last row and qty is not empty, add a new row
+                                  if (
+                                    index === newPurchase.items.length - 1 &&
+                                    e.target.value &&
+                                    !newPurchase.items.some((row: { qty?: string }, idx: number) => idx > index && !row.qty)
+                                  ) {
+                                    // Add a new row
+                                    addNewRow();
+                                  }
+                                }}
                                 className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
                               />
                             </td>

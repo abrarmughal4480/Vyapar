@@ -17,8 +17,8 @@ export default function Header() {
     localStorage.removeItem('businessName');
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    localStorage.removeItem('vypar_auth_token');
-    localStorage.removeItem('vypar_user_session');
+    localStorage.removeItem('devease_auth_token');
+    localStorage.removeItem('devease_user_session');
     localStorage.removeItem('businessId');
     router.push('/');
   };
@@ -27,9 +27,7 @@ export default function Header() {
     <header className="bg-white shadow-sm border-b border-gray-200 px-4 py-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">V</span>
-          </div>
+          <img src="/devease_logo.svg" alt="Logo" className="w-8 h-8 object-contain rounded-lg bg-white" />
           <div>
             <h1 className="font-semibold text-gray-900">{businessName}</h1>
             <p className="text-xs text-gray-500">Business Dashboard</p>

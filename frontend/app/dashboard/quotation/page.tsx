@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation'
 import ReactDOM from 'react-dom'
 import { getQuotationsForUser, deleteQuotation } from '../../../http/quotations'
 import { getToken } from '../../lib/auth'
-import TableActionMenu from '@/app/components/TableActionMenu'
-import ConfirmDialog from '@/app/components/ConfirmDialog'
+import TableActionMenu from '@/components/TableActionMenu'
+import ConfirmDialog from '@/components/ConfirmDialog'
 
-// Vyapar-style status badge component
+// Devease Digital-style status badge component
 function StatusBadge({ status }: { status: string }) {
   const color = {
     Sent: 'bg-blue-100 text-blue-800',
@@ -232,7 +232,7 @@ export default function QuotationPage() {
   const [viewQuotation, setViewQuotation] = useState<any>(null)
   
   // API related state
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   // Search and filter state
@@ -322,7 +322,6 @@ export default function QuotationPage() {
   }, []);
 
   const loadQuotationsFromAPI = useCallback(async () => {
-    setLoading(true);
     setError('');
     
     try {
@@ -358,8 +357,6 @@ export default function QuotationPage() {
         setError('Failed to load quotations from server');
       }
     }
-    
-    setLoading(false);
   }, []);
 
   useEffect(() => {

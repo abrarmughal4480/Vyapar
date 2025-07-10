@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { Search, BarChart3, Printer, Settings, ChevronDown, Eye, Edit, MoreHorizontal, Trash2 } from 'lucide-react'
 
 interface CreditNoteItem {
   id: string
@@ -24,6 +25,8 @@ interface CreditNote {
   subtotal: number
   taxAmount: number
   total: number
+  received: number
+  balance: number
   reason: string
   notes: string
   status: 'Draft' | 'Issued' | 'Applied'
@@ -50,8 +53,27 @@ export default function CreditNotePage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isInitializing, setIsInitializing] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterType, setFilterType] = useState('All')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null)
+  const [showDateDropdown, setShowDateDropdown] = useState(false)
+  const dateDropdownRef = useRef<HTMLDivElement>(null)
+  const dateDropdownButtonRef = useRef<HTMLButtonElement>(null)
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+
+  const dateRanges = [
+    { value: 'All', label: 'All Time' },
+    { value: 'Today', label: 'Today' },
+    { value: 'Yesterday', label: 'Yesterday' },
+    { value: 'This Week', label: 'This Week' },
+    { value: 'This Month', label: 'This Month' },
+    { value: 'Last Month', label: 'Last Month' },
+    { value: 'This Year', label: 'This Year' },
+    { value: 'Custom', label: 'Custom Range' },
+  ]
 
   // Fetch credit notes with better error handling
   const fetchCreditNotes = useCallback(async () => {
@@ -110,6 +132,47 @@ export default function CreditNotePage() {
     { id: 'applied', name: 'Applied', count: appliedCount }
   ]
 
+  // Filter functions
+  const handleFilterTypeChange = (newFilterType: string) => {
+    setFilterType(newFilterType)
+    if (newFilterType !== 'Custom') {
+      const today = new Date()
+      let from = '', to = ''
+      
+      if (newFilterType === 'Today') {
+        from = to = today.toISOString().slice(0, 10)
+      } else if (newFilterType === 'Yesterday') {
+        const yest = new Date(today)
+        yest.setDate(today.getDate() - 1)
+        from = to = yest.toISOString().slice(0, 10)
+      } else if (newFilterType === 'This Week') {
+        const first = new Date(today)
+        first.setDate(today.getDate() - today.getDay())
+        from = first.toISOString().slice(0, 10)
+        to = today.toISOString().slice(0, 10)
+      } else if (newFilterType === 'This Month') {
+        const first = new Date(today.getFullYear(), today.getMonth(), 1)
+        from = first.toISOString().slice(0, 10)
+        to = today.toISOString().slice(0, 10)
+      } else if (newFilterType === 'Last Month') {
+        const first = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+        const last = new Date(today.getFullYear(), today.getMonth(), 0)
+        from = first.toISOString().slice(0, 10)
+        to = last.toISOString().slice(0, 10)
+      } else if (newFilterType === 'This Year') {
+        const first = new Date(today.getFullYear(), 0, 1)
+        from = first.toISOString().slice(0, 10)
+        to = today.toISOString().slice(0, 10)
+      } else if (newFilterType === 'All') {
+        from = ''
+        to = ''
+      }
+      
+      setDateFrom(from)
+      setDateTo(to)
+    }
+  }
+
   // Initialize component
   useEffect(() => {
     const initialize = async () => {
@@ -143,53 +206,150 @@ export default function CreditNotePage() {
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
-      {/* Backend Status - Updated */}
-      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <div className="w-3 h-3 bg-green-500 rounded-full mr-3 animate-pulse"></div>
-            <div>
-              <p className="text-sm font-medium text-green-900">Credit Notes Ready (Real Auth + Local Storage)</p>
-              <p className="text-xs text-green-700">
-                Backend: {API_BASE_URL} | Business: {user?.businessId || 'Detecting...'} | Notes: {creditNotes.length} saved | Mode: Hybrid
-              </p>
-            </div>
-          </div>
-          <button 
-            onClick={() => fetchCreditNotes()}
-            className="text-green-600 hover:text-green-700 text-sm font-medium"
-            disabled={isInitializing}
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
 
-      {/* Enhanced Header */}
-      <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg">
-              <span className="text-white text-2xl">📝</span>
+        {/* Header - sticky, card-like, shadow, rounded (copied from sale page) */}
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
+          <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+            <div className="text-center md:text-left">
+              <h1 className="text-xl md:text-2xl font-bold text-gray-900">Credit Notes</h1>
+              <p className="text-sm text-gray-500 mt-1">Manage credit notes for returns and adjustments</p>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Credit Notes</h1>
-              <p className="text-gray-500 mt-2">Manage credit notes for returns and adjustments</p>
-              {user && (
-                <p className="text-sm text-blue-600 mt-1">Business: {user.businessId}</p>
-              )}
+            <div className="flex flex-col md:flex-row gap-2 md:gap-4">
+              <button
+                onClick={handleCreateCreditNote}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
+                disabled={isLoading}
+              >
+                + Create Credit Note
+              </button>
+              <button className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
+                <span className="text-gray-600">⚙️</span>
+              </button>
             </div>
           </div>
-          <button 
-            onClick={handleCreateCreditNote}
-            disabled={isLoading}
-            className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium shadow-md hover:shadow-lg flex items-center space-x-2 disabled:opacity-50"
-          >
-            <span>+</span>
-            <span>Create Credit Note</span>
-          </button>
         </div>
-      </div>
+
+        {/* Stats Grid (full width, responsive) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6">
+          <div className="bg-gradient-to-br from-blue-100 to-blue-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
+            <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-blue-500 text-white mb-3 text-xl">📝</div>
+            <div className="text-2xl font-bold text-blue-700">
+              {creditNotes.length}
+            </div>
+            <div className="text-sm text-gray-500">Total Credit Notes</div>
+          </div>
+          <div className="bg-gradient-to-br from-green-100 to-green-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
+            <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-green-500 text-white mb-3 text-xl">💰</div>
+            <div className="text-2xl font-bold text-green-700">
+              PKR {Number(totalAmount || 0).toLocaleString()}
+            </div>
+            <div className="text-sm text-gray-500">Total Amount</div>
+          </div>
+          <div className="bg-gradient-to-br from-orange-100 to-orange-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
+            <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-orange-500 text-white mb-3 text-xl">✅</div>
+            <div className="text-2xl font-bold text-orange-700">
+              {appliedCount}
+            </div>
+            <div className="text-sm text-gray-500">Applied Notes</div>
+          </div>
+        </div>
+
+        {/* Search & Filters Section (full width) */}
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-4 md:p-6 mb-6 border border-gray-100 z-[1]">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+            {/* Modern Search Bar */}
+            <div className="relative w-full md:w-80">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-lg">🔍</span>
+              <input
+                type="text"
+                placeholder="Search credit notes..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 rounded-full bg-white/80 shadow focus:ring-2 focus:ring-blue-500 focus:border-blue-500 border border-gray-200 transition-all placeholder-gray-400 text-gray-900"
+              />
+            </div>
+            {/* Filter Tabs/Pills */}
+            <div className="flex gap-2 md:gap-4">
+              {['All', 'Draft', 'Issued', 'Applied'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab.toLowerCase())}
+                  className={`px-4 py-2 rounded-full font-medium transition-colors text-sm border-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    activeTab === tab.toLowerCase()
+                      ? 'bg-blue-600 text-white border-blue-600 shadow scale-105'
+                      : 'bg-white text-gray-700 border-gray-200 hover:bg-blue-50'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+            {/* Enhanced Date Range & Quick Filter Dropdown */}
+            <div className="flex flex-col sm:flex-row gap-2 items-center mt-2">
+              {/* Modern Dropdown for Date Range */}
+              <div ref={dateDropdownRef} className="relative w-full sm:w-56">
+                <button
+                  ref={dateDropdownButtonRef}
+                  type="button"
+                  className="w-full flex items-center justify-between px-4 py-2.5 rounded-full bg-white/80 shadow border border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all group"
+                  onClick={() => setShowDateDropdown((v) => !v)}
+                  aria-haspopup="listbox"
+                  aria-expanded={showDateDropdown ? 'true' : 'false'}
+                >
+                  <span className="truncate">{dateRanges.find(r => r.value === filterType)?.label || 'All Time'}</span>
+                  <svg className={`w-5 h-5 ml-2 transition-transform ${showDateDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                </button>
+                {showDateDropdown && (
+                  <ul
+                    className="absolute z-[100] bg-white rounded-xl shadow-lg border border-gray-100 py-1 max-h-60 overflow-auto animate-fadeinup w-full"
+                    style={{ top: '110%', left: 0 }}
+                    tabIndex={-1}
+                    role="listbox"
+                  >
+                    {dateRanges.map((range) => (
+                      <li
+                        key={range.value}
+                        className={`px-4 py-2 cursor-pointer rounded-lg transition-all hover:bg-blue-50 ${filterType === range.value ? 'font-semibold text-blue-600 bg-blue-100' : 'text-gray-700'}`}
+                        onClick={() => {
+                          handleFilterTypeChange(range.value);
+                          setShowDateDropdown(false);
+                        }}
+                        role="option"
+                        aria-selected={filterType === range.value}
+                      >
+                        {range.label}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {/* Date Pickers */}
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => {
+                  setDateFrom(e.target.value);
+                  if (filterType !== 'Custom') handleFilterTypeChange('Custom');
+                }}
+                className="px-4 py-2 rounded-full bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[140px]"
+                placeholder="From Date"
+                disabled={filterType !== 'Custom' && filterType !== 'All'}
+              />
+              <span className="text-gray-500">to</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => {
+                  setDateTo(e.target.value);
+                  if (filterType !== 'Custom') handleFilterTypeChange('Custom');
+                }}
+                className="px-4 py-2 rounded-full bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[140px]"
+                placeholder="To Date"
+                disabled={filterType !== 'Custom' && filterType !== 'All'}
+              />
+            </div>
+          </div>
+        </div>
 
       {/* Error Display */}
       {errorMessage && (
@@ -209,185 +369,121 @@ export default function CreditNotePage() {
         </div>
       )}
 
-      {/* Enhanced Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-          <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <span className="text-blue-600 text-xl">📊</span>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-blue-600">{creditNotes.length}</div>
-              <div className="text-sm text-gray-500">Total Credit Notes</div>
-              <div className="text-xs text-blue-600 font-medium">All time</div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-          <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
-              <span className="text-red-600 text-xl">💰</span>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-red-600">₹{totalAmount.toLocaleString()}</div>
-              <div className="text-sm text-gray-500">Total Amount</div>
-              <div className="text-xs text-red-600 font-medium">Credit value</div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-          <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-              <span className="text-orange-600 text-xl">📋</span>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-orange-600">{draftCount}</div>
-              <div className="text-sm text-gray-500">Draft Notes</div>
-              <div className="text-xs text-orange-600 font-medium">Pending</div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-          <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <span className="text-green-600 text-xl">✅</span>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-green-600">{issuedCount}</div>
-              <div className="text-sm text-gray-500">Issued Notes</div>
-              <div className="text-xs text-green-600 font-medium">Active</div>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Enhanced Tabs */}
-      <div className="bg-white rounded-xl shadow-lg mb-8 overflow-hidden">
-        <div className="border-b border-gray-200">
-          <nav className="flex space-x-8 px-8">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-red-500 text-red-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <span>{tab.name}</span>
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  activeTab === tab.id 
-                    ? 'bg-red-100 text-red-800' 
-                    : 'bg-gray-100 text-gray-600'
-                }`}>
-                  {tab.count}
-                </span>
-              </button>
-            ))}
-          </nav>
-        </div>
-      </div>
 
-      {/* Enhanced Credit Notes List */}
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-        <div className="bg-gradient-to-r from-gray-800 to-gray-900 p-8">
-          <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
-              <span className="text-white text-xl">📋</span>
+      {/* Credit Notes Section (full width, enhanced) */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100 mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-6 border-b border-gray-200 gap-4">
+          <h2 className="text-lg font-semibold text-gray-900">Credit Notes</h2>
+          <div className="flex gap-2">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search credit notes..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-full text-sm w-full md:w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+              />
             </div>
-            <div>
-              <h2 className="text-2xl font-bold text-white">Credit Notes List</h2>
-              <p className="text-gray-300 mt-1">Manage and track all your credit notes</p>
-            </div>
-          </div>
-        </div>
-        
-        {filteredNotes.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="text-gray-400 text-8xl mb-6">📝</div>
-            <h3 className="text-xl font-semibold text-gray-600 mb-3">No credit notes found</h3>
-            <p className="text-gray-500 mb-6">Create your first credit note to get started</p>
-            <button 
-              onClick={handleCreateCreditNote}
-              className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium shadow-md hover:shadow-lg"
+            <button
+              onClick={() => setToast({ message: 'Print feature coming soon!', type: 'success' })}
+              className="p-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
+              title="Print"
             >
-              Create Credit Note
+              <Printer className="w-4 h-4 text-gray-600" />
             </button>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px]">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Date</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Number</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Party Name</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Category Type</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Total</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Received/Paid</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Balance</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Status</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Print/Share</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filteredNotes.length === 0 ? (
                 <tr>
-                  <th className="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Note Details</th>
-                  <th className="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                  <th className="px-8 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="px-8 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                  <th className="px-8 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-8 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <td colSpan={9} className="px-6 py-8 text-center text-gray-500 text-lg font-medium">
+                    {searchTerm
+                      ? `No credit notes found matching "${searchTerm}".`
+                      : "No credit notes found."}
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredNotes.map((note) => (
-                  <tr key={note.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-8 py-6 whitespace-nowrap">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                          <span className="text-red-600 text-lg">📝</span>
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{note.noteNumber}</div>
-                          <div className="text-sm text-gray-500">{note.reason}</div>
-                        </div>
-                      </div>
+              ) : (
+                filteredNotes.map((note, idx) => (
+                  <tr key={note.id} className={`hover:bg-blue-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                    <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">
+                      {note.date
+                        ? new Date(note.date).toLocaleDateString('en-GB')
+                        : note.createdAt
+                          ? new Date(note.createdAt).toLocaleDateString('en-GB')
+                          : '-'}
                     </td>
-                    <td className="px-8 py-6 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{note.customer}</div>
-                      <div className="text-sm text-gray-500">{note.customerPhone}</div>
+                    <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">
+                      {note.noteNumber ? (
+                        <span className="underline hover:text-blue-900 cursor-pointer">{note.noteNumber}</span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
                     </td>
-                    <td className="px-8 py-6 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {new Date(note.date).toLocaleDateString('en-US', { 
-                          year: 'numeric', 
-                          month: 'short', 
-                          day: 'numeric' 
-                        })}
-                      </div>
+                    <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{note.customer}</td>
+                    <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
+                      <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                        {note.reason || 'Credit Note'}
+                      </span>
                     </td>
-                    <td className="px-8 py-6 whitespace-nowrap text-right">
-                      <div className="text-lg font-bold text-red-600">₹{note.total.toLocaleString()}</div>
+                    <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">
+                      PKR {Number(note.total || 0).toLocaleString()}
                     </td>
-                    <td className="px-8 py-6 whitespace-nowrap text-center">
-                      <span className={`px-3 py-1 text-xs font-medium rounded-full border ${getStatusColor(note.status)}`}>
+                    <td className="px-6 py-4 text-sm font-semibold text-green-600 whitespace-nowrap text-center">
+                      PKR {Number((note as any).received || 0).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 text-sm font-semibold text-orange-600 whitespace-nowrap text-center">
+                      PKR {Number((note as any).balance || 0).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 text-sm font-semibold text-center">
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(note.status)}`}>
                         {note.status}
                       </span>
                     </td>
-                    <td className="px-8 py-6 whitespace-nowrap text-center">
-                      <div className="flex justify-center space-x-2">
+                    <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
+                      <div className="flex justify-center gap-2 relative">
                         <button
-                          onClick={() => openPreview(note)}
-                          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                          onClick={() => setToast({ message: 'Print feature coming soon!', type: 'success' })}
+                          className="p-1 text-gray-600 hover:text-blue-600 transition-colors"
+                          title="Print"
                         >
-                          View
+                          <Printer className="w-4 h-4" />
                         </button>
-                        <button className="text-green-600 hover:text-green-800 text-sm font-medium">
-                          Print
-                        </button>
-                        <button className="text-gray-600 hover:text-gray-800 text-sm font-medium">
-                          Edit
+                        <button
+                          onClick={() => setToast({ message: 'Share feature coming soon!', type: 'success' })}
+                          className="p-1 text-gray-600 hover:text-green-600 transition-colors"
+                          title="Share"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                          </svg>
                         </button>
                       </div>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Enhanced Preview Modal */}
@@ -516,6 +612,24 @@ export default function CreditNotePage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Toast Component */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 ${
+          toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'
+        }`}>
+          <div className="flex items-center space-x-2">
+            <span>{toast.type === 'error' ? '❌' : '✅'}</span>
+            <span>{toast.message}</span>
+            <button 
+              onClick={() => setToast(null)}
+              className="ml-2 text-white hover:text-gray-200"
+            >
+              ✕
+            </button>
           </div>
         </div>
       )}

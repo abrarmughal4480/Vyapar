@@ -9,6 +9,62 @@ import { fetchPartiesByUserId, PartyData } from '../../../../http/parties'
 import { jwtDecode } from 'jwt-decode'
 import ReactDOM from 'react-dom'
 
+// Define grouped units with symbols (move to top of file)
+const UNIT_GROUPS = [
+  {
+    label: 'Count',
+    units: [
+      { value: 'Piece', label: 'Piece', symbol: 'pcs' },
+      { value: 'Dozen', label: 'Dozen', symbol: 'doz' },
+      { value: 'Box', label: 'Box', symbol: 'box' },
+      { value: 'Packet', label: 'Packet', symbol: 'pkt' },
+      { value: 'Carton', label: 'Carton', symbol: 'ctn' },
+      { value: 'Set', label: 'Set', symbol: 'set' },
+      { value: 'Pair', label: 'Pair', symbol: 'pair' },
+      { value: 'Unit', label: 'Unit', symbol: 'unit' },
+      { value: 'Bundle', label: 'Bundle', symbol: 'bdl' },
+      { value: 'Roll', label: 'Roll', symbol: 'roll' },
+      { value: 'Sheet', label: 'Sheet', symbol: 'sht' },
+      { value: 'Tablet', label: 'Tablet', symbol: 'tab' },
+      { value: 'Strip', label: 'Strip', symbol: 'strip' },
+      { value: 'Bottle', label: 'Bottle', symbol: 'btl' },
+      { value: 'Can', label: 'Can', symbol: 'can' },
+      { value: 'Jar', label: 'Jar', symbol: 'jar' },
+    ],
+  },
+  {
+    label: 'Weight',
+    units: [
+      { value: 'Kg', label: 'Kilogram', symbol: 'kg' },
+      { value: 'Gram', label: 'Gram', symbol: 'g' },
+      { value: 'Milligram', label: 'Milligram', symbol: 'mg' },
+      { value: 'Quintal', label: 'Quintal', symbol: 'qtl' },
+      { value: 'Ton', label: 'Ton', symbol: 'ton' },
+    ],
+  },
+  {
+    label: 'Volume',
+    units: [
+      { value: 'Liter', label: 'Liter', symbol: 'l' },
+      { value: 'Milliliter', label: 'Milliliter', symbol: 'ml' },
+      { value: 'Gallon', label: 'Gallon', symbol: 'gal' },
+      { value: 'Cubic Meter', label: 'Cubic Meter', symbol: 'm³' },
+    ],
+  },
+  {
+    label: 'Length',
+    units: [
+      { value: 'Meter', label: 'Meter', symbol: 'm' },
+      { value: 'Centimeter', label: 'Centimeter', symbol: 'cm' },
+      { value: 'Millimeter', label: 'Millimeter', symbol: 'mm' },
+      { value: 'Feet', label: 'Feet', symbol: 'ft' },
+      { value: 'Inch', label: 'Inch', symbol: 'in' },
+      { value: 'Yard', label: 'Yard', symbol: 'yd' },
+      { value: 'Kilometer', label: 'Kilometer', symbol: 'km' },
+    ],
+  },
+];
+
 interface Item {
   id?: string
   name: string
@@ -18,7 +74,13 @@ interface Item {
   purchasePrice: number
   stock: number
   minStock: number
-  unit: string
+  unit: {
+    base: string;
+    secondary: string;
+    conversionFactor: number;
+    customBase: string;
+    customSecondary: string;
+  };
   sku: string
   description: string
   supplier: string
@@ -30,6 +92,8 @@ interface Item {
   atPrice?: number
   asOfDate?: string
   location?: string
+  lrp?: number
+  wholesalePrice?: number
 }
 
 function AddItemPageInner() {
@@ -45,7 +109,13 @@ function AddItemPageInner() {
     purchasePrice: 0,
     stock: 0,
     minStock: 0,
-    unit: 'Piece',
+    unit: {
+      base: 'Piece',
+      secondary: 'None',
+      conversionFactor: 1,
+      customBase: '',
+      customSecondary: ''
+    },
     sku: '',
     description: '',
     supplier: '',
@@ -54,7 +124,8 @@ function AddItemPageInner() {
     openingQuantity: 0,
     atPrice: 0,
     asOfDate: '',
-    location: ''
+    location: '',
+    wholesalePrice: 0,
   })
 
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof Item, string>>>({})
@@ -78,6 +149,19 @@ function AddItemPageInner() {
   const supplierDropdownButtonRef = useRef<HTMLButtonElement>(null)
   const [supplierSearch, setSupplierSearch] = useState('')
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 })
+
+  // Add state for custom units and conversion factor
+  const [customBaseUnit, setCustomBaseUnit] = useState('');
+  const [customSecondaryUnit, setCustomSecondaryUnit] = useState('');
+  const [conversionFactor, setConversionFactor] = useState(1);
+  const [unitError, setUnitError] = useState('');
+
+  // Add state for unit search
+  const [unitSearch, setUnitSearch] = useState('');
+
+  // Add state for custom dropdown open/close
+  const [showBaseUnitDropdown, setShowBaseUnitDropdown] = useState(false);
+  const [showSecondaryUnitDropdown, setShowSecondaryUnitDropdown] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
@@ -235,27 +319,25 @@ function AddItemPageInner() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
-    setNewItem(prev => ({ ...prev, [name]: value }))
+    // Handle unit fields separately
+    if (name.startsWith('unit.')) {
+      const unitField = name.split('.')[1];
+      setNewItem(prev => ({
+        ...prev,
+        unit: {
+          ...prev.unit,
+          [unitField]: value
+        }
+      }));
+    } else {
+      setNewItem(prev => ({ ...prev, [name]: value }));
+    }
   }
 
   const validateForm = () => {
     const errors: Partial<Record<keyof Item, string>> = {}
 
     if (!newItem.name) errors.name = 'Item name is required'
-    if (!newItem.category) errors.category = 'Category is required'
-    if (!newItem.subcategory) errors.subcategory = 'Subcategory is required'
-    if (newItem.salePrice <= 0) errors.salePrice = 'Sale price must be greater than 0'
-    if (newItem.purchasePrice <= 0) errors.purchasePrice = 'Purchase price must be greater than 0'
-    if (newItem.stock < 0) errors.stock = 'Stock cannot be negative'
-    if (newItem.minStock < 0) errors.minStock = 'Minimum stock cannot be negative'
-    if (!newItem.unit) errors.unit = 'Unit is required'
-    if (!newItem.sku) errors.sku = 'SKU is required'
-    if (!newItem.description) errors.description = 'Description is required'
-    if (!newItem.supplier) errors.supplier = 'Supplier is required'
-    if (!newItem.openingQuantity && newItem.openingQuantity !== 0) errors.openingQuantity = 'Opening quantity is required'
-    if ((newItem.atPrice ?? 0) <= 0) errors.atPrice = 'At price must be greater than 0'
-    if (!newItem.asOfDate) errors.asOfDate = 'As of date is required'
-    if (!newItem.location) errors.location = 'Location is required'
 
     setFormErrors(errors)
     return Object.keys(errors).length === 0
@@ -303,7 +385,7 @@ function AddItemPageInner() {
   const profitPerUnit = newItem.salePrice - newItem.purchasePrice
   const profitMargin = newItem.salePrice > 0 ? (profitPerUnit / newItem.salePrice * 100) : 0
   const markup = newItem.purchasePrice > 0 ? (profitPerUnit / newItem.purchasePrice * 100) : 0
-  const totalProfit = profitPerUnit * (newItem.stock || 0)
+  const totalProfit = profitPerUnit * ((newItem.openingQuantity ?? 0) || 0)
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-2 sm:px-4 md:px-8">
@@ -420,11 +502,22 @@ function AddItemPageInner() {
                   type="button"
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors font-medium"
                   onClick={() => {
-                    setSelectedBaseUnit(newItem.unit || 'Piece');
+                    setSelectedBaseUnit(newItem.unit.base || 'Piece');
+                    setSelectedSecondaryUnit(newItem.unit.secondary || 'None');
+                    setCustomBaseUnit(newItem.unit.customBase || '');
+                    setCustomSecondaryUnit(newItem.unit.customSecondary || '');
+                    setConversionFactor(
+                      typeof newItem.unit.conversionFactor === 'number' && !isNaN(newItem.unit.conversionFactor)
+                        ? newItem.unit.conversionFactor
+                        : 1
+                    );
                     setShowUnitModal(true);
                   }}
                 >
-                  {newItem.unit || 'Select Unit'}
+                  {newItem.unit.base === 'custom' ? newItem.unit.customBase : newItem.unit.base}
+                  {newItem.unit.secondary && newItem.unit.secondary !== 'None' ?
+                    ` (${newItem.unit.secondary === 'custom' ? newItem.unit.customSecondary : newItem.unit.secondary}${newItem.unit.conversionFactor ? ` = ${newItem.unit.conversionFactor} ${newItem.unit.base === 'custom' ? newItem.unit.customBase : newItem.unit.base}` : ''})`
+                    : ''}
                 </button>
               </div>
             </div>
@@ -673,6 +766,23 @@ function AddItemPageInner() {
                   {formErrors.salePrice && <p className="text-xs text-red-500 mt-1">{formErrors.salePrice}</p>}
                 </div>
 
+                <div className="max-w-md mt-4">
+                  <label className="block text-sm font-medium text-gray-900 mb-3">
+                    Purchase Price (PKR)
+                  </label>
+                  <input
+                    type="number"
+                    name="purchasePrice"
+                    value={newItem.purchasePrice}
+                    onChange={handleInputChange}
+                    className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
+                      formErrors.purchasePrice ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
+                    } focus:ring-2 focus:ring-blue-200 focus:outline-none text-lg`}
+                    placeholder="Purchase Price"
+                  />
+                  {formErrors.purchasePrice && <p className="text-xs text-red-500 mt-1">{formErrors.purchasePrice}</p>}
+                </div>
+
                 {/* Add Wholesale Price */}
                 <div>
                   <button
@@ -702,15 +812,15 @@ function AddItemPageInner() {
                         </label>
                         <input
                           type="number"
-                          name="purchasePrice"
-                          value={newItem.purchasePrice}
+                          name="wholesalePrice"
+                          value={newItem.wholesalePrice || ''}
                           onChange={handleInputChange}
                           className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
-                            formErrors.purchasePrice ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
+                            formErrors.wholesalePrice ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
                           } focus:ring-2 focus:ring-blue-200 focus:outline-none bg-white`}
                           placeholder="Wholesale Price"
                         />
-                        {formErrors.purchasePrice && <p className="text-xs text-red-500 mt-1">{formErrors.purchasePrice}</p>}
+                        {formErrors.wholesalePrice && <p className="text-xs text-red-500 mt-1">{formErrors.wholesalePrice}</p>}
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -867,47 +977,10 @@ function AddItemPageInner() {
                   </div>
                 </div>
 
-                {/* Current Stock (calculated or entered) */}
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center">
-                    <span className="mr-2">📊</span>
-                    Current Stock Information
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Current Stock Quantity
-                      </label>
-                      <input
-                        type="number"
-                        name="stock"
-                        value={newItem.stock || ''}
-                        onChange={handleInputChange}
-                        className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
-                          formErrors.stock ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
-                        } focus:ring-2 focus:ring-blue-200 focus:outline-none bg-white`}
-                        placeholder="0"
-                      />
-                      {formErrors.stock && <p className="text-xs text-red-500 mt-1">{formErrors.stock}</p>}
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Stock Value
-                      </label>
-                      <div className="px-4 py-3 bg-white rounded-lg border-2 border-gray-200">
-                        <span className="text-gray-900 font-medium">
-                          PKR {((newItem.stock || 0) * ((newItem.atPrice ?? newItem.purchasePrice) || 0)).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Enhanced Stock Status */}
-                {(newItem.stock > 0 || newItem.minStock > 0) && (
+                {((newItem.openingQuantity ?? 0) > 0 || (newItem.minStock ?? 0) > 0) && (
                   <div className={`rounded-xl p-4 border ${
-                    (newItem.stock || 0) <= (newItem.minStock || 0)
+                    ((newItem.openingQuantity ?? 0) <= (newItem.minStock ?? 0))
                       ? 'bg-orange-50 border-orange-200' 
                       : 'bg-green-50 border-green-200'
                   }`}>
@@ -917,7 +990,7 @@ function AddItemPageInner() {
                     </h4>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
-                        {(newItem.stock || 0) <= (newItem.minStock || 0) ? (
+                        {((newItem.openingQuantity ?? 0) <= (newItem.minStock ?? 0)) ? (
                           <>
                             <span className="text-orange-600 font-medium text-lg">⚠️</span>
                             <span className="text-orange-800 font-medium">Low Stock Alert</span>
@@ -931,7 +1004,7 @@ function AddItemPageInner() {
                       </div>
                       <div className="text-right">
                         <div className="text-sm text-gray-600">
-                          {newItem.stock || 0} / {newItem.minStock || 0} units
+                          {(newItem.openingQuantity ?? 0)} / {(newItem.minStock ?? 0)} units
                         </div>
                         <div className="text-xs text-gray-500">
                           Current / Minimum
@@ -943,17 +1016,17 @@ function AddItemPageInner() {
                     <div className="mt-3">
                       <div className="flex justify-between text-xs text-gray-600 mb-1">
                         <span>Stock Level</span>
-                        <span>{Math.round(((newItem.stock || 0) / Math.max(newItem.minStock || 1, 1)) * 100)}%</span>
+                        <span>{Math.round(((newItem.openingQuantity ?? 0) / Math.max((newItem.minStock ?? 1), 1)) * 100)}%</span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2">
                         <div 
                           className={`h-2 rounded-full transition-all duration-300 ${
-                            (newItem.stock || 0) <= (newItem.minStock || 0) 
+                            ((newItem.openingQuantity ?? 0) <= (newItem.minStock ?? 0)) 
                               ? 'bg-orange-500' 
                               : 'bg-green-500'
                           }`}
                           style={{ 
-                            width: `${Math.min(((newItem.stock || 0) / Math.max(newItem.minStock || 1, 1)) * 100, 100)}%` 
+                            width: `${Math.min(((newItem.openingQuantity ?? 0) / Math.max((newItem.minStock ?? 1), 1)) * 100, 100)}%` 
                           }}
                         ></div>
                       </div>
@@ -971,21 +1044,21 @@ function AddItemPageInner() {
                     <button 
                       type="button"
                       className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
-                      onClick={() => setNewItem(prev => ({ ...prev, stock: (prev.stock || 0) + 1 }))}
+                      onClick={() => setNewItem(prev => ({ ...prev, stock: (prev.stock ?? 0) + 1 }))}
                     >
                       +1 Stock
                     </button>
                     <button 
                       type="button"
                       className="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
-                      onClick={() => setNewItem(prev => ({ ...prev, stock: Math.max((prev.stock || 0) - 1, 0) }))}
+                      onClick={() => setNewItem(prev => ({ ...prev, stock: Math.max((prev.stock ?? 0) - 1, 0) }))}
                     >
                       -1 Stock
                     </button>
                     <button 
                       type="button"
                       className="px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
-                      onClick={() => setNewItem(prev => ({ ...prev, stock: prev.minStock || 0 }))}
+                      onClick={() => setNewItem(prev => ({ ...prev, stock: prev.minStock ?? 0 }))}
                     >
                       Set to Min
                     </button>
@@ -1043,58 +1116,177 @@ function AddItemPageInner() {
               <button onClick={() => setShowUnitModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
             </div>
             <div className="p-6 space-y-6">
+              {/* Unit Search */}
+              <div className="mb-2">
+                <input
+                  type="text"
+                  value={unitSearch}
+                  onChange={e => setUnitSearch(e.target.value)}
+                  placeholder="Search unit..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded mb-2"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 {/* Base Unit */}
                 <div>
                   <label className="block text-sm font-medium text-blue-600 mb-2 uppercase tracking-wide">Base Unit</label>
-                  <select
-                    value={selectedBaseUnit}
-                    onChange={(e) => setSelectedBaseUnit(e.target.value)}
-                    className="w-full px-3 py-2 border-2 border-orange-300 rounded-md focus:border-orange-500 focus:ring-2 focus:ring-orange-200 focus:outline-none bg-white"
-                  >
-                    <option value="None">None</option>
-                    <option value="Piece">Piece</option>
-                    <option value="Kg">Kg</option>
-                    <option value="Gram">Gram</option>
-                    <option value="Liter">Liter</option>
-                    <option value="Meter">Meter</option>
-                    <option value="Box">Box</option>
-                    <option value="Packet">Packet</option>
-                    <option value="Dozen">Dozen</option>
-                    <option value="Unit">Unit</option>
-                  </select>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="w-full px-3 py-2 border-2 border-orange-300 rounded-md bg-white text-left flex justify-between items-center"
+                      onClick={() => setShowBaseUnitDropdown(v => !v)}
+                    >
+                      <span>{selectedBaseUnit === 'custom' ? (customBaseUnit || 'Custom Unit') : (selectedBaseUnit !== 'None' ? (UNIT_GROUPS.flatMap(g => g.units).find(u => u.value === selectedBaseUnit)?.label || selectedBaseUnit) : 'None')}</span>
+                      <svg className={`w-4 h-4 ml-2 transition-transform ${showBaseUnitDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                    </button>
+                    {showBaseUnitDropdown && (
+                      <div className="absolute z-50 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 w-full max-h-48 overflow-y-auto">
+                        <ul>
+                          <li
+                            className={`px-4 py-2 cursor-pointer hover:bg-blue-50 ${selectedBaseUnit === 'None' ? 'font-semibold text-blue-600' : 'text-gray-700'}`}
+                            onClick={() => { setSelectedBaseUnit('None'); setShowBaseUnitDropdown(false); }}
+                          >None</li>
+                          {UNIT_GROUPS.map(group => (
+                            <React.Fragment key={group.label}>
+                              <li className="px-4 py-1 text-xs text-gray-400 uppercase tracking-wider">{group.label}</li>
+                              {group.units.filter(u => u.label.toLowerCase().includes(unitSearch.toLowerCase()) || u.symbol.toLowerCase().includes(unitSearch.toLowerCase())).map(u => (
+                                <li
+                                  key={u.value}
+                                  className={`px-4 py-2 cursor-pointer hover:bg-blue-50 ${selectedBaseUnit === u.value ? 'font-semibold text-blue-600' : 'text-gray-700'}`}
+                                  onClick={() => { setSelectedBaseUnit(u.value); setShowBaseUnitDropdown(false); }}
+                                >
+                                  {u.label} <span className="text-xs text-gray-400 ml-2">({u.symbol})</span>
+                                </li>
+                              ))}
+                            </React.Fragment>
+                          ))}
+                          <li className="px-4 py-2 cursor-pointer hover:bg-blue-50 text-blue-600" onClick={() => { setSelectedBaseUnit('custom'); setShowBaseUnitDropdown(false); }}>+ Add Custom</li>
+                        </ul>
+                      </div>
+                    )}
+                    {selectedBaseUnit === 'custom' && (
+                      <input
+                        type="text"
+                        value={customBaseUnit}
+                        onChange={e => setCustomBaseUnit(e.target.value)}
+                        placeholder="Custom Unit"
+                        className="w-full mt-2 px-2 py-1 border border-gray-300 rounded"
+                      />
+                    )}
+                  </div>
                 </div>
                 {/* Secondary Unit */}
                 <div>
                   <label className="block text-sm font-medium text-blue-600 mb-2 uppercase tracking-wide">Secondary Unit</label>
-                  <select
-                    value={selectedSecondaryUnit}
-                    onChange={(e) => setSelectedSecondaryUnit(e.target.value)}
-                    className="w-full px-3 py-2 border-2 border-gray-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none bg-white"
-                  >
-                    <option value="None">None</option>
-                    <option value="Piece">Piece</option>
-                    <option value="Kg">Kg</option>
-                    <option value="Gram">Gram</option>
-                    <option value="Liter">Liter</option>
-                    <option value="Meter">Meter</option>
-                    <option value="Box">Box</option>
-                    <option value="Packet">Packet</option>
-                    <option value="Dozen">Dozen</option>
-                    <option value="Unit">Unit</option>
-                  </select>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-md bg-white text-left flex justify-between items-center"
+                      onClick={() => setShowSecondaryUnitDropdown(v => !v)}
+                    >
+                      <span>{selectedSecondaryUnit === 'custom' ? (customSecondaryUnit || 'Custom Unit') : (selectedSecondaryUnit !== 'None' ? (UNIT_GROUPS.flatMap(g => g.units).find(u => u.value === selectedSecondaryUnit)?.label || selectedSecondaryUnit) : 'None')}</span>
+                      <svg className={`w-4 h-4 ml-2 transition-transform ${showSecondaryUnitDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                    </button>
+                    {showSecondaryUnitDropdown && (
+                      <div className="absolute z-50 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 w-full max-h-48 overflow-y-auto">
+                        <ul>
+                          <li
+                            className={`px-4 py-2 cursor-pointer hover:bg-blue-50 ${selectedSecondaryUnit === 'None' ? 'font-semibold text-blue-600' : 'text-gray-700'}`}
+                            onClick={() => { setSelectedSecondaryUnit('None'); setShowSecondaryUnitDropdown(false); }}
+                          >None</li>
+                          {UNIT_GROUPS.map(group => (
+                            <React.Fragment key={group.label}>
+                              <li className="px-4 py-1 text-xs text-gray-400 uppercase tracking-wider">{group.label}</li>
+                              {group.units.filter(u => u.label.toLowerCase().includes(unitSearch.toLowerCase()) || u.symbol.toLowerCase().includes(unitSearch.toLowerCase())).map(u => (
+                                <li
+                                  key={u.value}
+                                  className={`px-4 py-2 cursor-pointer hover:bg-blue-50 ${selectedSecondaryUnit === u.value ? 'font-semibold text-blue-600' : 'text-gray-700'}`}
+                                  onClick={() => { setSelectedSecondaryUnit(u.value); setShowSecondaryUnitDropdown(false); }}
+                                >
+                                  {u.label} <span className="text-xs text-gray-400 ml-2">({u.symbol})</span>
+                                </li>
+                              ))}
+                            </React.Fragment>
+                          ))}
+                          <li className="px-4 py-2 cursor-pointer hover:bg-blue-50 text-blue-600" onClick={() => { setSelectedSecondaryUnit('custom'); setShowSecondaryUnitDropdown(false); }}>+ Add Custom</li>
+                        </ul>
+                      </div>
+                    )}
+                    {selectedSecondaryUnit === 'custom' && (
+                      <input
+                        type="text"
+                        value={customSecondaryUnit}
+                        onChange={e => setCustomSecondaryUnit(e.target.value)}
+                        placeholder="Custom Unit"
+                        className="w-full mt-2 px-2 py-1 border border-gray-300 rounded"
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
+              {/* Conversion Factor */}
+              {selectedSecondaryUnit !== 'None' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Conversion Factor</label>
+                  <div className="flex items-center gap-2">
+                    <span>1</span>
+                    <span className="font-semibold">{selectedSecondaryUnit === 'custom' ? customSecondaryUnit || 'Secondary' : selectedSecondaryUnit}</span>
+                    <span>=</span>
+                    <input
+                      type="number"
+                      min={0.0001}
+                      step={0.0001}
+                      value={conversionFactor}
+                      onChange={e => setConversionFactor(Number(e.target.value))}
+                      className="w-24 px-2 py-1 border border-gray-300 rounded"
+                    />
+                    <span className="font-semibold">{selectedBaseUnit === 'custom' ? customBaseUnit || 'Base' : selectedBaseUnit}</span>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">e.g. 1 Box = 12 Pieces</div>
+                  {unitError && <div className="text-xs text-red-500 mt-1">{unitError}</div>}
+                </div>
+              )}
+              {/* Preview */}
+              {selectedSecondaryUnit !== 'None' && (
+                <div className="mt-2 text-sm text-blue-700 font-medium">
+                  Preview: 1 {selectedSecondaryUnit === 'custom' ? customSecondaryUnit || 'Secondary' : selectedSecondaryUnit} = {conversionFactor} {selectedBaseUnit === 'custom' ? customBaseUnit || 'Base' : selectedBaseUnit}
+                </div>
+              )}
             </div>
-            <div className="flex justify-end p-4 rounded-b-2xl">
+            <div className="flex justify-end gap-2 p-4 rounded-b-2xl">
+              <button
+                onClick={() => setShowUnitModal(false)}
+                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors font-medium"
+              >
+                Cancel
+              </button>
               <button
                 onClick={() => {
-                  setNewItem(prev => ({ ...prev, unit: selectedBaseUnit }));
+                  // Validation
+                  if ((selectedBaseUnit === 'custom' && !customBaseUnit.trim()) || (selectedSecondaryUnit === 'custom' && !customSecondaryUnit.trim())) {
+                    setUnitError('Please enter custom unit name.');
+                    return;
+                  }
+                  if (selectedSecondaryUnit !== 'None' && (!conversionFactor || conversionFactor <= 0)) {
+                    setUnitError('Conversion factor must be greater than 0.');
+                    return;
+                  }
+                  setUnitError('');
+                  setNewItem(prev => ({
+                    ...prev,
+                    unit: {
+                      base: selectedBaseUnit,
+                      secondary: selectedSecondaryUnit,
+                      conversionFactor: conversionFactor,
+                      customBase: customBaseUnit,
+                      customSecondary: customSecondaryUnit
+                    }
+                  }));
                   setShowUnitModal(false);
                 }}
                 className="px-6 py-2 bg-cyan-600 text-white rounded-md hover:bg-cyan-700 transition-colors font-medium"
               >
-                SAVE
+                Save
               </button>
             </div>
           </div>

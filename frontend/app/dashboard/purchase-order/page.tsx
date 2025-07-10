@@ -1083,7 +1083,7 @@ export default function PurchaseOrderPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [formType, setFormType] = useState('purchase-order'); // 'purchase-order', 'purchase', 'sale'
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [convertingOrder, setConvertingOrder] = useState<string | null>(null);
   const [fixingOrders, setFixingOrders] = useState(false);
@@ -1112,11 +1112,9 @@ export default function PurchaseOrderPage() {
   useEffect(() => {
     const fetchPurchaseOrders = async () => {
       try {
-        setLoading(true);
         const token = getToken();
         if (!token) {
           setError('Authentication required');
-          setLoading(false);
           return;
         }
 
@@ -1125,8 +1123,6 @@ export default function PurchaseOrderPage() {
       } catch (err: any) {
         console.error('Error fetching purchase orders:', err);
         setError('Failed to fetch purchase orders');
-      } finally {
-        setLoading(false);
       }
     };
 

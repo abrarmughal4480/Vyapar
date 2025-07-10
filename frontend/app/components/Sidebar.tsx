@@ -39,7 +39,7 @@ const navItems: NavItem[] = [
     subItems: [
       { id: 'sale-invoices', label: 'Sale Invoices', icon: '💰',   path: '/dashboard/sale' },
       { id: 'estimate-quotation', label: 'Estimate/ Quotation', icon: '📋', path: '/dashboard/quotation', },
-      { id: 'payment-in', label: 'Payment In', path: '/dashboard/sale/payment-in' },
+      { id: 'payment-in', label: 'Payment In', path: '/dashboard/payment-in' },
       { id: 'sale-order', label: 'Sale Order', icon: '📊', path: '/dashboard/sales' },
       { id: 'delivery-challan', label: 'Delivery Challan', icon: '🚚', path: '/dashboard/delivery-challan' },
       { id: 'sale-return-credit', label: 'Sale Return/ Credit Note', path: '/dashboard/credit-note' }
@@ -66,6 +66,43 @@ const navItems: NavItem[] = [
   { id: 'settings', label: 'Settings', icon: '⚙️', path: '/dashboard/settings', description: 'App Configuration' }
 ]
 
+interface ReportsSidebarProps {
+  activeTab: string;
+  onTabChange: (tab: string) => void;
+}
+
+const reportTabs = [
+  { id: 'overview', name: 'Overview', icon: '📊' },
+  { id: 'sales', name: 'Sales', icon: '💰' },
+  { id: 'purchase', name: 'Purchase', icon: '🛒' },
+  { id: 'inventory', name: 'Inventory', icon: '📦' },
+  { id: 'export', name: 'Export', icon: '📥' },
+];
+
+const ReportsSidebar: React.FC<ReportsSidebarProps> = ({ activeTab, onTabChange }) => {
+  return (
+    <aside className="w-56 min-h-full bg-gradient-to-b from-blue-50 to-indigo-50 border-r border-gray-200 p-6 flex flex-col gap-2 rounded-2xl shadow-md">
+      <h2 className="text-lg font-bold text-gray-800 mb-6 tracking-wide">Reports</h2>
+      <nav className="flex flex-col gap-2">
+        {reportTabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => onTabChange(tab.id)}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-base transition-all duration-200
+              ${activeTab === tab.id
+                ? 'bg-blue-600 text-white shadow-lg scale-105'
+                : 'bg-white text-gray-700 hover:bg-blue-100'}
+            `}
+          >
+            <span className="text-xl">{tab.icon}</span>
+            <span>{tab.name}</span>
+          </button>
+        ))}
+      </nav>
+    </aside>
+  );
+};
+
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
@@ -81,14 +118,14 @@ export default function Sidebar() {
   }, [])
 
   const handleLogout = () => {
-    localStorage.removeItem('isAuthenticated')
-    localStorage.removeItem('businessName')
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
-    localStorage.removeItem('vypar_auth_token')
-    localStorage.removeItem('vypar_user_session')
-    localStorage.removeItem('businessId')
-    router.push('/')
+    localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('businessName');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('devease_auth_token');
+    localStorage.removeItem('devease_user_session');
+    localStorage.removeItem('businessId');
+    router.push('/');
   }
 
   const toggleDropdown = (itemId: string) => {
@@ -148,8 +185,8 @@ export default function Sidebar() {
       <div className="flex items-center justify-between h-20 p-4 border-b border-gray-200">
         {!isCollapsed && (
           <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-2xl flex items-center justify-center shadow-lg">
-              <span className="text-xl font-bold text-white">V</span>
+            <div className="w-12 h-12 flex items-center justify-center">
+              <img src="/devease_logo.svg" alt="Logo" className="w-12 h-12 object-contain rounded-2xl bg-white shadow-lg" />
             </div>
             <div>
               <h1 className="font-semibold text-gray-900 text-lg">{businessName}</h1>
@@ -279,3 +316,5 @@ export default function Sidebar() {
     </aside>
   )
 }
+
+export { ReportsSidebar };

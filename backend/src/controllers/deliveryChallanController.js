@@ -153,10 +153,29 @@ export const deleteDeliveryChallan = async (req, res) => {
   }
 };
 
+// Update a delivery challan (full edit)
+export const updateDeliveryChallan = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    const { challanId } = req.params;
+    const updateData = req.body;
+    const deliveryChallan = await DeliveryChallan.findOneAndUpdate(
+      { _id: challanId, userId },
+      { ...updateData, updatedAt: new Date() },
+      { new: true }
+    );
+    if (!deliveryChallan) return res.status(404).json({ success: false, message: 'Delivery challan not found' });
+    res.json({ success: true, data: deliveryChallan });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
 export default {
   createDeliveryChallan,
   getDeliveryChallansByUser,
   updateDeliveryChallanStatus,
   getDeliveryChallanById,
   deleteDeliveryChallan,
+  updateDeliveryChallan,
 }; 

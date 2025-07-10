@@ -787,6 +787,9 @@ export default function BackupRestorePage() {
                 onChange={handleFileChange}
                 ref={fileInputRef}
                 className="hidden"
+                autoComplete="off" 
+                autoCorrect="off" 
+                spellCheck={false}
               />
 
               <div 

@@ -243,6 +243,7 @@ function PurchaseSaleFormPage({ onClose, onSave, type = 'purchase' }: PurchaseSa
                     onClick={() => setShowPartyDropdown(!showPartyDropdown)}
                     className="w-full p-2 border-2 border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer text-sm"
                     readOnly
+                    autoComplete="off"
                   />
                   <span className="absolute right-2 top-2.5 h-4 w-4 text-gray-400">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
@@ -281,6 +282,7 @@ function PurchaseSaleFormPage({ onClose, onSave, type = 'purchase' }: PurchaseSa
                   value={formData.phoneNo}
                   onChange={(e) => setFormData({ ...formData, phoneNo: e.target.value })}
                   className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
+                  autoComplete="off"
                 />
               </div>
 
@@ -612,7 +614,7 @@ export default function PurchaseBillsPage() {
   const [businessName, setBusinessName] = useState<string>('Enter Business Name');
   const [purchases, setPurchases] = useState<PurchaseData[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({
     totalGrandTotal: 0,
     totalBalance: 0,
@@ -672,7 +674,6 @@ export default function PurchaseBillsPage() {
   React.useEffect(() => {
     const fetchPurchases = async () => {
       try {
-        setLoading(true);
         const token = getToken();
         if (!token) {
           console.error('No authentication token found');
@@ -708,8 +709,6 @@ export default function PurchaseBillsPage() {
         }
       } catch (error) {
         console.error('Error fetching purchases:', error);
-      } finally {
-        setLoading(false);
       }
     };
 

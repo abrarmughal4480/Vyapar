@@ -55,4 +55,13 @@ export const deleteSale = async (saleId: string, token: string) => {
     headers: { Authorization: `Bearer ${token}` }
   });
   return data;
+};
+
+export const updateSale = async (saleId: string, sale: any, token: string) => {
+  const { data } = await api.put(`/api/sales/update/${saleId}`, sale, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  return data;
 }; 

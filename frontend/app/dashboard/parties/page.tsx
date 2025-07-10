@@ -6,7 +6,6 @@ import ReactDOM from 'react-dom'
 import { createParty, fetchPartiesByUserId, updateParty, deleteParty } from '@/http/parties'
 import Toast from '../../components/Toast'
 import { useExport, ExportColumn } from '../../hooks/useExport'
-import LoadingOverlay from '../../../components/LoadingOverlay'
 
 interface Party {
   id: string
@@ -131,11 +130,9 @@ export default function PartiesPage() {
   }, [API_BASE_URL, authToken])
 
   const loadPartiesFromAPI = useCallback(async () => {
-    setIsLoading(true);
     try {
       const token = authToken || localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
       const result = await fetchPartiesByUserId(token);
-      await new Promise(resolve => setTimeout(resolve, 2000));
       if (result && result.success && Array.isArray(result.data)) {
         const transformedParties = result.data.map((party: any) => ({
           id: party._id || party.id,
@@ -165,7 +162,6 @@ export default function PartiesPage() {
     } catch (error) {
       setToast({ message: 'Failed to load parties from server', type: 'error' });
     }
-    setIsLoading(false);
     setHasFetched(true);
   }, [authToken]);
 
@@ -257,7 +253,6 @@ export default function PartiesPage() {
       setToast({ message: validationError, type: 'error' });
       return;
     }
-    setIsLoading(true);
     try {
       // Prepare party data for backend
       const partyData = {
@@ -327,14 +322,11 @@ export default function PartiesPage() {
       }
     } catch (error) {
       setToast({ message: (editingParty ? 'Failed to update party: ' : 'Failed to add party: ') + String(error), type: 'error' });
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const handleDeleteParty = async () => {
     if (!partyToDelete) return;
-    setIsLoading(true);
     try {
       // Remove from local state immediately
       const updatedParties = parties.filter(p => p.id !== partyToDelete.id);
@@ -351,8 +343,6 @@ export default function PartiesPage() {
       setPartyToDelete(null);
     } catch (error) {
       setToast({ message: 'Failed to delete party: ' + String(error), type: 'error' });
-    } finally {
-      setIsLoading(false);
     }
   }
 
@@ -556,14 +546,7 @@ export default function PartiesPage() {
     }
   }, [showCategoryDropdown]);
 
-  // Only after all hooks:
-  if (isLoading) {
-    return (
-      <div className="relative min-h-screen">
-        <LoadingOverlay show={true} message="Loading parties..." />
-      </div>
-    )
-  }
+
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -684,6 +667,7 @@ export default function PartiesPage() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 rounded-full bg-white/80 shadow focus:ring-2 focus:ring-blue-500 focus:border-blue-500 border border-gray-200 transition-all placeholder-gray-400 text-gray-900"
                   suppressHydrationWarning={true}
+                  autoComplete="off"
                 />
               </div>
               {/* Enhanced Category Dropdown */}
@@ -794,7 +778,7 @@ export default function PartiesPage() {
             Parties ({filteredParties.length})
           </h2>
         </div>
-        {!isLoading && hasFetched && filteredParties.length === 0 ? (
+        {filteredParties.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-gray-400 text-6xl mb-4">👥</div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">No parties found</h3>
@@ -871,8 +855,8 @@ export default function PartiesPage() {
             <div className="hidden md:block">
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-100">
-                  {/* Only show table header if not loading and there are parties */}
-                  {(!isLoading && filteredParties.length > 0) && (
+                  {/* Table header */}
+                  {filteredParties.length > 0 && (
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Party</th>
@@ -885,14 +869,7 @@ export default function PartiesPage() {
                     </thead>
                   )}
                   <tbody className="bg-white divide-y divide-gray-100">
-                    {isLoading ? (
-                      [...Array(3)].map((_, i) => (
-                        <tr key={i}>
-                          <td colSpan={6} className="p-0">Loading...</td>
-                        </tr>
-                      ))
-                    ) : (
-                      paginatedParties.map((party, idx) => (
+                    {paginatedParties.map((party, idx) => (
                         <tr key={party.id} className={`hover:bg-blue-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                           <td className="px-6 py-4 whitespace-nowrap flex items-center space-x-3">
                             <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-base">
@@ -942,12 +919,11 @@ export default function PartiesPage() {
                             </button>
                           </td>
                         </tr>
-                      ))
-                    )}
+                      ))}
                   </tbody>
                 </table>
                 {/* Pagination Controls */}
-                {!isLoading && totalPages > 1 && (
+                {totalPages > 1 && (
                   <div className="flex justify-end items-center gap-2 mt-4">
                     <button
                       onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
@@ -1274,7 +1250,6 @@ export default function PartiesPage() {
                     })
                   }}
                   className="px-6 py-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors"
-                  disabled={isLoading}
                 >
                   Save & New
                 </button>
@@ -1286,17 +1261,15 @@ export default function PartiesPage() {
                       resetForm()
                     }}
                     className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                    disabled={isLoading}
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
                     onClick={handleAddParty}
-                    disabled={isLoading}
-                    className="px-8 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-8 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
-                    {isLoading ? 'Saving...' : 'Save'}
+                    Save
                   </button>
                 </div>
               </div>
@@ -1324,16 +1297,14 @@ export default function PartiesPage() {
                     setPartyToDelete(null)
                   }}
                   className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                  disabled={isLoading}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleDeleteParty}
-                  disabled={isLoading}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                 >
-                  {isLoading ? 'Deleting...' : 'Delete'}
+                  Delete
                 </button>
               </div>
             </div>

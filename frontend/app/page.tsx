@@ -221,7 +221,7 @@ function TestimonialCard({ name, business, quote, rating, avatar }: { name: stri
       <p className="text-gray-700 mb-6 italic leading-relaxed">"{quote}"</p>
       <div className="flex items-center justify-center">
         <div className="w-12 h-12 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg mr-4">
-          {name.charAt(0)}
+          DD
         </div>
         <div>
           <p className="font-bold text-gray-900">{name}</p>
@@ -241,10 +241,8 @@ function Navigation({ onGetStarted, onSignIn }: { onGetStarted: () => void; onSi
       <div className="flex items-center justify-between h-20 w-full px-16 relative z-10">
         {/* Logo - always left */}
         <div className="flex items-center flex-shrink-0 hover:scale-105 transition-transform duration-200 drop-shadow-lg">
-          <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-indigo-100 shadow-lg">
-            <span className="text-xl font-bold text-white">V</span>
-          </div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent ml-3">Vyapar</h1>
+          <img src="/devease_logo.svg" alt="Logo" className="w-10 h-10 rounded-xl object-contain bg-white shadow-indigo-100 shadow-lg" />
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent ml-3">Devease Digital</h1>
         </div>
 
         {/* Nav links + actions - always right */}
@@ -424,9 +422,9 @@ export default function Home() {
     if (typeof window !== 'undefined') {
       if (
         localStorage.getItem('token') ||
-        localStorage.getItem('vypar_auth_token') ||
+        localStorage.getItem('devease_auth_token') ||
         localStorage.getItem('isAuthenticated') ||
-        document.cookie.includes('vypar_auth_token')
+        document.cookie.includes('devease_auth_token')
       ) {
         setCheckingAuth(true);
         router.replace('/dashboard');
@@ -660,12 +658,12 @@ export default function Home() {
             <div className="w-24 h-24 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto shadow-2xl"></div>
             <div className="absolute inset-0 w-24 h-24 border-4 border-transparent border-b-purple-400 rounded-full animate-spin mx-auto" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-4xl font-extrabold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent drop-shadow-lg animate-logoPop">V</span>
+              <img src="/devease_logo.svg" alt="Logo" className="w-16 h-16 object-contain drop-shadow-lg animate-logoPop" />
             </div>
           </div>
           <div className="text-center space-y-2">
             <h1 className="text-3xl md:text-4xl font-extrabold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent animate-slideInDown drop-shadow-lg">
-              Welcome to Vyapar
+              Welcome to Devease Digital
             </h1>
             <h2 className="text-xl md:text-2xl font-bold text-gray-700 animate-slideInUp mt-2 drop-shadow-md">
                #1 Billing Software
@@ -688,12 +686,12 @@ export default function Home() {
             <div className="w-24 h-24 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto shadow-2xl"></div>
             <div className="absolute inset-0 w-24 h-24 border-4 border-transparent border-b-purple-400 rounded-full animate-spin mx-auto" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-4xl font-extrabold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent drop-shadow-lg animate-logoPop">V</span>
+              <img src="/devease_logo.svg" alt="Logo" className="w-16 h-16 object-contain drop-shadow-lg animate-logoPop" />
             </div>
           </div>
           <div className="text-center space-y-2">
             <h1 className="text-3xl md:text-4xl font-extrabold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent animate-slideInDown drop-shadow-lg">
-              Welcome to Vyapar
+              Welcome to Devease Digital
             </h1>
             <h2 className="text-xl md:text-2xl font-bold text-gray-700 animate-slideInUp mt-2 drop-shadow-md">
                #1 Billing Software
@@ -743,7 +741,7 @@ export default function Home() {
     {
       name: 'Ahmed Ali',
       business: 'Ali Mobile Center',
-      quote: 'Vyapar transformed our cash flow management completely. The analytics helped us increase profits by 40%!',
+      quote: 'Devease Digital transformed our cash flow management completely. The analytics helped us increase profits by 40%!',
       rating: 5
     },
     {
@@ -1181,7 +1179,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center mb-10 animate-fadeInUp">
             <h2 className="text-4xl font-bold text-white mb-3">Trusted by Thousands</h2>
-            <p className="text-lg text-indigo-100 mb-2 animate-fadeInUp delay-200">Join 15,000+ businesses who trust Vyapar for their daily operations</p>
+            <p className="text-lg text-indigo-100 mb-2 animate-fadeInUp delay-200">Join 15,000+ businesses who trust Devease Digital for their daily operations</p>
             <p className="text-base text-white/80 animate-fadeInUp delay-400">Your business is in safe hands with our secure, reliable, and scalable platform.</p>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-y-12 gap-x-8 text-center text-white">
@@ -1228,7 +1226,7 @@ export default function Home() {
                 Are Saying
               </span>
             </h2>
-            <p className="text-lg text-emerald-700 mb-2 animate-fadeInUp delay-200">Real feedback from real businesses using Vypar</p>
+            <p className="text-lg text-emerald-700 mb-2 animate-fadeInUp delay-200">Real feedback from real businesses using Devease Digital</p>
             <p className="text-base text-gray-600 animate-fadeInUp delay-400">We're proud to help thousands of businesses grow and succeed every day.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-y-12 gap-x-8">
@@ -1250,8 +1248,8 @@ export default function Home() {
                 </div>
                 <p className="text-gray-700 mb-6 italic leading-relaxed">"{testimonial.quote}"</p>
                 <div className="flex items-center justify-center">
-                  <div className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-lg mr-4">
-                    {testimonial.name.charAt(0)}
+                  <div className="w-12 h-12 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg mr-4">
+                    <img src="/devease_logo.svg" alt="Logo" className="w-10 h-10 rounded-full object-contain bg-white" />
                   </div>
                   <div>
                     <p className="font-bold text-gray-900">{testimonial.name}</p>
@@ -1453,7 +1451,7 @@ export default function Home() {
               </span>
             </h2>
             <p className="text-xl text-indigo-700 mb-6 animate-fadeInUp delay-200">
-              Join thousands of businesses already using Vyapar to streamline operations and boost growth
+              Join thousands of businesses already using Devease Digital to streamline operations and boost growth
             </p>
             <p className="text-base text-gray-600 mb-10 animate-fadeInUp delay-400">
               Get started today and see the difference for yourself.
@@ -1492,9 +1490,9 @@ export default function Home() {
             <div className="col-span-1 md:col-span-2">
               <div className="flex items-center mb-3">
                 <div className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
-                  <span className="text-lg font-bold text-white">V</span>
+                  <img src="/devease_logo.svg" alt="Logo" className="w-8 h-8 rounded-lg object-contain bg-white" />
                 </div>
-                <span className="text-xl font-bold text-white ml-2">Vyapar</span>
+                <span className="text-xl font-bold text-white ml-2">Devease Digital</span>
               </div>
               <p className="text-gray-400 text-sm mb-3 leading-relaxed">
                 Transform your business with our all-in-one management platform.
@@ -1537,7 +1535,7 @@ export default function Home() {
             </div>
           </div>
           <div className="border-t border-gray-800 pt-4 flex flex-col md:flex-row justify-between items-center">
-            <p className="text-xs mb-2 md:mb-0">© 2025 Vyapar. All rights reserved.</p>
+            <p className="text-xs mb-2 md:mb-0">© 2025 Devease Digital. All rights reserved.</p>
             <div className="flex space-x-4 text-xs">
               <a href="#" className="hover:text-white transition-colors">Privacy</a>
               <a href="#" className="hover:text-white transition-colors">Terms</a>

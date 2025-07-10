@@ -30,10 +30,8 @@ export default function Layout({ children }: LayoutProps) {
         <div className="flex flex-col flex-grow bg-white shadow-sm border-r border-gray-200">
           <div className="flex items-center flex-shrink-0 px-4 py-6">
             <div className="flex items-center">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">V</span>
-              </div>
-              <span className="ml-2 text-xl font-bold text-gray-900">Vyapar</span>
+              <img src="/devease_logo.svg" alt="Logo" className="w-8 h-8 object-contain rounded-lg bg-white" />
+              <span className="ml-2 text-xl font-bold text-gray-900">Devease Digital</span>
             </div>
           </div>
           <nav className="flex-1 px-2 py-4 space-y-1">

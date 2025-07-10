@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import QRCode from 'react-qr-code';
 import { getSaleById } from '../../../../../http/sales';
+import { businessStorage } from '@/lib/storage';
 
 type Item = {
   name: string
@@ -52,9 +53,16 @@ export default function InvoiceDetailsPage() {
     if (saleId) fetchSale();
   }, [saleId]);
 
+  useEffect(() => {
+    businessStorage.getSales().then(sales => {
+      const localSale = sales?.find((s: any) => s.id === saleId);
+      setSale(localSale);
+    });
+  }, [saleId]);
+
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   if (error) return <div className="min-h-screen flex items-center justify-center text-red-600">{error}</div>;
-  if (!sale) return <div className="min-h-screen flex items-center justify-center">No sale found.</div>;
+  if (!sale) return <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>No invoice found. (Desktop app: Only locally created sales are available.)</div>;
 
   // Map sale fields to invoice fields for rendering
   const invoice = {

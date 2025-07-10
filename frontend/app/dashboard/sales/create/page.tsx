@@ -413,12 +413,14 @@ export default function CreateSalesOrderPage() {
                         }
                         handleItemChange(item.id, 'unit', mappedUnit);
                         handleItemChange(item.id, 'price', i.salePrice || 0);
+                        // Keep quantity empty when item is selected
+                        handleItemChange(item.id, 'qty', '');
                         setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                       }}
                     >
                       <div className="flex justify-between items-center">
                         <span className="font-medium text-gray-800">{i.name}</span>
-                        <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock || 0}</span>
+                        <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.openingQuantity ?? (i.stock || 0)}</span>
                       </div>
                     </li>
                   ));
@@ -452,7 +454,18 @@ export default function CreateSalesOrderPage() {
             type="number"
             min={0}
             value={item.qty}
-            onChange={e => handleItemChange(item.id, 'qty', e.target.value)}
+            onChange={e => {
+              handleItemChange(item.id, 'qty', e.target.value);
+              // If this is the last row and qty is not empty, add a new row
+              if (
+                index === formData.items.length - 1 &&
+                e.target.value &&
+                !formData.items.some((row: { qty?: number }, idx: number) => idx > index && !row.qty)
+              ) {
+                // Add a new row
+                addRow();
+              }
+            }}
             className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
           />
         </td>
@@ -664,6 +677,7 @@ export default function CreateSalesOrderPage() {
                     onBlur={() => setTimeout(() => setSearchDropdownOpen(false), 200)}
                     className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 border-blue-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none`}
                     placeholder="Search or enter customer name"
+                    autoComplete="off"
                   />
                   {searchDropdownOpen && (
                     <div className="absolute left-0 right-0 mt-1 w-full z-50">

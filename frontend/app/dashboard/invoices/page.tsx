@@ -22,10 +22,10 @@ const invoiceData = {
     address: "123 Main Street, Lahore, Pakistan",
   },
   business: {
-    name: "Vyapar Pvt Ltd.",
+    name: "Devease Digital Pvt Ltd.",
     address: "456 Business Ave, Karachi, Pakistan",
     phone: "+92 21 9876543",
-    email: "info@vyapar.com",
+    email: "info@deveasedigital.com",
   },
   items: [
     { name: "Rice - Basmati 1kg", qty: 5, unit: "kg", rate: 250, amount: 1250 },
@@ -46,7 +46,7 @@ const invoiceData = {
   paymentType: "Cash",
   received: "8500.00",
   description: "Thank you for your business! Please pay by the due date.",
-  qrUrl: "https://vyapar.com/invoice/INV-0001",
+  qrUrl: "https://deveasedigital.com/invoice/INV-0001",
 };
 
 // Utility functions

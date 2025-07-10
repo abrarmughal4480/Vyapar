@@ -1,13 +1,15 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, BarChart3, Printer, Settings, ChevronDown, Eye, Edit, MoreHorizontal, Trash2 } from 'lucide-react';
-import { getSalesByUser, getSalesStatsByUser, getSaleById, deleteSale } from '@/http/sales';
+import { getSalesByUser, getSalesStatsByUser, getSaleById, deleteSale, createSale, updateSale } from '@/http/sales';
 import { jwtDecode } from 'jwt-decode';
 import PaymentInModal from '../../components/PaymentInModal';
 import ReactDOM from 'react-dom';
 import { createPopper } from '@popperjs/core';
 import Toast from '../../components/Toast';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import { useRouter } from 'next/navigation';
+import { businessStorage } from '@/lib/storage';
 
 const SaleInvoicesPage = () => {  const [filterType, setFilterType] = useState('All');
   const [firmFilter, setFirmFilter] = useState('All Firms');
@@ -46,17 +48,9 @@ const SaleInvoicesPage = () => {  const [filterType, setFilterType] = useState('
     { value: 'Custom', label: 'Custom Range' },
   ];
 
-  // Demo business ID - in real app this would come from user context
-  const businessId = 'demo-business-123';
-
-  // Dummy items list with details
-  // const itemsList = [
-  //   { name: 'Rice - Basmati 1kg', price: 280, unit: 'KG' },
-  //   ...
-  // ];
   const [transactions, setTransactions] = useState<any[]>([]);
   const [dbStats, setDbStats] = useState<{ totalGrandTotal: number; totalBalance: number; totalReceived: number } | null>(null);
-  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [openMenuIdx, setOpenMenuIdx] = useState<number | null>(null);
   const [showPaymentIn, setShowPaymentIn] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
@@ -69,23 +63,22 @@ const SaleInvoicesPage = () => {  const [filterType, setFilterType] = useState('
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [saleToDelete, setSaleToDelete] = useState<any>(null);
 
+  const router = useRouter();
+
   // Load transactions and stats on component mount
   useEffect(() => {
     const fetchSales = async () => {
-      setLoading(true);
       try {
         const token =
           (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
         if (!token) {
           setTransactions([]);
-          setLoading(false);
           return;
         }
         const decoded: any = jwtDecode(token);
         const userId = decoded._id || decoded.id;
         if (!userId) {
           setTransactions([]);
-          setLoading(false);
           return;
         }
         const result = await getSalesByUser(userId, token);
@@ -97,7 +90,6 @@ const SaleInvoicesPage = () => {  const [filterType, setFilterType] = useState('
       } catch (err) {
         setTransactions([]);
       }
-      setLoading(false);
     };
     fetchSales();
     loadStats();
@@ -106,19 +98,16 @@ const SaleInvoicesPage = () => {  const [filterType, setFilterType] = useState('
 
   const loadStats = async () => {
     try {
-      setStatsLoading(true);
       const token =
         (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
       if (!token) {
         setDbStats({ totalGrandTotal: 0, totalBalance: 0, totalReceived: 0 });
-        setStatsLoading(false);
         return;
       }
       const decoded: any = jwtDecode(token);
       const userId = decoded._id || decoded.id;
       if (!userId) {
         setDbStats({ totalGrandTotal: 0, totalBalance: 0, totalReceived: 0 });
-        setStatsLoading(false);
         return;
       }
       const result = await getSalesStatsByUser(userId, token);
@@ -130,7 +119,6 @@ const SaleInvoicesPage = () => {  const [filterType, setFilterType] = useState('
     } catch (error) {
       setDbStats({ totalGrandTotal: 0, totalBalance: 0, totalReceived: 0 });
     }
-    setStatsLoading(false);
   };
 
   const loadCustomers = async () => {
@@ -331,18 +319,19 @@ const SaleInvoicesPage = () => {  const [filterType, setFilterType] = useState('
         status: saleStatus,
         imageUrl: uploadedImage
       };
-
-      // Dummy save logic
-      console.log('Saving sale:', saleData);
-      setToast({ message: 'Sale saved successfully!', type: 'success' });
-      
-      // Reset form and close
+      const token = (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+      if (newSale.editingId) {
+        await updateSale(String(newSale.editingId), saleData, token);
+        setToast({ message: 'Sale updated successfully!', type: 'success' });
+      } else {
+        await createSale(saleData, token);
+        setToast({ message: 'Sale saved successfully!', type: 'success' });
+      }
       resetForm();
       setShowSalePage(false);
-      
-      // Reload data
       await loadStats();
-    } catch (error) {
+    } catch (error: any) {
+      setToast({ message: error?.response?.data?.message || error?.message || 'Error saving sale', type: 'error' });
       console.error('Error saving sale:', error);
     } finally {
       setLoading(false);
@@ -662,36 +651,9 @@ Your Business Name`;
     setDeleteDialogOpen(true);
   };
 
-  const handleEditTransaction = async (transaction: any) => {
-    try {
-      setNewSale({
-        partyName: transaction.partyName || '',
-        phoneNo: transaction.phoneNo || '',
-        items: Array.isArray(transaction.items) && transaction.items.length > 0 ? transaction.items.map((item: any, idx: number) => ({
-          id: idx + 1,
-          item: item.item || '',
-          qty: item.qty || '',
-          unit: item.unit || 'NONE',
-          price: item.price || '',
-          amount: item.amount || 0
-        })) : [
-          { id: 1, item: '', qty: '', unit: 'NONE', price: '', amount: 0 },
-          { id: 2, item: '', qty: '', unit: 'NONE', price: '', amount: 0 }
-        ],
-        discount: transaction.discount || '',
-        discountType: transaction.discountType || '%',
-        tax: transaction.tax || 'NONE',
-        paymentType: transaction.paymentType || 'Credit',
-        editingId: transaction.id ?? null
-      });
-      setDescription(transaction.description || '');
-      setUploadedImage(transaction.imageUrl || null);
-      setSaleStatus(transaction.status || 'Draft');
-      setShowSalePage(true);
-    } catch (error) {
-      console.error('Error loading transaction for edit:', error);
-      setToast({ message: 'Error loading transaction for edit', type: 'error' });
-    }
+  const handleEditTransaction = (transaction: any) => {
+    const id = transaction._id || transaction.id;
+    router.push(`/dashboard/sale/add?editId=${id}`);
   };
 
   const handleReceivePayment = (transaction: any) => {
@@ -887,6 +849,24 @@ Your Business Name`;
     else if (status === 'Partial') color = 'bg-orange-100 text-orange-800';
     else color = 'bg-red-100 text-red-800';
     return <span className={`px-3 py-1 text-xs font-semibold rounded-full ${color}`}>{status}</span>;
+  }
+
+  // Sale create handler (example, adjust as per your form logic)
+  async function handleCreateSale(newSale: {
+    partyName: string;
+    phoneNo: string;
+    items: { id: number; item: string; qty: string; unit: string; price: string; amount: number }[];
+    discount: string;
+    discountType: string;
+    tax: string;
+    paymentType: string;
+    editingId: number | null;
+  }) {
+    const sales = (await businessStorage.getSales()) || [];
+    const id = Date.now().toString(); // unique id
+    const saleWithId = { ...newSale, id };
+    await businessStorage.setSales([...sales, saleWithId]);
+    router.push(`/dashboard/sale/invoice/${id}`);
   }
 
   return (

@@ -322,13 +322,13 @@ export default function Dashboard() {
           <div className="flex items-center space-x-4">
             <div className="relative">
               <div className="w-12 h-12 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-2xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform duration-200">
-                <span className="text-xl font-bold text-white">V</span>
+                <span className="text-xl font-bold text-white">DD</span>
               </div>
               <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full animate-pulse"></div>
             </div>
             <div>
               <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-                Vypar Dashboard
+                Devease Digital Dashboard
               </h1>
               <p className="text-sm text-gray-500 hidden sm:block">Business Management System</p>
             </div>
@@ -539,7 +539,7 @@ export default function Dashboard() {
               <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
                 <Sparkles className="w-8 h-8 text-yellow-300 animate-pulse" />
               </div>
-              <h3 className="text-3xl font-bold">Welcome to Vypar Dashboard!</h3>
+              <h3 className="text-3xl font-bold">Welcome to Devease Digital Dashboard!</h3>
             </div>
             
             <p className="text-lg text-indigo-100 mb-8 max-w-3xl">

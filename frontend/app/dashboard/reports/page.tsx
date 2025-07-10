@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react'
 
+// Accept activeTab and setActiveTab as props from layout
 export default function ReportsPage() {
+  const [activeTab, setActiveTab] = useState('sale');
   const [dateRange, setDateRange] = useState('thisMonth')
   const [showDetailedReport, setShowDetailedReport] = useState(false)
-  const [activeTab, setActiveTab] = useState('overview')
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [selectedFormat, setSelectedFormat] = useState('pdf')
   const [isExporting, setIsExporting] = useState(false)
 
@@ -36,21 +37,7 @@ export default function ReportsPage() {
     { name: 'Green Tea Bags', totalQuantity: 450, totalSales: 67500 }
   ]
 
-  useEffect(() => {
-    // Simulate loading
-    const timer = setTimeout(() => {
-      setIsLoading(false)
-    }, 1000)
 
-    return () => clearTimeout(timer)
-  }, [])
-
-  const reportTabs = [
-    { id: 'overview', name: 'Overview', icon: '📊' },
-    { id: 'sales', name: 'Sales', icon: '💰' },
-    { id: 'purchase', name: 'Purchase', icon: '🛒' },
-    { id: 'inventory', name: 'Inventory', icon: '📦' }
-  ]
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -78,22 +65,7 @@ export default function ReportsPage() {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-6">
-        <div className="flex items-center justify-center h-96">
-          <div className="text-center">
-            <div className="relative">
-              <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200 border-t-blue-600 mx-auto"></div>
-              <div className="absolute inset-0 rounded-full h-16 w-16 border-4 border-transparent border-t-green-500 animate-spin" style={{animationDelay: '0.3s', animationDuration: '1.2s'}}></div>
-            </div>
-            <h3 className="mt-6 text-lg font-semibold text-gray-900">Loading Business Analytics</h3>
-            <p className="text-sm text-gray-600 mt-2">Fetching your latest business insights...</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
+
 
   // Define KPIs array outside of JSX
   const kpis = [
@@ -135,7 +107,93 @@ export default function ReportsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
-      {/* Professional Header with Gradient */}
+      <div className="flex gap-8">
+        <div className="flex-1 min-w-0">
+          {/* Header logic for each tab */}
+          {activeTab === 'sale' && (
+            <>
+              <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
+                <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+                  <div className="text-center md:text-left">
+                    <h1 className="text-xl md:text-2xl font-bold text-gray-900">Sale Invoices</h1>
+                    <p className="text-sm text-gray-500 mt-1">Manage your sales, invoices, and payments</p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+          {activeTab === 'purchase' && (
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
+              <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+                <div className="text-center md:text-left">
+                  <h1 className="text-xl md:text-2xl font-bold text-gray-900">Purchase Bills</h1>
+                  <p className="text-sm text-gray-500 mt-1">Manage your purchase bills and supplier payments</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {activeTab === 'profitandloss' && (
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
+              <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+                <div className="text-center md:text-left">
+                  <h1 className="text-xl md:text-2xl font-bold text-gray-900">Profit and Loss Report</h1>
+                  <p className="text-sm text-gray-500 mt-1">View your business profit and loss summary</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {activeTab === 'billwiseprofit' && (
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
+              <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+                <div className="text-center md:text-left">
+                  <h1 className="text-xl md:text-2xl font-bold text-gray-900">Profit on Sale Invoices</h1>
+                  <p className="text-sm text-gray-500 mt-1">See profit for each sale invoice</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {activeTab === 'cashflow' && (
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
+              <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+                <div className="text-center md:text-left">
+                  <h1 className="text-xl md:text-2xl font-bold text-gray-900">Opening Cash in Hand</h1>
+                  <p className="text-sm text-gray-500 mt-1">Cash flow statement</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {activeTab === 'balancesheet' && (
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
+              <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+                <div className="text-center md:text-left">
+                  <h1 className="text-xl md:text-2xl font-bold text-gray-900">Balance Sheet</h1>
+                  <p className="text-sm text-gray-500 mt-1">Business assets, liabilities, and equity</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {activeTab === 'daybook' && (
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
+              <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+                <div className="text-center md:text-left">
+                  <h1 className="text-xl md:text-2xl font-bold text-gray-900">Day Book</h1>
+                  <p className="text-sm text-gray-500 mt-1">View all daily business entries</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {activeTab === 'alltransactions' && (
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
+              <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+                <div className="text-center md:text-left">
+                  <h1 className="text-xl md:text-2xl font-bold text-gray-900">All Transactions</h1>
+                  <p className="text-sm text-gray-500 mt-1">Complete list of all business transactions</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* Default analytics header for all other tabs */}
+          {/* (activeTab !== 'sale' && activeTab !== 'purchase' && activeTab !== 'profitandloss' && activeTab !== 'billwiseprofit' && activeTab !== 'cashflow' && activeTab !== 'balancesheet' && activeTab !== 'daybook' && activeTab !== 'alltransactions') && (
       <div className="bg-white rounded-2xl shadow-xl border border-white/20 backdrop-blur-sm p-8 mb-8 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-600/5 to-purple-600/5"></div>
         <div className="relative z-10">
@@ -160,7 +218,6 @@ export default function ReportsPage() {
                 <span>Last updated: {new Date().toLocaleString()}</span>
               </div>
             </div>
-            
             <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
               <select 
                 value={dateRange}
@@ -185,33 +242,7 @@ export default function ReportsPage() {
           </div>
         </div>
       </div>
-
-      {/* Professional Tabs */}
-      <div className="bg-white rounded-2xl shadow-xl border border-white/20 mb-8 overflow-hidden">
-        <div className="border-b border-gray-100">
-          <nav className="flex overflow-x-auto px-6">
-            {reportTabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`py-5 px-6 border-b-3 font-semibold text-sm flex items-center space-x-3 transition-all duration-300 whitespace-nowrap hover:bg-gray-50 ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600 bg-blue-50/50'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <span className={`text-xl transition-transform duration-300 ${activeTab === tab.id ? 'scale-110' : ''}`}>
-                  {tab.icon}
-                </span>
-                <span>{tab.name}</span>
-                {activeTab === tab.id && (
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                )}
-              </button>
-            ))}
-          </nav>
-        </div>
-      </div>
+          )*/}
 
       {/* Overview Tab Content */}
       {activeTab === 'overview' && (
@@ -371,18 +402,6 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {activeTab === 'purchase' && (
-        <div className="bg-white rounded-2xl shadow-xl p-8 animate-fadeIn">
-          <div className="text-center py-16">
-            <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
-              <span className="text-white text-3xl">🛒</span>
-            </div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">Purchase Analytics</h3>
-            <p className="text-gray-600 max-w-md mx-auto">Purchase analysis, supplier performance, and cost optimization insights.</p>
-          </div>
-        </div>
-      )}
-
       {activeTab === 'inventory' && (
         <div className="bg-white rounded-2xl shadow-xl p-8 animate-fadeIn">
           <div className="text-center py-16">
@@ -489,6 +508,8 @@ export default function ReportsPage() {
           </div>
         </div>
       )}
+        </div>
+      </div>
 
       <style jsx>{`
         .animate-fadeIn {

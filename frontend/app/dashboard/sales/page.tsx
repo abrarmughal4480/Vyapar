@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { getToken } from '../../lib/auth'
 import { getSaleOrders, updateSaleOrderStatus, convertSaleOrderToInvoice, deleteSaleOrder } from '../../../http/saleOrders'
-import TableActionMenu from '@/app/components/TableActionMenu'
-import ConfirmDialog from '@/app/components/ConfirmDialog'
+import TableActionMenu from '@/components/TableActionMenu'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import { deleteSale } from '@/http/sales'
 
 // Status badge component
@@ -41,7 +41,7 @@ function StatusBadge({ status, dueDate }: { status: string, dueDate?: string }) 
 }
 
 // Header component
-function VyaparHeader({ onNewOrder }: { onNewOrder: () => void }) {
+function DeveaseDigitalHeader({ onNewOrder }: { onNewOrder: () => void }) {
   return (
     <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
       <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
@@ -238,12 +238,10 @@ export default function SalesOrderPage() {
 
   // Load sales orders from API
   const loadSalesOrdersFromAPI = useCallback(async () => {
-    setIsLoading(true);
     setError('');
     const token = getToken();
     if (!token) {
       setError('User not authenticated');
-      setIsLoading(false);
       return;
     }
     try {
@@ -258,7 +256,6 @@ export default function SalesOrderPage() {
       setError('Failed to load sales orders');
       setSalesOrders([]);
     }
-    setIsLoading(false);
   }, []);
 
   useEffect(() => {
@@ -274,14 +271,12 @@ export default function SalesOrderPage() {
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
     const token = getToken();
     if (!token) return setError('User not authenticated');
-    setIsLoading(true);
     try {
       await updateSaleOrderStatus(orderId, newStatus, token);
       await loadSalesOrdersFromAPI();
     } catch (error: any) {
       setError('Failed to update order status');
     }
-    setIsLoading(false);
   }
 
   // Convert to invoice
@@ -396,7 +391,7 @@ export default function SalesOrderPage() {
         </div>
       )}
 
-      <VyaparHeader onNewOrder={handleCreateSalesOrder} />
+      <DeveaseDigitalHeader onNewOrder={handleCreateSalesOrder} />
       
       {/* Stats Grid (full width, responsive) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6">

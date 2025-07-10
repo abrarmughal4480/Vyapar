@@ -6,7 +6,6 @@ import { useExport, ExportColumn } from '../../hooks/useExport'
 import { getItems, deleteItem } from '../../../http/items'
 import { ITEM_CATEGORIES } from '../../constants/categories'
 import Toast from '../../components/Toast'
-import LoadingOverlay from '../../../components/LoadingOverlay'
 import { jwtDecode } from 'jwt-decode'
 import ReactDOM from 'react-dom'
 
@@ -21,13 +20,20 @@ interface Item {
   purchasePrice: number
   stock: number
   minStock: number
-  unit: string
+  unit: {
+    base: string;
+    secondary: string;
+    conversionFactor: number;
+    customBase: string;
+    customSecondary: string;
+  };
   sku: string
   description: string
   supplier: string
   status: 'Active' | 'Inactive' | 'Discontinued'
   type?: 'Product' | 'Service'
   imageUrl?: string
+  openingQuantity?: number; // Added for opening stock
 }
 
 interface ItemCategory {
@@ -49,17 +55,33 @@ interface InventoryStats {
 // Move this function above the component
 function calculateStats(items: Item[]) {
   const totalItems = items.length
-  const totalValue = items.reduce((sum, item) => sum + (item.stock * item.salePrice), 0)
-  const lowStockItems = items.filter(item => item.stock <= item.minStock).length
-  const outOfStockItems = items.filter(item => item.stock === 0).length
+  const totalValue = items.reduce((sum, item) => sum + ((item.openingQuantity ?? item.stock) * item.salePrice), 0)
+  const lowStockItems = items.filter(item => (item.openingQuantity ?? item.stock) <= item.minStock).length
+  const outOfStockItems = items.filter(item => (item.openingQuantity ?? item.stock) === 0).length
 
   return { totalItems, totalValue, lowStockItems, outOfStockItems }
+}
+
+// Add this helper function above the component
+function getStockDisplay(item: Item, value: number) {
+  if (!item.unit) return '';
+  const base = item.unit.base === 'custom' ? item.unit.customBase : item.unit.base;
+  let result = `${value} ${base}`;
+  if (item.unit.secondary && item.unit.secondary !== 'None' && item.unit.conversionFactor) {
+    const secondary = item.unit.secondary === 'custom' ? item.unit.customSecondary : item.unit.secondary;
+    const secondaryQty = Math.floor(value / item.unit.conversionFactor);
+    const remainder = value % item.unit.conversionFactor;
+    result += ` (${secondaryQty} ${secondary}`;
+    if (remainder > 0) result += ` + ${remainder} ${base}`;
+    result += `; 1 ${secondary} = ${item.unit.conversionFactor} ${base})`;
+  }
+  return result;
 }
 
 export default function ItemsPage() {
   const router = useRouter()
   const [items, setItems] = useState<Item[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [categories] = useState<ItemCategory[]>(
     ITEM_CATEGORIES.map((name, idx) => {
       let icon = '📦';
@@ -153,7 +175,6 @@ export default function ItemsPage() {
   }, [businessId])
 
   const fetchItems = async () => {
-    setLoading(true)
     try {
       const result = await getItems(businessId)
       if (result.success) {
@@ -163,8 +184,6 @@ export default function ItemsPage() {
       }
     } catch (err: any) {
       setError('Failed to fetch items')
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -178,8 +197,9 @@ export default function ItemsPage() {
   }
 
   const getStockStatus = (item: Item) => {
-    if (item.stock === 0) return { label: 'Out of Stock', color: 'bg-red-100 text-red-800' }
-    if (item.stock <= item.minStock) return { label: 'Low Stock', color: 'bg-orange-100 text-orange-800' }
+    const stockValue = item.openingQuantity ?? item.stock;
+    if (stockValue === 0) return { label: 'Out of Stock', color: 'bg-red-100 text-red-800' }
+    if (stockValue <= item.minStock) return { label: 'Low Stock', color: 'bg-orange-100 text-orange-800' }
     return { label: 'In Stock', color: 'bg-green-100 text-green-800' }
   }
 
@@ -279,13 +299,7 @@ export default function ItemsPage() {
     }
   }, [showCategoryDropdown]);
 
-  if (loading) {
-    return (
-      <div className="relative min-h-screen">
-        <LoadingOverlay show={true} message="Loading items..." />
-      </div>
-    )
-  }
+
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -394,6 +408,7 @@ export default function ItemsPage() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 rounded-full bg-white/80 shadow focus:ring-2 focus:ring-blue-500 focus:border-blue-500 border border-gray-200 transition-all placeholder-gray-400 text-gray-900"
+                  autoComplete="off"
                 />
               </div>
               {/* Enhanced Category Dropdown */}
@@ -607,7 +622,9 @@ export default function ItemsPage() {
                       const profit = item.salePrice - item.purchasePrice
                       const margin = ((profit / item.salePrice) * 100).toFixed(1)
                       return (
-                        <tr key={key} className={`hover:bg-blue-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                        <tr key={key} className={`hover:bg-blue-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                          onDoubleClick={() => openEditItemPage(item)}
+                        >
                           <td className="px-6 py-4 whitespace-nowrap flex items-center space-x-3">
                             <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-base">
                               {getCategoryIcon(item.category)}
@@ -626,8 +643,8 @@ export default function ItemsPage() {
                             <div className="text-sm text-gray-500">Cost: PKR {item.purchasePrice.toLocaleString()} • {margin}% margin</div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">{item.stock} {item.unit}</div>
-                            <div className="text-sm text-gray-500">Min: {item.minStock} {item.unit}</div>
+                            <div className="text-sm font-medium text-gray-900">{getStockDisplay(item, item.openingQuantity ?? item.stock)}</div>
+                            <div className="text-sm text-gray-500">Min: {getStockDisplay(item, item.minStock)}</div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-center">
                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${stockStatus.color}`}>

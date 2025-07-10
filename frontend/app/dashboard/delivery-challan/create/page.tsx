@@ -243,12 +243,14 @@ function ItemRow({
                       }
                       handleItemChange(index, 'unit', mappedUnit);
                       handleItemChange(index, 'price', i.salePrice || 0);
+                      // Keep quantity empty when item is selected
+                      handleItemChange(index, 'qty', '');
                       setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                     }}
                   >
                     <div className="flex justify-between items-center">
                       <span className="font-medium text-gray-800">{i.name}</span>
-                      <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock || 0}</span>
+                      <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.openingQuantity ?? (i.stock || 0)}</span>
                                           </div>
                     </li>
                   ));
@@ -282,7 +284,18 @@ function ItemRow({
           type="number"
           value={item.qty}
           min={0}
-          onChange={e => handleItemChange(index, 'qty', e.target.value)}
+          onChange={e => {
+            handleItemChange(index, 'qty', e.target.value);
+            // If this is the last row and qty is not empty, add a new row
+            if (
+              index === formData.items.length - 1 &&
+              e.target.value &&
+              !formData.items.some((row: { qty?: string }, idx: number) => idx > index && !row.qty)
+            ) {
+              // Add a new row
+              addRow();
+            }
+          }}
           className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
         />
       </td>

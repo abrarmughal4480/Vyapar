@@ -2,13 +2,15 @@ import api from './api';
 
 // Items API for frontend
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
+
 export async function getItems(userId: string) {
-  const res = await fetch(`http://localhost:4000/items/${userId}`);
+  const res = await fetch(`${API_BASE_URL}/items/${userId}`);
   return res.json();
 }
 
 export async function addItem(userId: string, item: any) {
-  const res = await fetch(`http://localhost:4000/items/${userId}`, {
+  const res = await fetch(`${API_BASE_URL}/items/${userId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(item),
@@ -17,14 +19,14 @@ export async function addItem(userId: string, item: any) {
 }
 
 export async function deleteItem(userId: string, itemId: string) {
-  const res = await fetch(`http://localhost:4000/items/${userId}/${itemId}`, {
+  const res = await fetch(`${API_BASE_URL}/items/${userId}/${itemId}`, {
     method: 'DELETE',
   });
   return res.json();
 }
 
 export async function updateItem(userId: string, itemId: string, data: any) {
-  const res = await fetch(`http://localhost:4000/items/${userId}/${itemId}`, {
+  const res = await fetch(`${API_BASE_URL}/items/${userId}/${itemId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),

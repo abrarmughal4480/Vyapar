@@ -55,7 +55,7 @@ body {
   @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
 }
 
-/* Professional card shadows like Vyapar */
+/* Professional card shadows like Devease Digital */
 .card-shadow {
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
 }
@@ -68,7 +68,7 @@ body {
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
-/* Vyapar-like gradient backgrounds */
+/* Devease Digital-like gradient backgrounds */
 .gradient-bg-primary {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
@@ -83,6 +83,132 @@ body {
 
 .gradient-bg-danger {
   background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+}
+
+/* Disable browser autocomplete and suggestions for all input fields */
+input, textarea, select {
+  -webkit-autofill: none !important;
+  -webkit-autofill: transparent !important;
+  -webkit-box-shadow: 0 0 0 1000px white inset !important;
+  -webkit-text-fill-color: inherit !important;
+  autocomplete: off !important;
+  autocorrect: off !important;
+  autocapitalize: off !important;
+  spellcheck: false !important;
+}
+
+/* Remove browser datalist suggestions */
+input::-webkit-calendar-picker-indicator {
+  display: none !important;
+}
+
+input::-webkit-list-button {
+  display: none !important;
+}
+
+input::-webkit-search-cancel-button {
+  display: none !important;
+}
+
+input::-webkit-search-decoration {
+  display: none !important;
+}
+
+/* Remove browser dropdown arrows for select elements */
+select {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+  background-image: none !important;
+}
+
+/* Hide browser suggestions dropdown */
+input::-webkit-contacts-auto-fill-button {
+  display: none !important;
+}
+
+input::-webkit-credentials-auto-fill-button {
+  display: none !important;
+}
+
+/* Disable browser form suggestions */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+input[type="tel"],
+input[type="url"],
+input[type="number"],
+textarea {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+}
+
+/* Additional rules to completely disable browser autofill and saved data */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px white inset !important;
+  -webkit-text-fill-color: inherit !important;
+  transition: background-color 5000s ease-in-out 0s !important;
+  background-color: transparent !important;
+}
+
+/* Disable all browser autocomplete features */
+input[autocomplete="off"],
+input[autocomplete="new-password"],
+input[autocomplete="current-password"],
+input[autocomplete="username"],
+input[autocomplete="email"],
+input[autocomplete="tel"],
+input[autocomplete="url"],
+input[autocomplete="name"],
+input[autocomplete="given-name"],
+input[autocomplete="family-name"],
+input[autocomplete="organization"],
+input[autocomplete="street-address"],
+input[autocomplete="locality"],
+input[autocomplete="region"],
+input[autocomplete="postal-code"],
+input[autocomplete="country"] {
+  -webkit-autofill: none !important;
+  -webkit-box-shadow: 0 0 0 1000px white inset !important;
+  -webkit-text-fill-color: inherit !important;
+  background-color: transparent !important;
+}
+
+/* Hide browser password manager suggestions */
+input[type="password"]::-webkit-credentials-auto-fill-button {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* Disable browser form data suggestions */
+input::-webkit-datetime-edit,
+input::-webkit-datetime-edit-fields-wrapper,
+input::-webkit-datetime-edit-text,
+input::-webkit-datetime-edit-month-field,
+input::-webkit-datetime-edit-day-field,
+input::-webkit-datetime-edit-year-field,
+input::-webkit-inner-spin-button,
+input::-webkit-outer-spin-button {
+  display: none !important;
+}
+
+/* Additional Firefox specific rules */
+input:-moz-autofill {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+
+/* Disable browser saved form data */
+input[data-lpignore="true"],
+input[data-form-type="other"] {
+  -webkit-autofill: none !important;
+  background-color: transparent !important;
 }
 
 /* Custom scrollbar for the whole app */

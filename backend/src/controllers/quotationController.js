@@ -307,4 +307,31 @@ export const deleteQuotation = async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+};
+
+// Update a quotation (full edit)
+export const updateQuotation = async (req, res) => {
+  try {
+    const userId = req.user && (req.user._id || req.user.id);
+    const { quotationId } = req.params;
+    const updateData = req.body;
+    const quotation = await Quotation.findOneAndUpdate(
+      { _id: quotationId, userId },
+      { ...updateData, updatedAt: new Date() },
+      { new: true }
+    );
+    if (!quotation) return res.status(404).json({ success: false, message: 'Quotation not found' });
+    res.json({ success: true, data: quotation });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+export default {
+  createQuotation,
+  getQuotationsForUser,
+  updateQuotationStatus,
+  fixQuotationIndexes,
+  deleteQuotation,
+  updateQuotation,
 }; 

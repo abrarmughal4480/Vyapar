@@ -3,10 +3,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Plus, MoreVertical, Search, Filter, Download, X, ChevronDown, Calendar, Share2, Save, Info, Camera, Image, Settings } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getToken, getUserIdFromToken } from '../../lib/auth';
-import { getPurchasesByUser, getPurchaseStatsByUser, deletePurchase } from '../../../http/purchases';
+import { getPurchasesByUser, getPurchaseStatsByUser, deletePurchase, getPurchaseById } from '../../../http/purchases';
 import { jwtDecode } from 'jwt-decode';
 import TableActionMenu from '../../components/TableActionMenu';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import PaymentOutModal from '../../components/PaymentOutModal';
 
 // Type definitions
 interface Discount {
@@ -669,6 +670,8 @@ export default function PurchaseBillsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [purchaseToDelete, setPurchaseToDelete] = useState<PurchaseData | null>(null);
+  const [showPaymentOut, setShowPaymentOut] = useState(false);
+  const [selectedPurchase, setSelectedPurchase] = useState<PurchaseData | null>(null);
 
   // Fetch purchases and stats from API
   React.useEffect(() => {
@@ -695,6 +698,7 @@ export default function PurchaseBillsPage() {
             ...purchase,
             id: purchase._id || purchase.id,
           }));
+          console.log('Fetched purchases:', mapped);
           setPurchases(mapped);
         }
 
@@ -986,8 +990,8 @@ export default function PurchaseBillsPage() {
                       // Search filter
                       const searchLower = searchTerm.toLowerCase();
                       const matchesSearch = 
-                        purchase.supplierName.toLowerCase().includes(searchLower) ||
-                        purchase.billNo.toLowerCase().includes(searchLower);
+                        (purchase.supplierName || '').toLowerCase().includes(searchLower) ||
+                        (purchase.billNo || '').toLowerCase().includes(searchLower);
                       
                       // Status filter
                       let matchesStatus = true;
@@ -1007,8 +1011,8 @@ export default function PurchaseBillsPage() {
                           {purchase.billNo}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-left">
-                          <div className="text-sm text-gray-900">{purchase.supplierName}</div>
-                          <div className="text-xs text-gray-500">{purchase.phoneNo}</div>
+                          <div className="text-sm text-gray-900 font-medium">{purchase.supplierName || 'N/A'}</div>
+                          <div className="text-xs text-gray-500">{purchase.phoneNo || 'No phone'}</div>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">
                           {purchase.createdAt ? new Date(purchase.createdAt).toLocaleDateString('en-IN') : 'N/A'}
@@ -1029,6 +1033,12 @@ export default function PurchaseBillsPage() {
                           <TableActionMenu
                             onEdit={() => router.push(`/dashboard/purchaseAdd?id=${purchase._id}`)}
                             onDelete={() => handleDeletePurchase(purchase)}
+                            extraActions={[
+                              {
+                                label: 'Make Payment',
+                                onClick: () => { setSelectedPurchase(purchase); setShowPaymentOut(true); }
+                              }
+                            ]}
                           />
                         </td>
                       </tr>
@@ -1039,6 +1049,38 @@ export default function PurchaseBillsPage() {
           </div>
         </div>
       </div>
+      {/* PaymentOutModal integration */}
+     {/* PaymentOutModal integration */}
+<PaymentOutModal
+  isOpen={showPaymentOut}
+  onClose={() => setShowPaymentOut(false)}
+  onSave={async (data) => {
+    // Fetch updated purchase from API
+    try {
+      const token = getToken();
+      if (!selectedPurchase || !selectedPurchase._id) return;
+
+      if (!token) return;
+
+      const result = await getPurchaseById(selectedPurchase._id, token as string);
+      if (result && result.success && result.purchase) {
+        setPurchases((prev) =>
+          prev.map((p) =>
+            p._id === selectedPurchase._id ? { ...p, ...result.purchase } : p
+          )
+        );
+      }
+    } catch (err) {
+      // fallback: just reload all
+      setShowPaymentOut(false);
+    }
+    setShowPaymentOut(false);
+  }}
+  partyName={selectedPurchase?.supplierName || ''}
+  total={typeof selectedPurchase?.grandTotal === 'number' ? selectedPurchase.grandTotal : 0}
+  dueBalance={typeof selectedPurchase?.balance === 'number' ? selectedPurchase.balance : 0}
+  purchaseId={selectedPurchase?._id || '0'}
+/>
       <ConfirmDialog
         open={showDeleteDialog}
         title="Delete Purchase Bill?"

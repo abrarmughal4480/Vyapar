@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Toast from '../../../components/Toast'
 import ReactDOM from 'react-dom'
@@ -118,7 +118,8 @@ function ItemRow({
   itemSuggestions,
   deleteRow,
   formData,
-  fetchItemSuggestions
+  fetchItemSuggestions,
+  addRow
 }: {
   item: { id: number; item: string; qty: string; unit: string; customUnit: string; price: string; amount: number };
   index: number;
@@ -129,6 +130,7 @@ function ItemRow({
   deleteRow: (index: number) => void;
   formData: FormData;
   fetchItemSuggestions: () => void;
+  addRow: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
@@ -790,6 +792,7 @@ export default function CreateSalesOrderPage() {
                       deleteRow={removeRow}
                       formData={formData}
                       fetchItemSuggestions={fetchItemSuggestions}
+                      addRow={addRow}
                     />
                   ))}
                 </tbody>

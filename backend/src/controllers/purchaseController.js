@@ -1,5 +1,6 @@
 import Purchase from '../models/purchase.js';
 import Item from '../models/items.js';
+import Payment from '../models/payment.js';
 import mongoose from 'mongoose';
 
 export const createPurchase = async (req, res) => {
@@ -55,14 +56,14 @@ export const createPurchase = async (req, res) => {
     // Calculate grandTotal
     const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
     
-    // Generate bill number for this user
-    let billNo = 'PUR001';
+    // Generate bill number for this user (unique per user)
+    let billNo = 'PO001';
     const lastPurchase = await Purchase.findOne({ userId }).sort({ createdAt: -1 });
     if (lastPurchase && lastPurchase.billNo) {
-      const match = lastPurchase.billNo.match(/PUR(\d+)/);
+      const match = lastPurchase.billNo.match(/PO(\d+)/);
       if (match) {
         const nextNum = String(parseInt(match[1], 10) + 1).padStart(3, '0');
-        billNo = `PUR${nextNum}`;
+        billNo = `PO${nextNum}`;
       }
     }
     
@@ -129,19 +130,67 @@ export const getPurchasesByUser = async (req, res) => {
 // Make payment for a purchase
 export const makePayment = async (req, res) => {
   try {
-    const { purchaseId, amount } = req.body;
+    const { purchaseId, amount, paymentType = 'Cash', description = '', imageUrl = '' } = req.body;
     if (!purchaseId || typeof amount !== 'number') {
       return res.status(400).json({ success: false, message: 'Missing purchaseId or amount' });
     }
+    
+    const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+    
     const purchase = await Purchase.findById(purchaseId);
     if (!purchase) {
       return res.status(404).json({ success: false, message: 'Purchase not found' });
     }
-    purchase.paid = (purchase.paid || 0) + amount;
-    purchase.balance = (purchase.balance || 0) - amount;
+    
+    // Validate payment amount
+    if (amount <= 0) {
+      return res.status(400).json({ success: false, message: 'Payment amount must be greater than 0' });
+    }
+    
+    const currentBalance = purchase.balance || 0;
+    const currentPaid = purchase.paid || 0;
+    
+    // Check if payment amount exceeds remaining balance
+    if (amount > currentBalance) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Payment amount (${amount}) cannot exceed remaining balance (${currentBalance})` 
+      });
+    }
+    
+    // Update purchase payment and balance
+    purchase.paid = currentPaid + amount;
+    purchase.balance = Math.max(0, currentBalance - amount); // Ensure balance doesn't go negative
+    
     await purchase.save();
-    res.json({ success: true, purchase });
+    
+    // Create payment record
+    const payment = new Payment({
+      userId,
+      purchaseId,
+      billNo: purchase.billNo,
+      supplierName: purchase.supplierName,
+      phoneNo: purchase.phoneNo,
+      amount,
+      paymentType,
+      paymentDate: new Date(),
+      description,
+      imageUrl,
+      category: 'Purchase Payment',
+      status: purchase.balance === 0 ? 'Paid' : 'Partial'
+    });
+    
+    await payment.save();
+    
+    console.log(`Payment processed for purchase ${purchaseId}: Amount=${amount}, New Paid=${purchase.paid}, New Balance=${purchase.balance}`);
+    console.log('Payment record saved:', payment.toObject());
+    
+    res.json({ success: true, purchase, payment });
   } catch (err) {
+    console.error('Payment error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -208,6 +257,90 @@ export const updatePurchase = async (req, res) => {
   }
 };
 
+// Get all payments for a user
+export const getPaymentsByUser = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+    
+    console.log('Fetching payments for userId:', userId);
+    
+    // First, let's check if there are any payments at all
+    const paymentCount = await Payment.countDocuments({ userId });
+    console.log('Total payments found:', paymentCount);
+    
+    // Let's also check all payments for this user to see what's in the database
+    const allPayments = await Payment.find({ userId });
+    console.log('All payments for user:', allPayments.map(p => ({ id: p._id, amount: p.amount, billNo: p.billNo, supplierName: p.supplierName })));
+    
+    // Convert userId to ObjectId safely
+    let objectUserId;
+    try {
+      objectUserId = mongoose.Types.ObjectId(userId);
+    } catch (e) {
+      console.error('Invalid userId format:', userId);
+      return res.json({ success: true, payments: [] });
+    }
+    
+    // Use aggregation to join payments with purchase data
+    let payments;
+    try {
+      payments = await Payment.aggregate([
+        { $match: { userId: objectUserId } },
+        {
+          $lookup: {
+            from: 'purchases',
+            localField: 'purchaseId',
+            foreignField: '_id',
+            as: 'purchase'
+          }
+        },
+        { $unwind: { path: '$purchase', preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            _id: 1,
+            userId: 1,
+            purchaseId: 1,
+            billNo: 1,
+            supplierName: 1,
+            phoneNo: 1,
+            amount: 1,
+            paymentType: 1,
+            paymentDate: 1,
+            description: 1,
+            imageUrl: 1,
+            category: 1,
+            status: 1,
+            createdAt: 1,
+            updatedAt: 1,
+            billTotal: { $ifNull: ['$purchase.grandTotal', 0] },
+            remainingBalance: { $ifNull: ['$purchase.balance', 0] }
+          }
+        },
+        { $sort: { paymentDate: -1 } }
+      ]);
+    } catch (aggregationError) {
+      console.error('Aggregation failed, falling back to simple query:', aggregationError);
+      // Fallback to simple query without aggregation
+      const simplePayments = await Payment.find({ userId }).sort({ paymentDate: -1 });
+      payments = simplePayments.map(payment => ({
+        ...payment.toObject(),
+        billTotal: 0,
+        remainingBalance: 0
+      }));
+    }
+    
+    console.log('Payments with aggregation:', payments);
+    res.json({ success: true, payments });
+  } catch (err) {
+    console.error('Error fetching payments:', err);
+    console.error('Error stack:', err.stack);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 export default {
   createPurchase,
   getPurchasesByUser,
@@ -215,4 +348,5 @@ export default {
   getPurchaseStatsByUser,
   deletePurchase,
   updatePurchase,
+  getPaymentsByUser,
 }; 

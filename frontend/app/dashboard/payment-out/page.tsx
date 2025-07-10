@@ -1,419 +1,480 @@
 "use client";
-import React, { useState, useEffect } from 'react';
-import { Search, FileSpreadsheet, Printer, MoreVertical, Calendar, ChevronDown } from 'lucide-react';
-import Toast from '../../components/Toast';
+import React, { useState, useEffect, useRef } from "react";
+import { getPurchasesByUser, getPurchaseById, getPayments } from "@/http/purchases";
+import { jwtDecode } from "jwt-decode";
+import Toast from "../../components/Toast";
+import PaymentOutModal from "../../components/PaymentOutModal";
+import { useRouter } from "next/navigation";
+import TableActionMenu from "../../components/TableActionMenu";
 
-const CashoutPage = () => {
-  const [businessName, setBusinessName] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedFirm, setSelectedFirm] = useState('ALL FIRMS');
-  const [selectedType, setSelectedType] = useState('Payment-Out');
-  const [dateRange, setDateRange] = useState({
-    from: '2025-06-01',
-    to: '2025-06-30'
-  });
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedParty, setSelectedParty] = useState('');
-  const [receiptNo, setReceiptNo] = useState('');
-  const [paymentDate, setPaymentDate] = useState('2025-06-19');
-  const [paidAmount, setPaidAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [showDescription, setShowDescription] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+const dateRanges = [
+  { value: 'All', label: 'All Time' },
+  { value: 'Today', label: 'Today' },
+  { value: 'Yesterday', label: 'Yesterday' },
+  { value: 'This Week', label: 'This Week' },
+  { value: 'This Month', label: 'This Month' },
+  { value: 'Last Month', label: 'Last Month' },
+  { value: 'This Year', label: 'This Year' },
+  { value: 'Custom', label: 'Custom Range' },
+];
 
-  // Sample data for dropdowns
-  const firms = ['ALL FIRMS', 'Firm 1', 'Firm 2', 'Firm 3'];
-  const types = ['Payment-Out', 'Payment-In', 'Cash Sale', 'Credit Sale'];
-  const parties = [
-    { id: 'manaN', name: 'manaN', number: '2343078', balance: '4556864' },
-    { id: 'party2', name: 'Party 2', number: '2343079', balance: '125000' },
-    { id: 'party3', name: 'Party 3', number: '2343080', balance: '75000' }
-  ];
+function PaymentStatusBadge({ status }: { status: string }) {
+  let color = '';
+  if (status === 'Paid') color = 'bg-green-100 text-green-800';
+  else if (status === 'Partial') color = 'bg-orange-100 text-orange-800';
+  else color = 'bg-red-100 text-red-800';
+  return <span className={`px-3 py-1 text-xs font-semibold rounded-full ${color}`}>{status}</span>;
+}
 
-  const handleSave = () => {
-    const paymentData = {
-      party: selectedParty,
-      receiptNo,
-      date: paymentDate,
-      amount: paidAmount,
-      description
+const PaymentOutPage = () => {
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showPaymentOut, setShowPaymentOut] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [filterType, setFilterType] = useState('All');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [showDateDropdown, setShowDateDropdown] = useState(false);
+  const [statusTab, setStatusTab] = useState('All');
+  const dateDropdownRef = useRef<HTMLDivElement>(null);
+  const dateDropdownButtonRef = useRef<HTMLButtonElement>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    const fetchPayments = async () => {
+      setLoading(true);
+      try {
+        const token = (typeof window !== "undefined" && (localStorage.getItem("token") || localStorage.getItem("vypar_auth_token"))) || "";
+        if (!token) {
+          setTransactions([]);
+          setLoading(false);
+          return;
+        }
+        
+        const result = await getPayments(token);
+        console.log('Payment result:', result);
+        if (result && result.success && Array.isArray(result.payments)) {
+          console.log('Payments data:', result.payments);
+          setTransactions(result.payments);
+        } else {
+          console.log('No payments found or invalid response');
+          setTransactions([]);
+        }
+      } catch (err) {
+        console.error('Error fetching payments:', err);
+        setTransactions([]);
+      }
+      setLoading(false);
     };
-    console.log('Saving payment:', paymentData);
-    setToast({ message: 'Payment saved successfully!', type: 'success' });
-    setShowPaymentModal(false);
-    // Reset form
-    setSelectedParty('');
-    setReceiptNo('');
-    setPaidAmount('');
-    setDescription('');
-    setShowDescription(false);
+    fetchPayments();
+  }, []);
+
+  // Filtering logic
+  const filteredTransactions = transactions.filter((transaction: any) => {
+    // Search
+    const matchesSearch =
+      !searchTerm ||
+      transaction.supplierName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      transaction.billNo?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // Status
+    const matchesStatus = statusTab === 'All' || transaction.status === statusTab;
+    
+    // Date
+    let matchesDate = true;
+    if (dateFrom || dateTo) {
+      const transactionDate = new Date(transaction.paymentDate || transaction.createdAt);
+      if (dateFrom) {
+        const fromDate = new Date(dateFrom);
+        matchesDate = matchesDate && transactionDate >= fromDate;
+      }
+      if (dateTo) {
+        const toDate = new Date(dateTo);
+        toDate.setHours(23, 59, 59, 999);
+        matchesDate = matchesDate && transactionDate <= toDate;
+      }
+    }
+    return matchesSearch && matchesStatus && matchesDate;
+  });
+
+  // Stats
+  const filteredStats = {
+    totalPaid: filteredTransactions.reduce((sum: number, t: any) => sum + (typeof t.amount === 'number' ? t.amount : 0), 0),
+    totalGrandTotal: filteredTransactions.reduce((sum: number, t: any) => sum + (typeof t.billTotal === 'number' ? t.billTotal : 0), 0),
+    totalBalance: filteredTransactions.reduce((sum: number, t: any) => sum + (typeof t.remainingBalance === 'number' ? t.remainingBalance : 0), 0),
   };
 
-  const handleShare = () => {
-    setToast({ message: 'Share functionality would be implemented here', type: 'success' });
+  // Date dropdown outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        dateDropdownRef.current &&
+        !dateDropdownRef.current.contains(event.target as Node) &&
+        dateDropdownButtonRef.current &&
+        !dateDropdownButtonRef.current.contains(event.target as Node)
+      ) {
+        setShowDateDropdown(false);
+      }
+    }
+    if (showDateDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    } else {
+      document.removeEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDateDropdown]);
+
+  // Date range logic
+  const getDateRange = (filterType: string) => {
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+    switch (filterType) {
+      case 'Today':
+        return { from: startOfDay, to: endOfDay };
+      case 'Yesterday':
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        return {
+          from: new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate()),
+          to: new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59)
+        };
+      case 'This Week':
+        const startOfWeek = new Date(today);
+        startOfWeek.setDate(today.getDate() - today.getDay());
+        return {
+          from: new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate()),
+          to: endOfDay
+        };
+      case 'This Month':
+        return {
+          from: new Date(today.getFullYear(), today.getMonth(), 1),
+          to: endOfDay
+        };
+      case 'Last Month':
+        const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59);
+        return { from: lastMonth, to: lastMonthEnd };
+      case 'This Year':
+        return {
+          from: new Date(today.getFullYear(), 0, 1),
+          to: endOfDay
+        };
+      default:
+        return null;
+    }
   };
 
-  const exportToExcel = () => {
-    setToast({ message: 'Excel export functionality would be implemented here', type: 'success' });
+  const handleFilterTypeChange = (newFilterType: string) => {
+    setFilterType(newFilterType);
+    if (newFilterType === 'Custom') return;
+    const dateRange = getDateRange(newFilterType);
+    if (dateRange) {
+      setDateFrom(dateRange.from.toISOString().split('T')[0]);
+      setDateTo(dateRange.to.toISOString().split('T')[0]);
+    } else {
+      setDateFrom('');
+      setDateTo('');
+    }
   };
-
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const selectedPartyData = parties.find(p => p.id === selectedParty);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto p-5">
-        {/* Header Section */}
-        <div className="bg-white rounded-lg shadow-sm p-4 mb-5">
-          <div className="flex justify-between items-center flex-wrap gap-4">
-            <div className="flex items-center gap-3">
-              <span className="text-red-500 text-xs">●</span>
-              <input
-                type="text"
-                value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
-                placeholder="Enter Business Name"
-                className="border-none outline-none text-gray-600 bg-transparent min-w-[200px]"
-              />
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <button 
-                onClick={() => window.location.href = '/dashboard/sales'}
-                className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-md hover:shadow-md transition-all"
-              >
-                + Add Sale
-              </button>
-              <button 
-                onClick={() => window.location.href = '/dahobard/purchase'}
-                className="px-4 py-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-md hover:shadow-md transition-all"
-              >
-                + Add Purchase
-              </button>
-              <button className="px-4 py-2 bg-white text-gray-600 border border-gray-300 rounded-md hover:shadow-md transition-all">
-                +
-              </button>
-              <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-md">
-                <MoreVertical size={18} />
-              </button>
-            </div>
+    <div className="p-6 bg-gray-50 min-h-screen">
+      {/* Header */}
+      <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
+        <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+          <div className="text-center md:text-left">
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Payment Out</h1>
+            <p className="text-sm text-gray-500 mt-1">All payments made to suppliers</p>
           </div>
+          {/* Add Payment Out Button */}
+          <button
+            className="px-6 py-2 rounded-full bg-blue-600 text-white font-semibold shadow hover:bg-blue-700 transition-all text-sm"
+            onClick={() => { setSelectedTransaction(null); setShowPaymentOut(true); }}
+          >
+            + Add Payment Out
+          </button>
         </div>
-
-        {/* Filter Section */}
-        <div className="bg-white rounded-lg shadow-sm p-5 mb-5">
-          <div className="flex justify-between items-center flex-wrap gap-4 mb-4">
-            <div className="flex items-center gap-4 flex-wrap">
-              <div className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50">
-                <span className="font-medium">This Month</span>
-                <ChevronDown size={16} />
-              </div>
-              <div className="flex items-center gap-2 bg-gray-100 px-4 py-2 rounded-md text-sm text-gray-600">
-                <span>Between</span>
-                <input
-                  type="date"
-                  value={dateRange.from}
-                  onChange={(e) => setDateRange(prev => ({...prev, from: e.target.value}))}
-                  className="bg-transparent border-none outline-none"
-                />
-                <span>To</span>
-                <input
-                  type="date"
-                  value={dateRange.to}
-                  onChange={(e) => setDateRange(prev => ({...prev, to: e.target.value}))}
-                  className="bg-transparent border-none outline-none"
-                />
-              </div>
-              <select
-                value={selectedFirm}
-                onChange={(e) => setSelectedFirm(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-md bg-white min-w-[120px]"
-              >
-                {firms.map(firm => (
-                  <option key={firm} value={firm}>{firm}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex gap-5">
-              <button 
-                onClick={exportToExcel}
-                className="flex flex-col items-center gap-1 text-gray-600 hover:text-gray-800 transition-colors"
-              >
-                <div className="w-6 h-6 bg-gray-100 rounded flex items-center justify-center">
-                  <FileSpreadsheet size={14} />
-                </div>
-                <span className="text-xs whitespace-nowrap">Excel Report</span>
-              </button>
-              <button 
-                onClick={handlePrint}
-                className="flex flex-col items-center gap-1 text-gray-600 hover:text-gray-800 transition-colors"
-              >
-                <div className="w-6 h-6 bg-gray-100 rounded flex items-center justify-center">
-                  <Printer size={14} />
-                </div>
-                <span className="text-xs">Print</span>
-              </button>
-            </div>
+      </div>
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6">
+        <div className="bg-gradient-to-br from-red-100 to-red-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
+          <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-red-500 text-white mb-3 text-xl">⬇️</div>
+          <div className="text-2xl font-bold text-red-700">
+            PKR {Number(filteredStats.totalPaid || 0).toLocaleString()}
           </div>
-          <div>
-            <select
-              value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-md bg-white min-w-[150px] font-medium"
-            >
-              {types.map(type => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </select>
-          </div>
+          <div className="text-sm text-gray-500">Total Paid</div>
         </div>
-
-        {/* Main Content */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-gray-200 flex justify-between items-center flex-wrap gap-4">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md outline-none focus:border-blue-500"
-              />
+        <div className="bg-gradient-to-br from-blue-100 to-blue-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
+          <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-blue-500 text-white mb-3 text-xl">💰</div>
+          <div className="text-2xl font-bold text-blue-700">
+            PKR {Number(filteredStats.totalGrandTotal || 0).toLocaleString()}
+          </div>
+          <div className="text-sm text-gray-500">Total Purchases</div>
+        </div>
+        <div className="bg-gradient-to-br from-orange-100 to-orange-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
+          <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-orange-500 text-white mb-3 text-xl">🧾</div>
+          <div className="text-2xl font-bold text-orange-700">
+            PKR {Number(filteredStats.totalBalance || 0).toLocaleString()}
+          </div>
+          <div className="text-sm text-gray-500">Total Balance</div>
+        </div>
+      </div>
+      {/* Filters */}
+      <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-4 md:p-6 mb-6 border border-gray-100 z-[1]">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+          {/* Search Bar */}
+          <div className="relative w-full md:w-80">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-lg">🔍</span>
+            <input
+              type="text"
+              placeholder="Search payments..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 rounded-full bg-white/80 shadow focus:ring-2 focus:ring-blue-500 focus:border-blue-500 border border-gray-200 transition-all placeholder-gray-400 text-gray-900"
+            />
+          </div>
+          {/* Status Tabs */}
+          <div className="flex gap-2 md:gap-4">
+            {['All', 'Paid', 'Partial', 'Unpaid'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setStatusTab(tab)}
+                className={`px-4 py-2 rounded-full font-medium transition-colors text-sm border-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  statusTab === tab
+                    ? 'bg-blue-600 text-white border-blue-600 shadow scale-105'
+                    : 'bg-white text-gray-700 border-gray-200 hover:bg-blue-50'
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+          {/* Date Range Dropdown */}
+          <div className="flex flex-col sm:flex-row gap-2 items-center mt-2">
+            <div ref={dateDropdownRef} className="relative w-full sm:w-56">
+              <button
+                ref={dateDropdownButtonRef}
+                type="button"
+                className="w-full flex items-center justify-between px-4 py-2.5 rounded-full bg-white/80 shadow border border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all group"
+                onClick={() => setShowDateDropdown((v) => !v)}
+                aria-haspopup="listbox"
+                aria-expanded={showDateDropdown ? 'true' : 'false'}
+              >
+                <span className="truncate">{dateRanges.find(r => r.value === filterType)?.label || 'All Time'}</span>
+                <svg className={`w-5 h-5 ml-2 transition-transform ${showDateDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {showDateDropdown && (
+                <ul
+                  className="absolute z-[100] bg-white rounded-xl shadow-lg border border-gray-100 py-1 max-h-60 overflow-auto animate-fadeinup w-full"
+                  style={{ top: '110%', left: 0 }}
+                  tabIndex={-1}
+                  role="listbox"
+                >
+                  {dateRanges.map((range) => (
+                    <li
+                      key={range.value}
+                      className={`px-4 py-2 cursor-pointer rounded-lg transition-all hover:bg-blue-50 ${filterType === range.value ? 'font-semibold text-blue-600 bg-blue-100' : 'text-gray-700'}`}
+                      onClick={() => {
+                        handleFilterTypeChange(range.value);
+                        // Auto-fill date pickers for quick ranges
+                        const today = new Date();
+                        let from = '', to = '';
+                        if (range.value === 'Today') {
+                          from = to = today.toISOString().slice(0, 10);
+                        } else if (range.value === 'Yesterday') {
+                          const yest = new Date(today);
+                          yest.setDate(today.getDate() - 1);
+                          from = to = yest.toISOString().slice(0, 10);
+                        } else if (range.value === 'This Week') {
+                          const first = new Date(today);
+                          first.setDate(today.getDate() - today.getDay());
+                          from = first.toISOString().slice(0, 10);
+                          to = today.toISOString().slice(0, 10);
+                        } else if (range.value === 'This Month') {
+                          const first = new Date(today.getFullYear(), today.getMonth(), 1);
+                          from = first.toISOString().slice(0, 10);
+                          to = today.toISOString().slice(0, 10);
+                        } else if (range.value === 'Last Month') {
+                          const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                          const last = new Date(today.getFullYear(), today.getMonth(), 0);
+                          from = first.toISOString().slice(0, 10);
+                          to = last.toISOString().slice(0, 10);
+                        } else if (range.value === 'This Year') {
+                          const first = new Date(today.getFullYear(), 0, 1);
+                          from = first.toISOString().slice(0, 10);
+                          to = today.toISOString().slice(0, 10);
+                        } else if (range.value === 'All') {
+                          from = '';
+                          to = '';
+                        }
+                        if (range.value !== 'Custom') {
+                          setDateFrom(from);
+                          setDateTo(to);
+                        }
+                        setShowDateDropdown(false);
+                      }}
+                      role="option"
+                      aria-selected={filterType === range.value}
+                    >
+                      {range.label}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            <button
-              onClick={() => setShowPaymentModal(true)}
-              className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              + Add Payment-Out
-            </button>
-          </div>
-
-          {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[800px]">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-10">#</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    DATE <span className="text-gray-400">▼</span>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    REF NO. <span className="text-gray-400">▼</span>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    PARTY NAME <span className="text-gray-400">▼</span>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    CATEGORY N... <span className="text-gray-400">▼</span>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    TYPE <span className="text-gray-400">▼</span>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    TOTAL <span className="text-gray-400">▼</span>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    RECEIVED/... <span className="text-gray-400">▼</span>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    BALANCE <span className="text-gray-400">▼</span>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    PRINT / S...
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {/* Empty state - no data */}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Empty State */}
-          <div className="py-20 text-center text-gray-500">
-            <div className="w-30 h-20 mx-auto mb-5 opacity-30">
-              <svg viewBox="0 0 120 80" className="w-full h-full">
-                <rect x="10" y="10" width="100" height="60" rx="5" fill="none" stroke="#ccc" strokeWidth="2"/>
-                <rect x="20" y="20" width="80" height="8" fill="#ddd"/>
-                <rect x="20" y="35" width="60" height="6" fill="#ddd"/>
-                <rect x="20" y="48" width="70" height="6" fill="#ddd"/>
-                <circle cx="85" cy="45" r="8" fill="#64b5f6"/>
-              </svg>
-            </div>
-            <div className="text-gray-600 text-base mb-2">No data is available for Payment-Out.</div>
-            <div className="text-gray-500 text-sm">Please try again after making relevant changes.</div>
-          </div>
-
-          {/* Footer */}
-          <div className="px-5 py-4 bg-gray-50 border-t border-gray-200 font-semibold">
-            Total Amount: <span className="text-cyan-600">Rs 0.00</span>
+            {/* Date Pickers */}
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => {
+                setDateFrom(e.target.value);
+                if (filterType !== 'Custom') handleFilterTypeChange('Custom');
+              }}
+              className="px-4 py-2 rounded-full bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[140px]"
+              placeholder="From Date"
+              disabled={filterType !== 'Custom' && filterType !== 'All'}
+            />
+            <span className="text-gray-500">to</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => {
+                setDateTo(e.target.value);
+                if (filterType !== 'Custom') handleFilterTypeChange('Custom');
+              }}
+              className="px-4 py-2 rounded-full bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[140px]"
+              placeholder="To Date"
+              disabled={filterType !== 'Custom' && filterType !== 'All'}
+            />
           </div>
         </div>
       </div>
-
-      {/* Payment-Out Modal */}
-      {showPaymentModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
-            {/* Modal Header */}
-            <div className="px-6 py-5 border-b border-gray-200 flex justify-between items-center">
-              <h3 className="text-xl font-semibold text-gray-800">Payment-Out</h3>
-              <div className="flex gap-2">
-                <button className="w-9 h-9 bg-gray-100 rounded-md flex items-center justify-center text-gray-600 hover:bg-gray-200">
-                  📊
-                </button>
-                <button className="w-9 h-9 bg-gray-100 rounded-md flex items-center justify-center text-gray-600 hover:bg-gray-200">
-                  ⚙️
-                </button>
-                <button
-                  onClick={() => setShowPaymentModal(false)}
-                  className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-200"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Party <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={selectedParty}
-                    onChange={(e) => setSelectedParty(e.target.value)}
-                    className="w-full px-4 py-3 border-2 border-blue-500 rounded-lg focus:outline-none focus:border-blue-600"
-                  >
-                    <option value="">Select Party</option>
-                    {parties.map(party => (
-                      <option key={party.id} value={party.id}>{party.name}</option>
-                    ))}
-                  </select>
-                  <button className="text-blue-600 text-sm mt-2 hover:underline">
-                    + Add Party
-                  </button>
-                  {selectedPartyData && (
-                    <div className="bg-gray-50 p-4 rounded-lg mt-3">
-                      <div className="flex justify-between items-center mb-2">
-                        <div>
-                          <div className="font-semibold text-gray-800">{selectedPartyData.name}</div>
-                          <div className="text-gray-500 text-xs">{selectedPartyData.number}</div>
-                        </div>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-600 text-sm">Party Balance</span>
-                        <span className="font-semibold text-red-600 flex items-center gap-1">
-                          {selectedPartyData.balance} 🔴
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Receipt No</label>
-                  <input
-                    type="text"
-                    value={receiptNo}
-                    onChange={(e) => setReceiptNo(e.target.value)}
-                    placeholder="Auto-generated"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
-                <div className="md:col-span-2">
-                  <button className="text-blue-600 text-sm hover:underline">
-                    + Add Payment type
-                  </button>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
-                  <input
-                    type="date"
-                    value={paymentDate}
-                    onChange={(e) => setPaymentDate(e.target.value)}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              {!showDescription ? (
-                <button
-                  onClick={() => setShowDescription(true)}
-                  className="w-64 p-4 border-2 border-dashed border-gray-300 rounded-lg flex items-center gap-3 text-gray-600 hover:border-blue-500 hover:bg-gray-50 transition-all mb-5"
-                >
-                  📝 ADD DESCRIPTION
-                </button>
-              ) : (
-                <div className="mb-5">
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Enter description..."
-                    rows={3}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              )}
-
-              <button
-                onClick={() => {
-                  const input = document.createElement('input');
-                  input.type = 'file';
-                  input.accept = 'image/*';
-                  input.onchange = (e: Event) => {
-                    const target = e.target as HTMLInputElement;
-                    if (target && target.files && target.files.length > 0) {
-                      setToast({ message: 'File attached: ' + target.files[0].name, type: 'success' });
-                    }
-                  };
-                  input.click();
-                }}
-                className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors mb-5"
-              >
-                📷
-              </button>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <div className="md:col-span-2"></div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Paid</label>
-                  <input
-                    type="number"
-                    value={paidAmount}
-                    onChange={(e) => setPaidAmount(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-4">
-              <button
-                onClick={handleShare}
-                className="px-5 py-2 bg-gray-100 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-200 transition-colors flex items-center gap-2"
-              >
-                📤 Share
-              </button>
-              <button
-                onClick={handleSave}
-                className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-              >
-                Save
-              </button>
-            </div>
-          </div>
+      {/* Table */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100 mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-6 border-b border-gray-200 gap-4">
+          <h2 className="text-lg font-semibold text-gray-900">Paid Payments</h2>
+          <div className="flex gap-2"></div>
         </div>
-      )}
-
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1100px]">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Date</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Number</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Party Name</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Category</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Type</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Total</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Paid</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Balance</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Status</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Print/Share</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filteredTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="px-6 py-8 text-center text-gray-500 text-lg font-medium">
+                    {searchTerm
+                      ? `No payments found matching "${searchTerm}".`
+                      : "No payments found."}
+                  </td>
+                </tr>
+              ) : (
+                filteredTransactions.map((transaction, idx) => {
+                  return (
+                    <tr key={transaction._id || transaction.id || idx} className={`hover:bg-blue-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                      <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">
+                        {transaction.paymentDate
+                          ? new Date(transaction.paymentDate).toLocaleDateString('en-GB')
+                          : transaction.createdAt
+                            ? new Date(transaction.createdAt).toLocaleDateString('en-GB')
+                            : '-'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">
+                        {transaction.billNo || '-'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{transaction.supplierName || '-'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap text-center">{transaction.category || 'Purchase'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap text-center">{transaction.paymentType || '-'}</td>
+                      <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">
+                        PKR {typeof transaction.billTotal === 'number' ? transaction.billTotal.toLocaleString() : '0'}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-semibold text-red-700 whitespace-nowrap text-center">
+                        PKR {typeof transaction.amount === 'number' ? transaction.amount.toLocaleString() : '0'}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-semibold text-orange-600 whitespace-nowrap text-center">
+                        PKR {typeof transaction.remainingBalance === 'number' ? transaction.remainingBalance.toLocaleString() : '0'}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-semibold text-center">
+                        <PaymentStatusBadge status={transaction.status || 'Partial'} />
+                      </td>
+                      <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
+                        <button
+                          className="px-2 py-1 text-sm text-blue-700 underline mr-2"
+                          onClick={() => window.open(`/dashboard/purchase/invoice/${transaction.purchaseId}`, '_blank')}
+                        >
+                          Print
+                        </button>
+                        <button
+                          className="px-2 py-1 text-sm text-blue-700 underline"
+                          onClick={() => {
+                            const url = `${window.location.origin}/dashboard/purchase/invoice/${transaction.purchaseId}`;
+                            navigator.clipboard.writeText(url);
+                            setToast({ message: 'Link copied!', type: 'success' });
+                          }}
+                        >
+                          Share
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
+                        <TableActionMenu
+                          onView={() => window.open(`/dashboard/purchase/invoice/${transaction.purchaseId}`, '_blank')}
+                          extraActions={[
+                            {
+                              label: 'Add Payment',
+                              onClick: () => { setSelectedTransaction(transaction); setShowPaymentOut(true); }
+                            }
+                          ]}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {/* PaymentOutModal integration */}
+      <PaymentOutModal
+        isOpen={showPaymentOut}
+        onClose={() => setShowPaymentOut(false)}
+        onSave={async (data) => {
+          // Refresh payments list after successful payment
+          try {
+            const token = (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+            const result = await getPayments(token);
+            if (result && result.success && Array.isArray(result.payments)) {
+              setTransactions(result.payments);
+            }
+          } catch (err) {
+            console.error('Error refreshing payments:', err);
+          }
+          setShowPaymentOut(false);
+          setToast({ message: 'Payment made successfully!', type: 'success' });
+        }}
+        partyName={selectedTransaction?.supplierName || ''}
+        total={typeof selectedTransaction?.billTotal === 'number' ? selectedTransaction.billTotal : 0}
+        dueBalance={typeof selectedTransaction?.remainingBalance === 'number' ? selectedTransaction.remainingBalance : 0}
+        purchaseId={selectedTransaction?.purchaseId || ''}
+      />
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
@@ -421,4 +482,4 @@ const CashoutPage = () => {
   );
 };
 
-export default CashoutPage;
+export default PaymentOutPage;

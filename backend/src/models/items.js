@@ -6,10 +6,23 @@ const itemSchema = new mongoose.Schema({
   name: { type: String, required: true },
   category: { type: String },
   subcategory: { type: String },
+  hsn: { type: String }, // HSN code for tax purposes
   salePrice: { type: Number },
   purchasePrice: { type: Number },
+  wholesalePrice: { type: Number },
+  minimumWholesaleQuantity: { type: Number, default: 0 },
+  discountType: { type: String }, // Percentage, Fixed, etc.
+  saleDiscount: { type: Number, default: 0 },
   stock: { type: Number },
   minStock: { type: Number },
+  openingQuantity: { type: Number },
+  location: { type: String },
+  // Tax related fields
+  taxRate: { type: Number, default: 0 },
+  taxRateRaw: { type: String }, // Original string from import
+  inclusiveOfTax: { type: Boolean, default: false },
+  inclusiveOfTaxRaw: { type: String }, // Original string from import
+  // Unit conversion fields
   unit: {
     base: { type: String },
     secondary: { type: String },
@@ -17,17 +30,17 @@ const itemSchema = new mongoose.Schema({
     customBase: { type: String },
     customSecondary: { type: String }
   },
+  conversionRate: { type: Number }, // For unit conversion
+  conversionRateRaw: { type: String }, // Original string from import
+  // Additional fields
   sku: { type: String },
   description: { type: String },
   supplier: { type: String },
   status: { type: String, enum: ['Active', 'Inactive', 'Discontinued'], default: 'Active' },
   type: { type: String, enum: ['Product', 'Service'] },
   imageUrl: { type: String },
-  openingQuantity: { type: Number },
   atPrice: { type: Number },
-  asOfDate: { type: String },
-  location: { type: String },
-  wholesalePrice: { type: Number }
+  asOfDate: { type: String }
 });
 
 itemSchema.index({ userId: 1, itemId: 1 }, { unique: true });

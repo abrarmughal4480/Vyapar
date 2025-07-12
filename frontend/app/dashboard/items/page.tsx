@@ -34,6 +34,19 @@ interface Item {
   type?: 'Product' | 'Service'
   imageUrl?: string
   openingQuantity?: number; // Added for opening stock
+  // New fields from bulk import
+  hsn?: string
+  wholesalePrice?: number
+  minimumWholesaleQuantity?: number
+  discountType?: string
+  saleDiscount?: number
+  minimumStockQuantity?: number
+  itemLocation?: string
+  taxRate?: number
+  inclusiveOfTax?: boolean
+  baseUnit?: string
+  secondaryUnit?: string
+  conversionRate?: number
 }
 
 interface ItemCategory {
@@ -55,27 +68,85 @@ interface InventoryStats {
 // Move this function above the component
 function calculateStats(items: Item[]) {
   const totalItems = items.length
-  const totalValue = items.reduce((sum, item) => sum + ((item.openingQuantity ?? item.stock) * item.salePrice), 0)
-  const lowStockItems = items.filter(item => (item.openingQuantity ?? item.stock) <= item.minStock).length
-  const outOfStockItems = items.filter(item => (item.openingQuantity ?? item.stock) === 0).length
+  const totalValue = items.reduce((sum, item) => {
+    const stockValue = item.openingQuantity ?? item.stock ?? 0
+    return sum + (stockValue * item.salePrice)
+  }, 0)
+  const lowStockItems = items.filter(item => {
+    const stockValue = item.openingQuantity ?? item.stock ?? 0
+    return stockValue <= (item.minStock ?? 0)
+  }).length
+  const outOfStockItems = items.filter(item => {
+    const stockValue = item.openingQuantity ?? item.stock ?? 0
+    return stockValue === 0
+  }).length
 
   return { totalItems, totalValue, lowStockItems, outOfStockItems }
 }
 
 // Add this helper function above the component
 function getStockDisplay(item: Item, value: number) {
-  if (!item.unit) return '';
-  const base = item.unit.base === 'custom' ? item.unit.customBase : item.unit.base;
-  let result = `${value} ${base}`;
-  if (item.unit.secondary && item.unit.secondary !== 'None' && item.unit.conversionFactor) {
-    const secondary = item.unit.secondary === 'custom' ? item.unit.customSecondary : item.unit.secondary;
-    const secondaryQty = Math.floor(value / item.unit.conversionFactor);
-    const remainder = value % item.unit.conversionFactor;
-    result += ` (${secondaryQty} ${secondary}`;
-    if (remainder > 0) result += ` + ${remainder} ${base}`;
-    result += `; 1 ${secondary} = ${item.unit.conversionFactor} ${base})`;
+  // Handle new unit structure (from bulk import)
+  if (item.baseUnit) {
+    let result = `${value} ${item.baseUnit}`;
+    if (item.secondaryUnit && item.conversionRate) {
+      const secondaryQty = Math.floor(value / item.conversionRate);
+      const remainder = value % item.conversionRate;
+      result += ` (${secondaryQty} ${item.secondaryUnit}`;
+      if (remainder > 0) result += ` + ${remainder} ${item.baseUnit}`;
+      result += `; 1 ${item.secondaryUnit} = ${item.conversionRate} ${item.baseUnit})`;
+    }
+    return result;
   }
-  return result;
+  
+  // Handle old unit structure
+  if (item.unit && item.unit.base) {
+    const base = item.unit.base === 'custom' ? item.unit.customBase : item.unit.base;
+    let result = `${value} ${base}`;
+    if (item.unit.secondary && item.unit.secondary !== 'None' && item.unit.conversionFactor) {
+      const secondary = item.unit.secondary === 'custom' ? item.unit.customSecondary : item.unit.secondary;
+      const secondaryQty = Math.floor(value / item.unit.conversionFactor);
+      const remainder = value % item.unit.conversionFactor;
+      result += ` (${secondaryQty} ${secondary}`;
+      if (remainder > 0) result += ` + ${remainder} ${base}`;
+      result += `; 1 ${secondary} = ${item.unit.conversionFactor} ${base})`;
+    }
+    return result;
+  }
+  
+  // Fallback: just show the number
+  return `${value}`;
+}
+
+// Helper function to format tax display
+function getTaxDisplay(item: Item) {
+  if (!item.taxRate) return '';
+  
+  const taxType = item.inclusiveOfTax ? 'GST' : 'IGST';
+  return `${taxType}@${item.taxRate}%`;
+}
+
+// Helper function to format unit display
+function getUnitDisplay(item: Item) {
+  // Handle new unit structure (from bulk import)
+  if (item.baseUnit) {
+    if (item.secondaryUnit && item.conversionRate) {
+      return `${item.baseUnit} / ${item.secondaryUnit} (1:${item.conversionRate})`;
+    }
+    return item.baseUnit;
+  }
+  
+  // Handle old unit structure
+  if (item.unit && item.unit.base) {
+    const base = item.unit.base === 'custom' ? item.unit.customBase : item.unit.base;
+    if (item.unit.secondary && item.unit.secondary !== 'None' && item.unit.conversionFactor) {
+      const secondary = item.unit.secondary === 'custom' ? item.unit.customSecondary : item.unit.secondary;
+      return `${base} / ${secondary} (1:${item.unit.conversionFactor})`;
+    }
+    return base;
+  }
+  
+  return '';
 }
 
 export default function ItemsPage() {
@@ -126,7 +197,6 @@ export default function ItemsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
   const [error, setError] = useState('')
-  const [bulkImportModal, setBulkImportModal] = useState(false)
   const [businessId, setBusinessId] = useState<string>('')
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -197,9 +267,11 @@ export default function ItemsPage() {
   }
 
   const getStockStatus = (item: Item) => {
-    const stockValue = item.openingQuantity ?? item.stock;
+    const stockValue = item.openingQuantity ?? item.stock ?? 0;
+    const minStockValue = item.minStock ?? 0;
+    
     if (stockValue === 0) return { label: 'Out of Stock', color: 'bg-red-100 text-red-800' }
-    if (stockValue <= item.minStock) return { label: 'Low Stock', color: 'bg-orange-100 text-orange-800' }
+    if (stockValue <= minStockValue) return { label: 'Low Stock', color: 'bg-orange-100 text-orange-800' }
     return { label: 'In Stock', color: 'bg-green-100 text-green-800' }
   }
 
@@ -214,9 +286,12 @@ export default function ItemsPage() {
     
     const matchesCategory = !selectedCategory || item.category === selectedCategory
     
+    const stockValue = item.openingQuantity ?? item.stock ?? 0;
+    const minStockValue = item.minStock ?? 0;
+    
     const matchesStatus = activeTab === 'all' || 
-                         (activeTab === 'low-stock' && item.stock <= item.minStock) ||
-                         (activeTab === 'out-of-stock' && item.stock === 0) ||
+                         (activeTab === 'low-stock' && stockValue <= minStockValue) ||
+                         (activeTab === 'out-of-stock' && stockValue === 0) ||
                          (activeTab === 'active' && item.status === 'Active')
 
     return matchesSearch && matchesCategory && matchesStatus
@@ -227,7 +302,7 @@ export default function ItemsPage() {
   }
 
   const importItems = () => {
-    setBulkImportModal(true)
+    router.push('/dashboard/bulk-imports/import-items')
   }
 
   const stats = calculateStats(items)
@@ -245,7 +320,10 @@ export default function ItemsPage() {
     }
     const itemsInCategory = items.filter(item => item.category === name);
     const totalItems = itemsInCategory.length;
-    const totalValue = itemsInCategory.reduce((sum, item) => sum + (item.stock * item.salePrice), 0);
+    const totalValue = itemsInCategory.reduce((sum, item) => {
+      const stockValue = item.openingQuantity ?? item.stock ?? 0;
+      return sum + (stockValue * item.salePrice);
+    }, 0);
     return {
       id: String(idx + 1),
       name,
@@ -258,8 +336,7 @@ export default function ItemsPage() {
 
   useEffect(() => {
     // Prevent background scrolling when modals are open
-    const anyModalOpen = bulkImportModal || exportModal;
-    if (anyModalOpen) {
+    if (exportModal) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -267,7 +344,7 @@ export default function ItemsPage() {
     return () => {
       document.body.style.overflow = '';
     };
-  }, [bulkImportModal, exportModal]);
+  }, [exportModal]);
 
   // Delete item handler
   const handleDeleteItem = async (item: Item) => {
@@ -566,6 +643,7 @@ export default function ItemsPage() {
                           <h3 className="font-medium text-gray-900">{item.name}</h3>
                           <p className="text-sm text-gray-500">{item.sku}</p>
                           <p className="text-xs text-gray-400">{item.supplier}</p>
+                          <p className="text-xs text-gray-400">Stock: {item.openingQuantity ?? item.stock ?? 0}</p>
                         </div>
                       </div>
                       <div className="flex flex-col items-end space-y-1">
@@ -596,6 +674,24 @@ export default function ItemsPage() {
                     </div>
                     <div className="mt-2 text-xs text-gray-500">
                       Cost: PKR {item.purchasePrice.toLocaleString()} • {margin}% margin
+                    </div>
+                    {/* New fields display */}
+                    <div className="mt-2 space-y-1">
+                      {item.hsn && (
+                        <div className="text-xs text-gray-500">HSN: {item.hsn}</div>
+                      )}
+                      {item.wholesalePrice && (
+                        <div className="text-xs text-gray-500">Wholesale: PKR {item.wholesalePrice.toLocaleString()}</div>
+                      )}
+                      {getTaxDisplay(item) && (
+                        <div className="text-xs text-gray-500">Tax: {getTaxDisplay(item)}</div>
+                      )}
+                      {item.itemLocation && (
+                        <div className="text-xs text-gray-500">Location: {item.itemLocation}</div>
+                      )}
+                      {getUnitDisplay(item) && (
+                        <div className="text-xs text-gray-500">Unit: {getUnitDisplay(item)}</div>
+                      )}
                     </div>
                   </div>
                 )
@@ -632,6 +728,9 @@ export default function ItemsPage() {
                             <div>
                               <div className="text-sm font-medium text-gray-900">{item.name}</div>
                               <div className="text-xs text-gray-500">{item.sku} • {item.supplier}</div>
+                              {item.hsn && (
+                                <div className="text-xs text-gray-400">HSN: {item.hsn}</div>
+                              )}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -641,10 +740,22 @@ export default function ItemsPage() {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">PKR {item.salePrice.toLocaleString()}</div>
                             <div className="text-sm text-gray-500">Cost: PKR {item.purchasePrice.toLocaleString()} • {margin}% margin</div>
+                            {item.wholesalePrice && (
+                              <div className="text-xs text-gray-500">Wholesale: PKR {item.wholesalePrice.toLocaleString()}</div>
+                            )}
+                            {getTaxDisplay(item) && (
+                              <div className="text-xs text-gray-500">Tax: {getTaxDisplay(item)}</div>
+                            )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">{getStockDisplay(item, item.openingQuantity ?? item.stock)}</div>
-                            <div className="text-sm text-gray-500">Min: {getStockDisplay(item, item.minStock)}</div>
+                            <div className="text-sm font-medium text-gray-900">{getStockDisplay(item, item.openingQuantity ?? item.stock ?? 0)}</div>
+                            <div className="text-sm text-gray-500">Min: {getStockDisplay(item, item.minStock ?? 0)}</div>
+                            {item.itemLocation && (
+                              <div className="text-xs text-gray-500">Location: {item.itemLocation}</div>
+                            )}
+                            {getUnitDisplay(item) && (
+                              <div className="text-xs text-gray-500">Unit: {getUnitDisplay(item)}</div>
+                            )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-center">
                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${stockStatus.color}`}>
@@ -678,39 +789,7 @@ export default function ItemsPage() {
         )}
       </div>
 
-      {/* Bulk Import Modal */}
-      {bulkImportModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeinup">
-          <div className="bg-white/90 rounded-2xl shadow-2xl w-full max-w-md animate-scalein">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-semibold text-gray-900">Import Items</h2>
-                <button 
-                  onClick={() => setBulkImportModal(false)}
-                  className="text-gray-400 hover:text-gray-600 text-2xl"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-            <div className="p-6">
-              <div className="text-center py-8">
-                <div className="text-gray-400 text-4xl mb-4">📤</div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Bulk Import Items</h3>
-                <p className="text-gray-500 mb-4">Upload CSV or Excel file to import multiple items</p>
-                <div className="space-y-3">
-                  <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                    Choose File
-                  </button>
-                  <div className="text-sm text-gray-500">
-                    <a href="#" className="text-blue-600 hover:underline">Download sample template</a>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Export Modal */}
       {exportModal && (

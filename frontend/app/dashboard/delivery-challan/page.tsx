@@ -57,8 +57,7 @@ export default function DeliveryChallanPage() {
   const [showPreview, setShowPreview] = useState(false)
   const [selectedChallan, setSelectedChallan] = useState<DeliveryChallan | null>(null)
   const [activeTab, setActiveTab] = useState('all')
-  const [isLoading, setIsLoading] = useState(false)
-  const [isInitializing, setIsInitializing] = useState(true)
+
   const [errorMessage, setErrorMessage] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [dateFrom, setDateFrom] = useState('')
@@ -66,7 +65,7 @@ export default function DeliveryChallanPage() {
   const [showDateDropdown, setShowDateDropdown] = useState(false)
   const [filterType, setFilterType] = useState('All')
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [deleteLoading, setDeleteLoading] = useState(false)
+
   const [challanToDelete, setChallanToDelete] = useState<DeliveryChallan | null>(null)
 
   const dateRanges = [
@@ -305,7 +304,6 @@ export default function DeliveryChallanPage() {
   // Initialize component
   useEffect(() => {
     const initialize = async () => {
-      setIsInitializing(true);
       setErrorMessage(''); // Clear any previous errors
       
       try {
@@ -313,8 +311,6 @@ export default function DeliveryChallanPage() {
         console.log('Delivery Challans page initialized successfully');
       } catch (error: any) {
         console.log('Initialization error:', error.message);
-      } finally {
-        setIsInitializing(false);
       }
     };
 
@@ -371,12 +367,10 @@ export default function DeliveryChallanPage() {
 
   const confirmDeleteChallan = async () => {
     if (!challanToDelete) return;
-    setDeleteLoading(true);
     try {
       const token = getToken();
       if (!token) {
         setErrorMessage('User not authenticated');
-        setDeleteLoading(false);
         return;
       }
       await deleteDeliveryChallan(challanToDelete.id, token);
@@ -386,22 +380,10 @@ export default function DeliveryChallanPage() {
       fetchDeliveryChallans();
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to delete delivery challan');
-    } finally {
-      setDeleteLoading(false);
     }
   };
 
-  if (isInitializing) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="w-16 h-16 border-4 border-green-200 border-t-green-600 rounded-full animate-spin mx-auto"></div>
-          <p className="text-xl font-semibold text-gray-900">Loading Delivery Challans...</p>
-          <p className="text-gray-600">Setting up your delivery challan management...</p>
-        </div>
-      </div>
-    )
-  }
+
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -417,8 +399,7 @@ export default function DeliveryChallanPage() {
           <div className="flex flex-col md:flex-row gap-2 md:gap-4">
             <button
               onClick={handleCreateDeliveryChallan}
-              disabled={isLoading}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow disabled:opacity-50"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
             >
               + New Delivery Challan
             </button>
@@ -639,7 +620,7 @@ export default function DeliveryChallanPage() {
               {filteredChallans.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-8 text-center text-gray-500 text-lg font-medium">
-                    {isLoading ? 'Loading delivery challans...' : 'No delivery challans found. Create your first challan!'}
+                    No delivery challans found. Create your first challan!
                   </td>
                 </tr>
               ) : (
@@ -672,7 +653,6 @@ export default function DeliveryChallanPage() {
                           <button 
                             onClick={() => handleConvertToSale(challan.id)}
                             className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                            disabled={isLoading}
                           >
                             Convert to Sale
                           </button>
@@ -842,7 +822,7 @@ export default function DeliveryChallanPage() {
         description={challanToDelete ? `Are you sure you want to delete delivery challan ${challanToDelete.challanNumber}? This action cannot be undone.` : ''}
         onCancel={() => setShowDeleteDialog(false)}
         onConfirm={confirmDeleteChallan}
-        loading={deleteLoading}
+
         confirmText="Delete"
         cancelText="Cancel"
       />

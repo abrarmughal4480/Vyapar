@@ -105,12 +105,109 @@ function CustomDropdown({ options, value, onChange, className = '', placeholder 
 }
 
 function getUnitDisplay(unit: any) {
-  if (!unit) return '';
-  const base = unit.base === 'custom' ? unit.customBase : unit.base;
-  const secondary = unit.secondary && unit.secondary !== 'None'
-    ? (unit.secondary === 'custom' ? unit.customSecondary : unit.secondary)
-    : '';
-  return secondary ? `${base} / ${secondary}` : base;
+  if (!unit) return 'NONE';
+  
+  // Handle the unit structure from backend
+  if (typeof unit === 'object' && unit.base) {
+    const base = unit.base || 'NONE';
+    const secondary = unit.secondary && unit.secondary !== 'None' ? unit.secondary : null;
+    
+    // Return secondary unit if available, otherwise return base unit
+    return secondary || base;
+  }
+  
+  // Handle string format like "Piece / Packet"
+  if (typeof unit === 'string') {
+    if (unit.includes(' / ')) {
+      const parts = unit.split(' / ');
+      // Return the second part (secondary unit) if available, otherwise first part (base unit)
+      return parts[1] || parts[0];
+    }
+    return unit || 'NONE';
+  }
+  
+  return 'NONE';
+}
+
+// Function to get unit conversion data
+function getUnitConversionData(unit: any) {
+  if (!unit) return null;
+  
+  // Handle object format with conversion factor
+  if (typeof unit === 'object' && unit.base) {
+    return {
+      base: unit.base,
+      secondary: unit.secondary,
+      conversionFactor: unit.conversionFactor || 1
+    };
+  }
+  
+  // Handle string format like "Piece / Packet"
+  if (typeof unit === 'string' && unit.includes(' / ')) {
+    const parts = unit.split(' / ');
+    // For string format, we'll need to get conversion factor from the item data
+    return {
+      base: parts[0],
+      secondary: parts[1],
+      conversionFactor: 6 // Default conversion factor, will be updated from item data
+    };
+  }
+  
+  return null;
+}
+
+// Function to convert quantity based on unit change
+function convertQuantity(currentQty: string, currentUnit: string, newUnit: string, itemData: any): string {
+  if (!currentQty || !currentUnit || !newUnit || currentUnit === newUnit) {
+    return currentQty;
+  }
+  
+  const qty = parseFloat(currentQty);
+  if (isNaN(qty)) return currentQty;
+  
+  // Get unit conversion data from item - use original unit object if available
+  const unitData = getUnitConversionData(itemData.unit);
+  if (!unitData) return currentQty;
+  
+  // Convert from base to secondary or vice versa
+  if (newUnit === unitData.base && currentUnit === unitData.secondary) {
+    // Converting from secondary to base (multiply by conversion factor)
+    const convertedQty = qty * unitData.conversionFactor;
+    return Math.round(convertedQty).toString();
+  } else if (newUnit === unitData.secondary && currentUnit === unitData.base) {
+    // Converting from base to secondary (divide by conversion factor)
+    const convertedQty = qty / unitData.conversionFactor;
+    return Math.round(convertedQty).toString();
+  }
+  
+  return currentQty;
+}
+
+// Function to convert price based on unit change
+function convertPrice(currentPrice: string, currentUnit: string, newUnit: string, itemData: any): string {
+  if (!currentPrice || !currentUnit || !newUnit || currentUnit === newUnit) {
+    return currentPrice;
+  }
+  
+  const price = parseFloat(currentPrice);
+  if (isNaN(price)) return currentPrice;
+  
+  // Get unit conversion data from item
+  const unitData = getUnitConversionData(itemData.unit);
+  if (!unitData) return currentPrice;
+  
+  // Convert price based on unit change
+  if (newUnit === unitData.base && currentUnit === unitData.secondary) {
+    // Converting from secondary to base (divide price by conversion factor)
+    const convertedPrice = price / unitData.conversionFactor;
+    return (Math.round(convertedPrice * 100) / 100).toFixed(2); // Round to 2 decimal places
+  } else if (newUnit === unitData.secondary && currentUnit === unitData.base) {
+    // Converting from base to secondary (multiply price by conversion factor)
+    const convertedPrice = price * unitData.conversionFactor;
+    return (Math.round(convertedPrice * 100) / 100).toFixed(2); // Round to 2 decimal places
+  }
+  
+  return currentPrice;
 }
 
 function ItemRow({
@@ -186,15 +283,13 @@ function ItemRow({
                   key={i._id}
                     className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
                   onMouseDown={() => {
-                    console.log('Selected item:', i);
-                    console.log('Setting quantity to stock value for item ID:', item.id);
                     handleItemChange(item.id, 'item', i.name);
-                    // Set the unit to the item's unit string from backend
-                    handleItemChange(item.id, 'unit', i.unit || 'NONE');
+                    // Set the unit to the item's base unit or secondary unit from backend
+                    const unitDisplay = getUnitDisplay(i.unit);
+                    handleItemChange(item.id, 'unit', unitDisplay);
                     handleItemChange(item.id, 'price', i.salePrice || 0);
                     // Keep quantity empty when item is selected
                     handleItemChange(item.id, 'qty', '');
-                    console.log('Quantity should now be stock value for item:', item.id);
                     setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                   }}
                 >
@@ -250,12 +345,68 @@ function ItemRow({
       </td>
       <td className="py-2 px-2">
         <CustomDropdown
-          options={[
-            { value: item.unit, label: item.unit },
-            { value: 'Custom', label: 'Custom' }
-          ]}
+          options={(() => {
+            const options: DropdownOption[] = [];
+            
+            // Add base and secondary units if they exist in the item data
+            if (item.item) {
+              const selectedItem = itemSuggestions.find(i => i.name === item.item);
+              if (selectedItem && selectedItem.unit) {
+                const unit = selectedItem.unit;
+                
+                // Handle object format with conversion factor
+                if (typeof unit === 'object' && unit.base) {
+                  // Add base unit
+                  if (unit.base && unit.base !== 'NONE') {
+                    options.push({ value: unit.base, label: unit.base });
+                  }
+                  // Add secondary unit if it exists and is different from base
+                  if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) {
+                    options.push({ value: unit.secondary, label: unit.secondary });
+                  }
+                }
+                // Handle string format like "Piece / Packet"
+                else if (typeof unit === 'string' && unit.includes(' / ')) {
+                  const parts = unit.split(' / ');
+                  // Add both parts as separate options
+                  if (parts[0] && parts[0] !== 'NONE') {
+                    options.push({ value: parts[0], label: parts[0] });
+                  }
+                  if (parts[1] && parts[1] !== 'None') {
+                    options.push({ value: parts[1], label: parts[1] });
+                  }
+                }
+                // Handle simple string unit
+                else if (typeof unit === 'string') {
+                  options.push({ value: unit, label: unit });
+                }
+              }
+            }
+            
+            // If no units found from item, add NONE
+            if (options.length === 0) {
+              options.push({ value: 'NONE', label: 'NONE' });
+            }
+            return options;
+          })()}
           value={item.unit}
-          onChange={val => handleItemChange(item.id, 'unit', val)}
+          onChange={val => {
+            // Get the selected item data for conversion
+            const selectedItem = itemSuggestions.find(i => i.name === item.item);
+            if (selectedItem) {
+              // Convert quantity based on unit change
+              if (item.qty) {
+                const convertedQty = convertQuantity(item.qty, item.unit, val, selectedItem);
+                handleItemChange(item.id, 'qty', convertedQty);
+              }
+              // Convert price based on unit change
+              if (item.price) {
+                const convertedPrice = convertPrice(item.price, item.unit, val, selectedItem);
+                handleItemChange(item.id, 'price', convertedPrice);
+              }
+            }
+            handleItemChange(item.id, 'unit', val);
+          }}
         />
         {item.unit === 'Custom' && (
           <input

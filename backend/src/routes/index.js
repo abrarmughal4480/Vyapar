@@ -53,6 +53,7 @@ router.get('/items/count', authMiddleware, (req, res) => {
 // Items routes
 router.get('/items', authMiddleware, itemsController.getItemsByLoggedInUser);
 router.post('/items/:userId', itemsController.addItem);
+router.post('/items/:userId/bulk-import', itemsController.bulkImportItems);
 router.get('/items/:userId', itemsController.getItems);
 router.delete('/items/:userId/:itemId', itemsController.deleteItem);
 router.put('/items/:userId/:itemId', itemsController.updateItem);

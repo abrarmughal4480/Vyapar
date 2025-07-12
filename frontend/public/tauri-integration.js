@@ -17,6 +17,21 @@ if (typeof window !== 'undefined' && window.__TAURI__) {
     }).catch(err => {
       console.error('Failed to debug window:', err);
     });
+    
+    // Check server status
+    setTimeout(() => {
+      window.__TAURI__.invoke('check_frontend_status').then(result => {
+        console.log('Frontend server status:', result);
+      }).catch(err => {
+        console.error('Failed to check frontend status:', err);
+      });
+      
+      window.__TAURI__.invoke('check_backend_status').then(result => {
+        console.log('Backend server status:', result);
+      }).catch(err => {
+        console.error('Failed to check backend status:', err);
+      });
+    }, 2000); // Wait 2 seconds for servers to start
   });
   
   // Handle window focus events

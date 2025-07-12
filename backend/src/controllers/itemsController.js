@@ -10,20 +10,158 @@ function getUnitDisplay(unit) {
   return secondary ? `${base} / ${secondary}` : base;
 }
 
+// Helper function to process bulk import data
+function processBulkImportData(data) {
+  // Process tax logic: if raw equals 'inclusive' then true, if 'exclusive' then false
+  let inclusiveOfTax = false;
+  if (data.inclusiveOfTaxRaw) {
+    inclusiveOfTax = data.inclusiveOfTaxRaw.toLowerCase() === 'inclusive';
+  }
+
+  // Process conversion rate
+  let conversionFactor = null;
+  if (data.conversionRateRaw && data.conversionRateRaw !== '') {
+    conversionFactor = parseFloat(data.conversionRateRaw);
+  }
+
+  return {
+    userId: data.userId,
+    itemId: data.itemCode || data.itemId,
+    name: data.name,
+    category: data.category,
+    hsn: data.hsn,
+    salePrice: data.salePrice,
+    purchasePrice: data.purchasePrice,
+    wholesalePrice: data.wholesalePrice,
+    minimumWholesaleQuantity: data.minimumWholesaleQuantity,
+    discountType: data.discountType,
+    saleDiscount: data.saleDiscount,
+    stock: data.openingStockQuantity,
+    minStock: data.minimumStockQuantity,
+    openingQuantity: data.openingStockQuantity,
+    location: data.itemLocation,
+    // Tax related fields
+    taxRate: data.taxRate,
+    inclusiveOfTax: inclusiveOfTax,
+    // Unit conversion fields
+    unit: {
+      base: data.baseUnit,
+      secondary: data.secondaryUnit,
+      conversionFactor: conversionFactor,
+      customBase: data.baseUnit,
+      customSecondary: data.secondaryUnit
+    },
+    conversionRate: conversionFactor,
+    // Additional fields
+    sku: data.itemCode,
+    description: data.description || '',
+    supplier: data.supplier || '',
+    status: data.status || 'Active',
+    type: data.type || 'Product',
+    imageUrl: data.imageUrl || '',
+    atPrice: data.atPrice,
+    asOfDate: data.asOfDate
+  };
+}
+
 // Add a new item for a user
 export const addItem = async (req, res) => {
   try {
     const userId = req.params.userId;
     const data = req.body;
+    
+    // Process bulk import data if it contains bulk import fields
+    const processedData = processBulkImportData({ ...data, userId });
+    
     // Generate a unique itemId for this user (could use uuid or Date.now())
-    const itemId = data.itemId || ('ITM' + Date.now());
-    const item = new Item({ ...data, userId, itemId });
+    const itemId = processedData.itemId || ('ITM' + Date.now());
+    const item = new Item({ ...processedData, itemId });
     await item.save();
     const itemObj = item.toObject();
     itemObj.unit = typeof itemObj.unit === 'object' ? getUnitDisplay(itemObj.unit) : itemObj.unit;
     res.status(201).json({ success: true, data: itemObj });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+// Bulk import items
+export const bulkImportItems = async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const items = req.body.items || [];
+    
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No items provided for bulk import' 
+      });
+    }
+
+    const results = [];
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const itemData of items) {
+      try {
+        // Process each item data
+        const processedData = processBulkImportData({ ...itemData, userId });
+        
+        // Check if item already exists
+        const existingItem = await Item.findOne({ 
+          userId, 
+          itemId: processedData.itemId 
+        });
+
+        if (existingItem) {
+          // Update existing item
+          const updatedItem = await Item.findOneAndUpdate(
+            { userId, itemId: processedData.itemId },
+            processedData,
+            { new: true }
+          );
+          results.push({
+            itemId: processedData.itemId,
+            status: 'updated',
+            data: updatedItem.toObject()
+          });
+          successCount++;
+        } else {
+          // Create new item
+          const newItem = new Item(processedData);
+          await newItem.save();
+          results.push({
+            itemId: processedData.itemId,
+            status: 'created',
+            data: newItem.toObject()
+          });
+          successCount++;
+        }
+      } catch (error) {
+        results.push({
+          itemId: itemData.itemCode || 'unknown',
+          status: 'error',
+          error: error.message
+        });
+        errorCount++;
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Bulk import completed. ${successCount} items processed successfully, ${errorCount} failed.`,
+      data: {
+        totalItems: items.length,
+        successCount,
+        errorCount,
+        results
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      success: false, 
+      message: 'Bulk import failed: ' + err.message 
+    });
   }
 };
 
@@ -79,7 +217,11 @@ export const updateItem = async (req, res) => {
   try {
     const { userId, itemId } = req.params;
     const data = req.body;
-    const updated = await Item.findOneAndUpdate({ userId, itemId }, data, { new: true });
+    
+    // Process bulk import data if it contains bulk import fields
+    const processedData = processBulkImportData({ ...data, userId, itemId });
+    
+    const updated = await Item.findOneAndUpdate({ userId, itemId }, processedData, { new: true });
     const updatedObj = updated.toObject();
     updatedObj.unit = typeof updatedObj.unit === 'object' ? getUnitDisplay(updatedObj.unit) : updatedObj.unit;
     res.json({ success: true, data: updatedObj });
@@ -88,4 +230,4 @@ export const updateItem = async (req, res) => {
   }
 };
 
-export default { addItem, getItems, deleteItem, updateItem }; 
+export default { addItem, bulkImportItems, getItems, deleteItem, updateItem }; 

@@ -1,6 +1,5 @@
-'use client'
-
-import React, { useState, useEffect, useCallback } from 'react'
+"use client"
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface User {
@@ -34,6 +33,22 @@ interface SettingItem {
   value?: any
   options?: { label: string; value: string }[]
   action?: () => void
+}
+
+// 1. Add Firm type and state
+interface Firm {
+  id: string;
+  name: string;
+  type: string;
+  gstNumber: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  country: string;
+  phone: string;
+  email: string;
+  isActive: boolean;
 }
 
 export default function SettingsPage() {
@@ -134,6 +149,40 @@ export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+
+  // 1. Add Firm type and state
+  const [firms, setFirms] = useState<Firm[]>([
+    {
+      id: '1',
+      name: 'Devease Digital Business',
+      type: 'Retail',
+      gstNumber: '27AABCU9603R1ZX',
+      address: '123 Business Street',
+      city: 'Mumbai',
+      state: 'Maharashtra',
+      pincode: '400001',
+      country: 'India',
+      phone: '+91 98765 43210',
+      email: 'john@example.com',
+      isActive: true,
+    },
+    {
+      id: '2',
+      name: 'Vyapar Solutions',
+      type: 'Wholesale',
+      gstNumber: '27AACCV9603R1ZX',
+      address: '456 Market Road',
+      city: 'Pune',
+      state: 'Maharashtra',
+      pincode: '411001',
+      country: 'India',
+      phone: '+91 91234 56789',
+      email: 'vyapar@example.com',
+      isActive: false,
+    },
+  ])
+  const [showFirmModal, setShowFirmModal] = useState(false)
+  const [editingFirm, setEditingFirm] = useState<Firm | null>(null)
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
@@ -410,9 +459,14 @@ export default function SettingsPage() {
     }
   }
 
-  const [filteredSections, setFilteredSections] = useState<SettingsSection[]>([])
-
-  const settingsSections: SettingsSection[] = [
+  const settingsSections: SettingsSection[] = useMemo(() => [
+    {
+      id: 'firms',
+      title: 'Firms Management',
+      icon: '🏬',
+      description: 'Manage multiple business firms',
+      items: [],
+    },
     {
       id: 'business',
       title: 'Business Information',
@@ -1044,20 +1098,37 @@ export default function SettingsPage() {
         }
       ]
     }
-  ]
+  ], [user, settings])
+
+  const filteredSections = useMemo(() => {
+    if (!searchTerm) return settingsSections
+    return settingsSections.filter(section => {
+      return section.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        section.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        section.items.some(item =>
+          item.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.description.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+    })
+  }, [searchTerm, settingsSections])
+
+  // 3. Add handler functions for CRUD
+  const handleAddFirm = (firm: Firm) => {
+    setFirms(prev => [...prev, { ...firm, id: Date.now().toString(), isActive: false }])
+  }
+  const handleEditFirm = (firm: Firm) => {
+    setFirms(prev => prev.map(f => (f.id === firm.id ? firm : f)))
+  }
+  const handleDeleteFirm = (id: string) => {
+    setFirms(prev => prev.filter(f => f.id !== id))
+  }
+  const handleSetActiveFirm = (id: string) => {
+    setFirms(prev => prev.map(f => ({ ...f, isActive: f.id === id })))
+  }
 
   // Filter sections based on search
   useEffect(() => {
-    const filtered = settingsSections.filter(section => {
-      if (!searchTerm) return true
-      return section.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-             section.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-             section.items.some(item => 
-               item.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-               item.description.toLowerCase().includes(searchTerm.toLowerCase())
-             )
-    })
-    setFilteredSections(filtered)
+    // This useEffect is no longer needed as filteredSections is now a useMemo
   }, [searchTerm, settingsSections])
 
   const renderSettingItem = (item: SettingItem) => {
@@ -1151,7 +1222,7 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="w-full px-6 py-6">
         {/* Enhanced Header with Search and Actions */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
@@ -1206,22 +1277,23 @@ export default function SettingsPage() {
 
         <div className="flex gap-6">
           {/* Enhanced Sidebar */}
-          <div className="w-80 bg-white rounded-lg shadow-sm p-6">
+          <div className="w-80 max-h-[80vh] bg-white rounded-lg shadow-sm p-6 overflow-y-auto sticky top-6">
             <h2 className="font-semibold text-gray-900 mb-4">Settings Categories</h2>
             <nav className="space-y-1">
               {filteredSections.map((section) => (
                 <button
                   key={section.id}
                   onClick={() => setActiveSection(section.id)}
-                  className={`w-full flex items-center px-3 py-2 text-left rounded-lg transition-colors ${
+                  className={`w-full flex items-center px-3 py-2 text-left rounded-lg transition-colors whitespace-normal break-words ${
                     activeSection === section.id
                       ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600'
                       : 'text-gray-700 hover:bg-gray-50'
                   }`}
+                  style={{ wordBreak: 'break-word' }}
                 >
-                  <span className="text-xl mr-3">{section.icon}</span>
-                  <div>
-                    <div className="font-medium">{section.title}</div>
+                  <span className="text-xl mr-3 flex-shrink-0">{section.icon}</span>
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{section.title}</div>
                     <div className="text-xs text-gray-500 truncate">{section.description}</div>
                   </div>
                 </button>
@@ -1261,19 +1333,15 @@ export default function SettingsPage() {
               
               return (
                 <div key={section.id}>
-                  <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center">
-                      <span className="text-3xl mr-3">{section.icon}</span>
-                      <div>
-                        <h2 className="text-xl font-bold text-gray-900">{section.title}</h2>
-                        <p className="text-gray-600">{section.description}</p>
-                      </div>
-                    </div>
-                    {section.id === 'advanced' && (
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-1">
-                        <span className="text-xs font-medium text-yellow-800">PRO FEATURES</span>
-                      </div>
-                    )}
+                  <div className="flex items-center mb-6">
+                    <span className="text-3xl mr-3">🏬</span>
+                    <h2 className="text-xl font-bold text-gray-900 mr-4">Firms Management</h2>
+                    <button
+                      onClick={() => { setEditingFirm(null); setShowFirmModal(true) }}
+                      className="ml-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      + Add Firm
+                    </button>
                   </div>
 
                   <div className="space-y-6">
@@ -1562,6 +1630,183 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      {/* Firms Management Modal */}
+      {showFirmModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-gray-900">{editingFirm ? 'Edit Firm' : 'Add Firm'}</h2>
+              <button onClick={() => setShowFirmModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
+            </div>
+            <FirmForm
+              initialFirm={editingFirm}
+              onSave={(firm) => {
+                if (editingFirm) handleEditFirm(firm)
+                else handleAddFirm(firm)
+                setShowFirmModal(false)
+              }}
+              onCancel={() => setShowFirmModal(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+// 5. Add FirmForm component at the end of the file
+function FirmForm({ initialFirm, onSave, onCancel }: { initialFirm: Firm | null, onSave: (firm: Firm) => void, onCancel: () => void }) {
+  const [firm, setFirm] = useState<Firm>(initialFirm || {
+    id: '',
+    name: '',
+    type: 'Retail',
+    gstNumber: '',
+    address: '',
+    city: '',
+    state: '',
+    pincode: '',
+    country: 'India',
+    phone: '',
+    email: '',
+    isActive: false,
+  })
+  const [logo, setLogo] = useState<string | null>(null)
+  const [showDetails, setShowDetails] = useState(false)
+  const [businessCategory, setBusinessCategory] = useState('')
+  const [businessDescription, setBusinessDescription] = useState('')
+  const [signature, setSignature] = useState<string | null>(null)
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const url = URL.createObjectURL(file)
+      setLogo(url)
+    }
+  }
+  const handleSignatureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const url = URL.createObjectURL(file)
+      setSignature(url)
+    }
+  }
+  return (
+    <form
+      onSubmit={e => {
+        e.preventDefault()
+        onSave({ ...firm, id: initialFirm?.id || Date.now().toString() })
+      }}
+      className="p-6"
+    >
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 items-center">
+        {/* Left: Logo and Details */}
+        <div className="flex flex-col items-center md:items-center justify-center h-full w-full">
+          <div className="relative mb-2">
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              id="firm-logo-upload"
+              onChange={handleLogoChange}
+            />
+            <div
+              className="w-32 h-32 border-2 border-dashed border-gray-300 bg-white rounded-lg flex items-center justify-center overflow-hidden transition-shadow hover:shadow-lg cursor-pointer"
+              onClick={() => document.getElementById('firm-logo-upload')?.click()}
+              title="Click to upload logo"
+            >
+              {logo ? (
+                <img src={logo} alt="Firm Logo" className="object-cover w-full h-full" />
+              ) : (
+                <span className="text-5xl text-gray-300">🏢</span>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="flex items-center text-blue-600 hover:underline px-4 py-2 mt-2"
+            onClick={() => setShowDetails((v) => !v)}
+          >
+            <span className="text-lg font-bold">+</span>
+            <span className="ml-1">{showDetails ? 'Business Details' : 'More Information'}</span>
+          </button>
+          {showDetails && (
+            <div className="w-full mt-4 space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Business Address</label>
+                <input type="text" value={firm.address} onChange={e => setFirm(f => ({ ...f, address: e.target.value }))} className="w-full px-3 py-2 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">PIN Code</label>
+                <input type="text" value={firm.pincode} onChange={e => setFirm(f => ({ ...f, pincode: e.target.value }))} className="w-full px-3 py-2 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Business Description</label>
+                <textarea value={businessDescription} onChange={e => setBusinessDescription(e.target.value)} rows={2} className="w-full px-3 py-2 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Business Type</label>
+                <select value={firm.type} onChange={e => setFirm(f => ({ ...f, type: e.target.value }))} className="w-full px-3 py-2 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                  <option value="Retail">Retail</option>
+                  <option value="Wholesale">Wholesale</option>
+                  <option value="Manufacturing">Manufacturing</option>
+                  <option value="Services">Services</option>
+                  <option value="Trading">Trading</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Business Category</label>
+                <select value={businessCategory} onChange={e => setBusinessCategory(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                  <option value="">Select Category</option>
+                  <option value="Electronics">Electronics</option>
+                  <option value="Grocery">Grocery</option>
+                  <option value="Clothing">Clothing</option>
+                  <option value="Pharmacy">Pharmacy</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Add Signature</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  id="firm-signature-upload"
+                  onChange={handleSignatureChange}
+                />
+                <div
+                  className="w-24 h-16 border-2 border-dashed border-gray-300 bg-white rounded flex items-center justify-center overflow-hidden transition-shadow hover:shadow cursor-pointer mt-1"
+                  onClick={() => document.getElementById('firm-signature-upload')?.click()}
+                  title="Click to upload signature"
+                >
+                  {signature ? (
+                    <img src={signature} alt="Signature" className="object-contain w-full h-full" />
+                  ) : (
+                    <span className="text-xs text-gray-300">Upload Signature</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        {/* Right: Three Fields */}
+        <div className="flex flex-col gap-2 w-full">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Business Name</label>
+            <input type="text" value={firm.name} onChange={e => setFirm(f => ({ ...f, name: e.target.value }))} required className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+            <input type="tel" value={firm.phone} onChange={e => setFirm(f => ({ ...f, phone: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email ID</label>
+            <input type="email" value={firm.email} onChange={e => setFirm(f => ({ ...f, email: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-col md:flex-row md:justify-end md:items-center space-y-2 md:space-y-0 pt-6 border-gray-200 mt-6">
+        <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">{initialFirm ? 'Save Changes' : 'Add Firm'}</button>
+      </div>
+    </form>
   )
 }

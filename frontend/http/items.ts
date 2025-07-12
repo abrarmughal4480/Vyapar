@@ -2,7 +2,7 @@ import api from './api';
 
 // Items API for frontend
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 export async function getItems(userId: string) {
   const res = await fetch(`${API_BASE_URL}/items/${userId}`);
@@ -14,6 +14,15 @@ export async function addItem(userId: string, item: any) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(item),
+  });
+  return res.json();
+}
+
+export async function bulkImportItems(userId: string, items: any[]) {
+  const res = await fetch(`${API_BASE_URL}/items/${userId}/bulk-import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items }),
   });
   return res.json();
 }

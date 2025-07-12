@@ -98,10 +98,6 @@ input, textarea, select {
 }
 
 /* Remove browser datalist suggestions */
-input::-webkit-calendar-picker-indicator {
-  display: none !important;
-}
-
 input::-webkit-list-button {
   display: none !important;
 }
@@ -187,12 +183,6 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 }
 
 /* Disable browser form data suggestions */
-input::-webkit-datetime-edit,
-input::-webkit-datetime-edit-fields-wrapper,
-input::-webkit-datetime-edit-text,
-input::-webkit-datetime-edit-month-field,
-input::-webkit-datetime-edit-day-field,
-input::-webkit-datetime-edit-year-field,
 input::-webkit-inner-spin-button,
 input::-webkit-outer-spin-button {
   display: none !important;

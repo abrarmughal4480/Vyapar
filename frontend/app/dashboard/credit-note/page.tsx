@@ -50,8 +50,7 @@ export default function CreditNotePage() {
   const [showPreview, setShowPreview] = useState(false)
   const [selectedNote, setSelectedNote] = useState<CreditNote | null>(null)
   const [activeTab, setActiveTab] = useState('all')
-  const [isLoading, setIsLoading] = useState(false)
-  const [isInitializing, setIsInitializing] = useState(true)
+
   const [errorMessage, setErrorMessage] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState('All')
@@ -176,7 +175,6 @@ export default function CreditNotePage() {
   // Initialize component
   useEffect(() => {
     const initialize = async () => {
-      setIsInitializing(true);
       setErrorMessage(''); // Clear any previous errors
       
       try {
@@ -184,25 +182,13 @@ export default function CreditNotePage() {
         console.log('Credit Notes page initialized successfully');
       } catch (error: any) {
         console.log('Initialization error:', error.message);
-      } finally {
-        setIsInitializing(false);
       }
     };
 
     initialize();
   }, [fetchCreditNotes]);
 
-  if (isInitializing) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="w-16 h-16 border-4 border-red-200 border-t-red-600 rounded-full animate-spin mx-auto"></div>
-          <p className="text-xl font-semibold text-gray-900">Loading Credit Notes...</p>
-          <p className="text-gray-600">Setting up your credit note management...</p>
-        </div>
-      </div>
-    )
-  }
+
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -218,7 +204,6 @@ export default function CreditNotePage() {
               <button
                 onClick={handleCreateCreditNote}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
-                disabled={isLoading}
               >
                 + Create Credit Note
               </button>

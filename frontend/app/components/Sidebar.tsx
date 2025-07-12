@@ -55,10 +55,10 @@ const navItems: NavItem[] = [
     subItems: [
       { id: 'purchase-bills', label: 'Purchase Bills', icon: '🧾', path: '/dashboard/purchase' },
       { id: 'purchase-order', label: 'Purchase Order', icon: '📋', path: '/dashboard/purchase-order' },
-      { id: 'payment-out', label: 'Payment Out', icon: '💸', path: '/dashboard/payment-out' }
+      { id: 'payment-out', label: 'Payment Out', icon: '💸', path: '/dashboard/payment-out' },
+      { id: 'expenses', label: 'Expenses', icon: '💸', path: '/dashboard/expenses' }
     ]
   },
-  { id: 'expenses', label: 'Expenses', icon: '💸', path: '/dashboard/expenses', description: 'Business Expenses' },
   { id: 'cash-bank', label: 'Cash & Bank', icon: '🏦', path: '/dashboard/cash-bank', description: 'Payment Records' },
   { id: 'reports', label: 'Reports', icon: '📈', path: '/dashboard/reports', description: 'Business Analytics' },
   { id: 'barcode', label: 'Barcode', icon: '📱', path: '/dashboard/barcode', description: 'Barcode Scanner' },

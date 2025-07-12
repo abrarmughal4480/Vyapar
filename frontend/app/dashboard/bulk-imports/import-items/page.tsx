@@ -53,6 +53,7 @@ export default function BulkImportItemsPage() {
   const [showPasteModal, setShowPasteModal] = useState(false)
   const [pastedData, setPastedData] = useState('')
   const [isDragOver, setIsDragOver] = useState(false)
+  const [rawDataPreview, setRawDataPreview] = useState<string>('')
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -101,12 +102,20 @@ export default function BulkImportItemsPage() {
         const text = e.target?.result as string
         parseCSV(text)
       }
+      reader.onerror = () => {
+        console.error('Error reading CSV file')
+        setToast({ message: 'Error reading CSV file. Please try again.', type: 'error' })
+      }
       reader.readAsText(file)
     } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
       const reader = new FileReader()
       reader.onload = (e) => {
         const arrayBuffer = e.target?.result as ArrayBuffer
         parseExcel(arrayBuffer)
+      }
+      reader.onerror = () => {
+        console.error('Error reading Excel file')
+        setToast({ message: 'Error reading Excel file. Please try again.', type: 'error' })
       }
       reader.readAsArrayBuffer(file)
     }
@@ -118,10 +127,17 @@ export default function BulkImportItemsPage() {
       const sheetName = workbook.SheetNames[0]
       const worksheet = workbook.Sheets[sheetName]
       
-      // Convert to CSV format
-      const csvData = XLSX.utils.sheet_to_csv(worksheet)
+      // Convert to CSV format with better options
+      const csvData = XLSX.utils.sheet_to_csv(worksheet, {
+        FS: ',',
+        RS: '\n',
+        forceQuotes: false,
+        blankrows: false
+      })
+      
       parseCSV(csvData)
     } catch (error) {
+      console.error('Error parsing Excel file:', error)
       setToast({ message: 'Error parsing Excel file. Please check the file format.', type: 'error' })
     }
   }
@@ -130,38 +146,81 @@ export default function BulkImportItemsPage() {
 
   const parseCSV = (csvText: string) => {
     const lines = csvText.split('\n')
-    const headers = lines[0]?.split(',').map(h => h.trim()) || []
+    
+    // Try to detect delimiter by checking first few lines
+    let delimiter = ','
+    const firstLine = lines[0] || ''
+    const secondLine = lines[1] || ''
+    
+    // Check if it's tab-separated
+    if (firstLine.includes('\t') && secondLine.includes('\t')) {
+      delimiter = '\t'
+    } else if (firstLine.includes(';') && secondLine.includes(';')) {
+      delimiter = ';'
+    }
+    
+    const headers = lines[0]?.split(delimiter).map(h => h.trim().replace(/"/g, '')) || []
     
     const parsedItems: ImportItem[] = []
     const errors: ValidationError[] = []
     let skipNextLine = false
+    let processedCount = 0
+    let skippedCount = 0
 
     for (let i = 1; i < lines.length; i++) {
-      if (!lines[i].trim()) continue
+      const line = lines[i].trim()
+      if (!line) {
+        skippedCount++
+        continue
+      }
+      
       if (skipNextLine) {
         skipNextLine = false
+        skippedCount++
         continue
       }
-      const values = lines[i].split(',').map(v => v.trim())
+      
+      // Parse CSV line properly handling quoted fields
+      const values = parseCSVLine(line, delimiter)
+      
       // Skip comment/instruction rows (any cell starts with '**' or line starts with '**')
-      if (lines[i].trim().startsWith('**') || values.some(v => v.startsWith('**'))) {
+      if (line.startsWith('**') || values.some(v => v.startsWith('**'))) {
         skipNextLine = true
+        skippedCount++
         continue
       }
+      
       // Skip rows where all cells are empty
-      if (values.every(v => v === '')) continue
-      // Skip rows with no item code
-      if (!values[1] || values[1].startsWith('**')) continue
+      if (values.every(v => v === '')) {
+        skippedCount++
+        continue
+      }
+      
+      // Skip rows with no item name (column 0)
+      if (!values[0] || values[0].startsWith('**')) {
+        skippedCount++
+        continue
+      }
 
+      // Map columns based on actual Excel structure:
+      // 0: Item name*, 1: Item code, 2: Category, 3: HSN, 4: Sale price, 5: Purchase price, 
+      // 6: Online Store Price, 7: Discount Type, 8: Sale Discount, 9: Current stock quantity, 
+      // 10: Minimum stock quantity, 11: Item Location, 12: Tax Rate, 13: Inclusive Of Tax, 
+      // 14: Base Unit (x), 15: Secondary Unit (y), 16: Conversion Rate (n) (x = ny)
+      
       // Tax Rate: extract number, but keep original
-      const taxRateRaw = values[13] || ''
+      const taxRateRaw = values[12] || ''
       const taxRateMatch = taxRateRaw.match(/([\d.]+)/)
       const taxRate = taxRateMatch ? parseFloat(taxRateMatch[1]) : 0
+      
       // Inclusive/Exclusive: keep original, parse boolean
-      const inclusiveOfTaxRaw = values[14] || ''
-      const inclusiveOfTax = inclusiveOfTaxRaw.toLowerCase() === 'inclusive'
+      const inclusiveOfTaxRaw = values[13] || ''
+      const inclusiveOfTax = inclusiveOfTaxRaw.toLowerCase() === 'inclusive' || 
+                            inclusiveOfTaxRaw.toLowerCase() === 'yes' ||
+                            inclusiveOfTaxRaw.toLowerCase() === 'true'
+      
       // Conversion Rate: keep original, parse number or empty
-      const conversionRateRaw = values[17] || ''
+      const conversionRateRaw = values[16] || ''
       const conversionRate = conversionRateRaw ? parseFloat(conversionRateRaw) : ''
 
       const item: ImportItem = {
@@ -171,19 +230,19 @@ export default function BulkImportItemsPage() {
         hsn: values[3] || '',
         salePrice: parseFloat(values[4]) || 0,
         purchasePrice: parseFloat(values[5]) || 0,
-        wholesalePrice: parseFloat(values[6]) || 0,
-        minimumWholesaleQuantity: parseFloat(values[7]) || 0,
-        discountType: values[8] || '',
-        saleDiscount: parseFloat(values[9]) || 0,
-        openingStockQuantity: parseFloat(values[10]) || 0,
-        minimumStockQuantity: parseFloat(values[11]) || 0,
-        itemLocation: values[12] || '',
+        wholesalePrice: parseFloat(values[6]) || 0, // Online Store Price maps to wholesale
+        minimumWholesaleQuantity: 0, // Not in your data
+        discountType: values[7] || '',
+        saleDiscount: parseFloat(values[8]) || 0,
+        openingStockQuantity: parseFloat(values[9]) || 0, // Current stock quantity
+        minimumStockQuantity: parseFloat(values[10]) || 0,
+        itemLocation: values[11] || '',
         taxRate, // parsed
         taxRateRaw, // original
         inclusiveOfTax, // parsed
         inclusiveOfTaxRaw, // original
-        baseUnit: values[15] || '',
-        secondaryUnit: values[16] || '',
+        baseUnit: values[14] || '',
+        secondaryUnit: values[15] || '',
         conversionRate, // parsed or ''
         conversionRateRaw, // original
         status: 'Active'
@@ -193,11 +252,52 @@ export default function BulkImportItemsPage() {
       const rowErrors = validateItem(item, i + 1)
       errors.push(...rowErrors)
       parsedItems.push(item)
+      processedCount++
     }
+
+
 
     setItems(parsedItems)
     setValidationErrors(errors)
     setShowPreview(true)
+  }
+
+  // Helper function to properly parse CSV lines with quoted fields
+  const parseCSVLine = (line: string, delimiter: string): string[] => {
+    const result: string[] = []
+    let current = ''
+    let inQuotes = false
+    let i = 0
+    
+    while (i < line.length) {
+      const char = line[i]
+      
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          // Escaped quote
+          current += '"'
+          i += 2
+        } else {
+          // Toggle quote state
+          inQuotes = !inQuotes
+          i++
+        }
+      } else if (char === delimiter && !inQuotes) {
+        // End of field
+        result.push(current.trim())
+        current = ''
+        i++
+      } else {
+        // Regular character
+        current += char
+        i++
+      }
+    }
+    
+    // Add the last field
+    result.push(current.trim())
+    
+    return result
   }
 
   const handlePasteData = () => {
@@ -227,9 +327,7 @@ export default function BulkImportItemsPage() {
       errors.push({ row, field: 'name', message: 'Item name is required' })
     }
 
-    if (!item.itemCode.trim()) {
-      errors.push({ row, field: 'itemCode', message: 'Item code is required' })
-    }
+
 
     if (item.salePrice < 0) {
       errors.push({ row, field: 'salePrice', message: 'Sale price cannot be negative' })
@@ -243,9 +341,7 @@ export default function BulkImportItemsPage() {
       errors.push({ row, field: 'wholesalePrice', message: 'Wholesale price cannot be negative' })
     }
 
-    if (item.openingStockQuantity < 0) {
-      errors.push({ row, field: 'openingStockQuantity', message: 'Opening stock cannot be negative' })
-    }
+
 
     if (item.minimumStockQuantity < 0) {
       errors.push({ row, field: 'minimumStockQuantity', message: 'Minimum stock cannot be negative' })
@@ -271,24 +367,23 @@ export default function BulkImportItemsPage() {
 
   const downloadTemplate = () => {
     const headers = [
-      'Item Name',
-      'Item Code',
+      'Item name*',
+      'Item code',
       'Category',
       'HSN',
-      'Sale Price',
-      'Purchase Price',
-      'Wholesale Price',
-      'Minimum Wholesale Quantity',
+      'Sale price',
+      'Purchase price',
+
       'Discount Type',
       'Sale Discount',
-      'Opening Stock Quantity',
-      'Minimum Stock Quantity',
+      'Current stock quantity',
+      'Minimum stock quantity',
       'Item Location',
       'Tax Rate',
-      'Inclusive of Tax',
+      'Inclusive Of Tax',
       'Base Unit (x)',
       'Secondary Unit (y)',
-      'Conversion Rate n (x=ny)'
+      'Conversion Rate (n) (x = ny)'
     ]
     
     const sampleData = [
@@ -298,9 +393,8 @@ export default function BulkImportItemsPage() {
       '85171200',
       '1000.00',
       '800.00',
-      '900.00',
-      '10',
-      'Percentage',
+
+      'Discount %',
       '5.00',
       '50',
       '5',
@@ -387,7 +481,12 @@ export default function BulkImportItemsPage() {
 
       console.log('Calling bulk import with userId:', userId, 'and items count:', itemsToImport.length)
 
+      // Show progress updates
+      setImportProgress(10)
+      
       const result = await bulkImportItems(userId, itemsToImport)
+      
+      setImportProgress(90)
 
       if (result && result.success) {
         setToast({ 
@@ -395,6 +494,8 @@ export default function BulkImportItemsPage() {
           type: 'success' 
         })
 
+        setImportProgress(100)
+        
         setTimeout(() => {
           router.push('/dashboard/items')
         }, 2000)
@@ -404,9 +505,19 @@ export default function BulkImportItemsPage() {
           type: 'error' 
         })
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Import error:', error)
-      setToast({ message: 'Import failed. Please try again.', type: 'error' })
+      let errorMessage = 'Import failed. Please try again.'
+      
+      if (error.message?.includes('Payload too large')) {
+        errorMessage = 'File too large. Please try importing fewer items at once or split your file into smaller chunks.'
+      } else if (error.message?.includes('timeout')) {
+        errorMessage = 'Import timed out. Please try again with fewer items.'
+      } else if (error.message?.includes('413')) {
+        errorMessage = 'Server rejected the request due to size. Please try importing fewer items.'
+      }
+      
+      setToast({ message: errorMessage, type: 'error' })
     } finally {
       setIsImporting(false)
     }
@@ -419,6 +530,7 @@ export default function BulkImportItemsPage() {
     setShowPreview(false)
     setImportProgress(0)
     setPastedData('')
+    setRawDataPreview('')
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -583,6 +695,8 @@ export default function BulkImportItemsPage() {
         {/* Preview Section */}
         {showPreview && (
           <div className="space-y-6">
+
+
             {/* Summary */}
             <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-100">
               <div className="flex items-center justify-between mb-4">
@@ -721,9 +835,9 @@ export default function BulkImportItemsPage() {
               <div className="px-6 py-4 border-b border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-900">Items to Import</h3>
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto overflow-y-auto">
                 <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Row
@@ -746,12 +860,7 @@ export default function BulkImportItemsPage() {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Purchase Price
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Wholesale Price
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Min Qty
-                      </th>
+
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Discount Type
                       </th>
@@ -759,7 +868,7 @@ export default function BulkImportItemsPage() {
                         Sale Discount
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Opening Stock
+                        Current Stock
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Min Stock
@@ -830,17 +939,6 @@ export default function BulkImportItemsPage() {
                               {getFieldError(index + 1, 'purchasePrice')?.message}
                             </div>
                           )}
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">PKR {item.wholesalePrice}</div>
-                          {getFieldError(index + 1, 'wholesalePrice') && (
-                            <div className="text-xs text-red-600 mt-1">
-                              {getFieldError(index + 1, 'wholesalePrice')?.message}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{item.minimumWholesaleQuantity}</div>
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">{item.discountType}</div>

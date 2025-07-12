@@ -19,12 +19,33 @@ export async function addItem(userId: string, item: any) {
 }
 
 export async function bulkImportItems(userId: string, items: any[]) {
-  const res = await fetch(`${API_BASE_URL}/items/${userId}/bulk-import`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items }),
-  });
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE_URL}/items/${userId}/bulk-import`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ items }),
+      // Increase timeout for large payloads
+      signal: AbortSignal.timeout(300000) // 5 minutes timeout
+    });
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error('Response error text:', errorText);
+      
+      if (res.status === 413) {
+        throw new Error('Payload too large. Please try importing fewer items at once.');
+      }
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    
+    return res.json();
+  } catch (error) {
+    console.error('Bulk import error:', error);
+    throw error;
+  }
 }
 
 export async function deleteItem(userId: string, itemId: string) {

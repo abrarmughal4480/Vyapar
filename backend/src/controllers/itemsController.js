@@ -24,9 +24,18 @@ function processBulkImportData(data) {
     conversionFactor = parseFloat(data.conversionRateRaw);
   }
 
+  // Generate unique itemId if not provided
+  let itemId = data.itemCode || data.itemId;
+  if (!itemId || itemId.trim() === '') {
+    // Generate unique ID based on name and timestamp
+    const timestamp = Date.now();
+    const nameSlug = (data.name || 'item').replace(/[^a-zA-Z0-9]/g, '').substring(0, 10);
+    itemId = `${nameSlug}_${timestamp}`;
+  }
+
   return {
     userId: data.userId,
-    itemId: data.itemCode || data.itemId,
+    itemId: itemId,
     name: data.name,
     category: data.category,
     hsn: data.hsn,
@@ -88,10 +97,18 @@ export const addItem = async (req, res) => {
 // Bulk import items
 export const bulkImportItems = async (req, res) => {
   try {
+    console.log('Bulk import request received');
+    console.log('Request body:', req.body);
+    console.log('Request params:', req.params);
+    
     const userId = req.params.userId;
     const items = req.body.items || [];
     
+    console.log('UserId:', userId);
+    console.log('Items count:', items.length);
+    
     if (!Array.isArray(items) || items.length === 0) {
+      console.log('No items provided for bulk import');
       return res.status(400).json({ 
         success: false, 
         message: 'No items provided for bulk import' 
@@ -102,10 +119,20 @@ export const bulkImportItems = async (req, res) => {
     let successCount = 0;
     let errorCount = 0;
 
-    for (const itemData of items) {
+    console.log('Starting to process items...');
+
+    for (let i = 0; i < items.length; i++) {
+      const itemData = items[i];
       try {
         // Process each item data
         const processedData = processBulkImportData({ ...itemData, userId });
+        
+        // Add index to make itemId unique if there are duplicates
+        if (!itemData.itemCode || itemData.itemCode.trim() === '') {
+          const timestamp = Date.now();
+          const nameSlug = (itemData.name || 'item').replace(/[^a-zA-Z0-9]/g, '').substring(0, 10);
+          processedData.itemId = `${nameSlug}_${timestamp}_${i}`;
+        }
         
         // Check if item already exists
         const existingItem = await Item.findOne({ 
@@ -138,14 +165,17 @@ export const bulkImportItems = async (req, res) => {
           successCount++;
         }
       } catch (error) {
+        console.error('Error processing item:', error);
         results.push({
-          itemId: itemData.itemCode || 'unknown',
+          itemId: itemData.itemCode || `item_${i}`,
           status: 'error',
           error: error.message
         });
         errorCount++;
       }
     }
+
+    console.log(`Bulk import completed. Success: ${successCount}, Errors: ${errorCount}`);
 
     res.status(200).json({
       success: true,
@@ -158,6 +188,7 @@ export const bulkImportItems = async (req, res) => {
       }
     });
   } catch (err) {
+    console.error('Bulk import error:', err);
     res.status(500).json({ 
       success: false, 
       message: 'Bulk import failed: ' + err.message 

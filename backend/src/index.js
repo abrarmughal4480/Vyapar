@@ -23,7 +23,10 @@ async function dbConnect() {
 const app = express();
 app.use(cors());
 
-app.use(express.json());
+// Increase payload limit for bulk imports
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
 app.use('/', routes);
 
 const PORT = config.port;

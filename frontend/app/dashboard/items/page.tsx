@@ -431,7 +431,7 @@ export default function ItemsPage() {
           <div className="text-sm text-gray-500">Low Stock</div>
         </div>
         <div className="bg-gradient-to-br from-red-100 to-red-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
-          <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-red-500 text-white mb-3 text-xl">❌</div>
+          <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-white text-red-600 mb-3 text-xl border-2 border-red-200">❌</div>
           <div className="text-2xl font-bold text-red-700">{stats.outOfStockItems}</div>
           <div className="text-sm text-gray-500">Out of Stock</div>
         </div>
@@ -700,15 +700,15 @@ export default function ItemsPage() {
             {/* Desktop Table View */}
             <div className="hidden md:block">
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-100">
+                <table className="min-w-full divide-y divide-gray-100 table-fixed">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pricing</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">Item</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Category</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Pricing</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Stock</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Status</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
@@ -722,39 +722,39 @@ export default function ItemsPage() {
                           onDoubleClick={() => openEditItemPage(item)}
                         >
                           <td className="px-6 py-4 whitespace-nowrap flex items-center space-x-3">
-                            <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-base">
+                            <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-base flex-shrink-0">
                               {getCategoryIcon(item.category)}
                             </div>
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                              <div className="text-xs text-gray-500">{item.sku} • {item.supplier}</div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
+                              <div className="text-xs text-gray-500 truncate">{item.sku} • {item.supplier}</div>
                               {item.hsn && (
-                                <div className="text-xs text-gray-400">HSN: {item.hsn}</div>
+                                <div className="text-xs text-gray-400 truncate">HSN: {item.hsn}</div>
                               )}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">{item.category}</div>
-                            <div className="text-sm text-gray-500">{item.subcategory}</div>
+                            <div className="text-sm text-gray-900 truncate">{item.category}</div>
+                            <div className="text-sm text-gray-500 truncate">{item.subcategory}</div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">PKR {item.salePrice.toLocaleString()}</div>
-                            <div className="text-sm text-gray-500">Cost: PKR {item.purchasePrice.toLocaleString()} • {margin}% margin</div>
+                            <div className="text-sm text-gray-500 truncate">Cost: PKR {item.purchasePrice.toLocaleString()} • {margin}% margin</div>
                             {item.wholesalePrice && (
-                              <div className="text-xs text-gray-500">Wholesale: PKR {item.wholesalePrice.toLocaleString()}</div>
+                              <div className="text-xs text-gray-500 truncate">Wholesale: PKR {item.wholesalePrice.toLocaleString()}</div>
                             )}
                             {getTaxDisplay(item) && (
-                              <div className="text-xs text-gray-500">Tax: {getTaxDisplay(item)}</div>
+                              <div className="text-xs text-gray-500 truncate">Tax: {getTaxDisplay(item)}</div>
                             )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">{getStockDisplay(item, item.openingQuantity ?? item.stock ?? 0)}</div>
-                            <div className="text-sm text-gray-500">Min: {getStockDisplay(item, item.minStock ?? 0)}</div>
+                            <div className="text-sm font-medium text-gray-900 truncate">{getStockDisplay(item, item.openingQuantity ?? item.stock ?? 0)}</div>
+                            <div className="text-sm text-gray-500 truncate">Min: {getStockDisplay(item, item.minStock ?? 0)}</div>
                             {item.itemLocation && (
-                              <div className="text-xs text-gray-500">Location: {item.itemLocation}</div>
+                              <div className="text-xs text-gray-500 truncate">Location: {item.itemLocation}</div>
                             )}
                             {getUnitDisplay(item) && (
-                              <div className="text-xs text-gray-500">Unit: {getUnitDisplay(item)}</div>
+                              <div className="text-xs text-gray-500 truncate">Unit: {getUnitDisplay(item)}</div>
                             )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-center">
@@ -763,17 +763,17 @@ export default function ItemsPage() {
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-center">
-                            <div className="flex justify-center gap-3 md:gap-4">
+                            <div className="flex justify-center gap-2">
                               <button 
                                 onClick={() => openEditItemPage(item)}
-                                className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
+                                className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors px-2 py-1 rounded hover:bg-blue-50"
                               >
                                 Edit
                               </button>
-                              <button className="text-green-600 hover:text-green-800 text-sm font-medium transition-colors">
+                              <button className="text-green-600 hover:text-green-800 text-sm font-medium transition-colors px-2 py-1 rounded hover:bg-green-50">
                                 View
                               </button>
-                              <button className="text-red-600 hover:text-red-800 text-sm font-medium transition-colors" onClick={() => handleDeleteItem(item)}>
+                              <button className="text-red-600 hover:text-red-800 text-sm font-medium transition-colors px-2 py-1 rounded hover:bg-red-50" onClick={() => handleDeleteItem(item)}>
                                 Delete
                               </button>
                             </div>

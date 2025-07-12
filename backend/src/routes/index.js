@@ -64,4 +64,9 @@ router.get('/', (req, res) => {
   res.send('Hello from Express backend!');
 });
 
+// Test route for bulk import
+router.get('/test-bulk-import', (req, res) => {
+  res.json({ success: true, message: 'Bulk import route is accessible' });
+});
+
 export default router; 

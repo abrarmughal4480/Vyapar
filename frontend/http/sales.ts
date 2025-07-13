@@ -64,4 +64,34 @@ export const updateSale = async (saleId: string, sale: any, token: string) => {
     },
   });
   return data;
+};
+
+export const getBillWiseProfit = async (token: string, party?: string) => {
+  let url = '/api/sales/bill-wise-profit';
+  if (party) url += `?party=${encodeURIComponent(party)}`;
+  const { data } = await api.get(url, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
+};
+
+export const updatePurchaseAtPrice = async (token: string) => {
+  const { data } = await api.post('/api/sales/update-purchase-atprice', {}, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
+};
+
+export const getItemPurchasePrices = async (items: string[], token: string) => {
+  const { data } = await api.post('/api/sales/item-purchase-prices', { items }, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
+};
+
+export const debugPurchases = async (token: string) => {
+  const { data } = await api.get('/api/sales/debug-purchases', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
 }; 

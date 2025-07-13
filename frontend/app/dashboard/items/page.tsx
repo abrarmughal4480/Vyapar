@@ -65,16 +65,19 @@ interface InventoryStats {
   outOfStockItems: number
 }
 
+
 // Move this function above the component
 function calculateStats(items: Item[]) {
   const totalItems = items.length
   const totalValue = items.reduce((sum, item) => {
     const stockValue = item.openingQuantity ?? item.stock ?? 0
-    return sum + (stockValue * item.salePrice)
+    const salePrice = item.salePrice ?? 0
+    return sum + (stockValue * salePrice)
   }, 0)
   const lowStockItems = items.filter(item => {
     const stockValue = item.openingQuantity ?? item.stock ?? 0
-    return stockValue <= (item.minStock ?? 0)
+    const minStockValue = item.minStock ?? 0
+    return stockValue <= minStockValue
   }).length
   const outOfStockItems = items.filter(item => {
     const stockValue = item.openingQuantity ?? item.stock ?? 0
@@ -281,8 +284,8 @@ export default function ItemsPage() {
   }
 
   const filteredItems = items.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.sku.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesSearch = (item.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                         (item.sku?.toLowerCase() || '').includes(searchTerm.toLowerCase())
     
     const matchesCategory = !selectedCategory || item.category === selectedCategory
     
@@ -322,7 +325,8 @@ export default function ItemsPage() {
     const totalItems = itemsInCategory.length;
     const totalValue = itemsInCategory.reduce((sum, item) => {
       const stockValue = item.openingQuantity ?? item.stock ?? 0;
-      return sum + (stockValue * item.salePrice);
+      const salePrice = item.salePrice ?? 0;
+      return sum + (stockValue * salePrice);
     }, 0);
     return {
       id: String(idx + 1),
@@ -630,8 +634,8 @@ export default function ItemsPage() {
               {filteredItems.map((item) => {
                 const key = item._id || item.itemId || item.sku;
                 const stockStatus = getStockStatus(item)
-                const profit = item.salePrice - item.purchasePrice
-                const margin = ((profit / item.salePrice) * 100).toFixed(1)
+                const profit = (item.salePrice ?? 0) - (item.purchasePrice ?? 0)
+                const margin = item.salePrice ? ((profit / item.salePrice) * 100).toFixed(1) : '0.0'
                 return (
                   <div key={key} className="border-b border-gray-100 p-4 bg-white/80 rounded-xl mb-3 shadow-sm hover:shadow-md transition-all">
                     <div className="flex justify-between items-start mb-2">
@@ -673,7 +677,7 @@ export default function ItemsPage() {
                       </div>
                     </div>
                     <div className="mt-2 text-xs text-gray-500">
-                      Cost: PKR {item.purchasePrice.toLocaleString()} • {margin}% margin
+                      Cost: PKR {(item.purchasePrice ?? 0).toLocaleString()} • {margin}% margin
                     </div>
                     {/* New fields display */}
                     <div className="mt-2 space-y-1">
@@ -715,8 +719,8 @@ export default function ItemsPage() {
                     {filteredItems.map((item, idx) => {
                       const key = item._id || item.itemId || item.sku;
                       const stockStatus = getStockStatus(item)
-                      const profit = item.salePrice - item.purchasePrice
-                      const margin = ((profit / item.salePrice) * 100).toFixed(1)
+                      const profit = (item.salePrice ?? 0) - (item.purchasePrice ?? 0)
+                      const margin = item.salePrice ? ((profit / item.salePrice) * 100).toFixed(1) : '0.0'
                       return (
                         <tr key={key} className={`hover:bg-blue-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
                           onDoubleClick={() => openEditItemPage(item)}
@@ -738,8 +742,8 @@ export default function ItemsPage() {
                             <div className="text-sm text-gray-500 truncate">{item.subcategory}</div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">PKR {item.salePrice.toLocaleString()}</div>
-                            <div className="text-sm text-gray-500 truncate">Cost: PKR {item.purchasePrice.toLocaleString()} • {margin}% margin</div>
+                            <div className="text-sm font-medium text-gray-900">PKR {(item.salePrice ?? 0).toLocaleString()}</div>
+                            <div className="text-sm text-gray-500 truncate">Cost: PKR {(item.purchasePrice ?? 0).toLocaleString()} • {margin}% margin</div>
                             {item.wholesalePrice && (
                               <div className="text-xs text-gray-500 truncate">Wholesale: PKR {item.wholesalePrice.toLocaleString()}</div>
                             )}

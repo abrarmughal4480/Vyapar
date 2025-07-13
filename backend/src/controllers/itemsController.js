@@ -68,7 +68,8 @@ function processBulkImportData(data) {
     status: data.status || 'Active',
     type: data.type || 'Product',
     imageUrl: data.imageUrl || '',
-    atPrice: data.atPrice,
+    // Set atPrice to purchasePrice if undefined
+    atPrice: data.atPrice !== undefined ? data.atPrice : data.purchasePrice,
     asOfDate: data.asOfDate
   };
 }

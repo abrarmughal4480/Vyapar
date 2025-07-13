@@ -11,8 +11,8 @@ const reportTabs = [
   { id: 'purchase', name: 'Purchase' },
   { id: 'daybook', name: 'Day Book' },
   { id: 'alltransactions', name: 'All Transactions' },
-  { id: 'profitandloss', name: 'Profit and Loss' },
   { id: 'billwiseprofit', name: 'Bill Wise Profit' },
+  { id: 'profitandloss', name: 'Profit and Loss' },
   { id: 'cashflow', name: 'Cash Flow' },
   { id: 'balancesheet', name: 'Balance Sheet' },
 ];
@@ -53,6 +53,14 @@ const ReportsSidebar: React.FC<ReportsSidebarProps> = ({ activeTab, onTabChange 
             <Link
               key={tab.id}
               href="/dashboard/reports/all-transactions"
+              className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === tab.id ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+            >
+              {tab.name}
+            </Link>
+          ) : tab.id === 'billwiseprofit' ? (
+            <Link
+              key={tab.id}
+              href="/dashboard/reports/bill-wise-profit"
               className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === tab.id ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
             >
               {tab.name}

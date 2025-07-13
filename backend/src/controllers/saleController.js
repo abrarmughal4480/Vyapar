@@ -321,6 +321,136 @@ export const updateSale = async (req, res) => {
   }
 };
 
+// Bill Wise Profit report
+export const getBillWiseProfit = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) return res.status(401).json({ success: false, message: 'User not authenticated' });
+
+    const { party } = req.query;
+
+    // Fetch all sales for the user (optionally filter by party)
+    const saleQuery = { userId };
+    if (party) saleQuery.partyName = party;
+    const sales = await Sale.find(saleQuery).sort({ createdAt: -1 }).lean();
+
+    // Fetch all items for the user
+    const items = await Item.find({ userId }).lean();
+
+    // Helper: for each item, get the latest purchase price from items model
+    function getLatestPurchasePrice(itemName) {
+      const itemDoc = items.find(i => i.name && i.name.trim().toLowerCase() === itemName.trim().toLowerCase());
+      if (itemDoc) {
+        return itemDoc.atPrice !== undefined && itemDoc.atPrice !== null
+          ? itemDoc.atPrice
+          : (itemDoc.purchasePrice !== undefined && itemDoc.purchasePrice !== null
+            ? itemDoc.purchasePrice
+            : 0);
+      }
+      return 0;
+    }
+
+    // Prepare bill-wise profit data
+    let totalProfit = 0;
+    const bills = sales.map(sale => {
+      let billProfit = 0;
+      let itemDetails = [];
+      if (Array.isArray(sale.items)) {
+        sale.items.forEach(saleItem => {
+          const purchasePrice = getLatestPurchasePrice(saleItem.item);
+          const salePrice = saleItem.price || 0;
+          const qty = saleItem.qty || 0;
+          const itemProfit = (salePrice - purchasePrice) * qty;
+          billProfit += itemProfit;
+          itemDetails.push({
+            item: saleItem.item,
+            qty: qty,
+            salePrice: salePrice,
+            purchasePrice: purchasePrice,
+            itemProfit: itemProfit
+          });
+        });
+      }
+      totalProfit += billProfit;
+      return {
+        date: sale.createdAt,
+        refNo: sale.invoiceNo || sale._id,
+        party: sale.partyName,
+        totalSaleAmount: sale.grandTotal || 0,
+        profit: billProfit,
+        details: itemDetails,
+      };
+    });
+
+    res.json({ success: true, bills, totalProfit });
+  } catch (err) {
+    console.error('Bill Wise Profit Error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Get purchase prices for items (for sale creation)
+export const getItemPurchasePrices = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) return res.status(401).json({ success: false, message: 'User not authenticated' });
+    
+    const { items } = req.body; // Array of item names
+    if (!items || !Array.isArray(items)) {
+      return res.status(400).json({ success: false, message: 'Items array is required' });
+    }
+    
+    // Helper function to get latest purchase price for an item
+    function getLatestPurchasePrice(itemName) {
+      let latestPrice = 0;
+      let latestDate = null;
+      
+      // Fetch all sales for the user to find purchase prices
+      Sale.find({ userId }).then(sales => {
+        sales.forEach(sale => {
+          if (Array.isArray(sale.items)) {
+            for (const saleItem of sale.items) {
+              const saleItemName = saleItem.item?.trim().toLowerCase() || '';
+              const itemNameLower = itemName?.trim().toLowerCase() || '';
+              
+              // Try exact match first, then partial match
+              const exactMatch = saleItemName === itemNameLower;
+              const partialMatch = saleItemName.includes(itemNameLower) || itemNameLower.includes(saleItemName);
+              
+              if (saleItem.item && itemName && (exactMatch || partialMatch)) {
+                // Use atPrice first, if undefined then use purchasePrice, otherwise fall back to price
+                const itemPrice = saleItem.atPrice !== undefined && saleItem.atPrice !== null ? saleItem.atPrice : (saleItem.purchasePrice !== undefined && saleItem.purchasePrice !== null ? saleItem.purchasePrice : saleItem.price) || 0;
+                if (itemPrice > 0) {
+                  // Use the latest purchase
+                  if (!latestDate || new Date(sale.createdAt) > latestDate) {
+                    latestPrice = itemPrice;
+                    latestDate = new Date(sale.createdAt);
+                  }
+                }
+              }
+            }
+          }
+        });
+      }).catch(err => {
+        console.error('Error fetching sales for item purchase prices:', err);
+      });
+      
+      return latestPrice;
+    }
+    
+    // Get purchase prices for each item
+    const itemPrices = {};
+    items.forEach(itemName => {
+      itemPrices[itemName] = getLatestPurchasePrice(itemName);
+    });
+    
+    res.json({ success: true, itemPrices });
+  } catch (err) {
+    console.error('Get Item Purchase Prices Error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 export default {
   createSale,
   getSalesByUser,
@@ -329,4 +459,6 @@ export default {
   getSalesOverview,
   deleteSale,
   updateSale,
+  getBillWiseProfit,
+  getItemPurchasePrices,
 }; 

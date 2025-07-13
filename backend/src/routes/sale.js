@@ -1,12 +1,18 @@
 import express from 'express';
-import { createSale, getSalesByUser, receivePayment, getSalesStatsByUser, getSalesOverview, deleteSale, updateSale } from '../controllers/saleController.js';
+import { createSale, getSalesByUser, receivePayment, getSalesStatsByUser, getSalesOverview, deleteSale, updateSale, getBillWiseProfit, getItemPurchasePrices } from '../controllers/saleController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import Sale from '../models/sale.js';
 
 const router = express.Router();
 
 router.post('/', authMiddleware, createSale);
-router.get('/:userId', authMiddleware, getSalesByUser);
+
+// Bill Wise Profit report - must come before parameterized routes
+router.get('/bill-wise-profit', authMiddleware, getBillWiseProfit);
+
+// Get purchase prices for items (for sale creation)
+router.post('/item-purchase-prices', authMiddleware, getItemPurchasePrices);
+
 router.get('/next-invoice-no', authMiddleware, async (req, res) => {
   try {
     const userId = req.user._id;
@@ -44,5 +50,8 @@ router.get('/overview/:userId', authMiddleware, getSalesOverview);
 router.delete('/:saleId', authMiddleware, deleteSale);
 
 router.put('/update/:saleId', authMiddleware, updateSale);
+
+// Parameterized routes must come last
+router.get('/:userId', authMiddleware, getSalesByUser);
 
 export default router; 

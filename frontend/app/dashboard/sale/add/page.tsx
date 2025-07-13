@@ -997,12 +997,6 @@ const AddSalePage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-2 sm:px-4 md:px-8">
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-      {nextInvoiceNo && !invoiceNo && (
-        <div className="w-full flex justify-center py-2">
-          <div className="bg-blue-50 text-blue-700 px-6 py-2 rounded-lg font-bold text-lg shadow">Next Invoice No: {nextInvoiceNo}</div>
-        </div>
-      )}
       <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-6">
         {/* Sticky Header */}
         <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 flex justify-between items-center px-6 py-4">
@@ -1016,15 +1010,6 @@ const AddSalePage = () => {
             ✕
           </button>
         </div>
-        {/* Invoice Number Display */}
-        {(invoiceNo || nextInvoiceNo) && (
-          <div className="w-full flex justify-center py-2">
-            <div className={`px-8 py-3 rounded-xl font-extrabold text-2xl border-2 shadow-lg tracking-wider flex items-center gap-3 ${invoiceNo ? 'bg-green-50 text-green-700 border-green-300' : 'bg-blue-50 text-blue-700 border-blue-300'}`}>
-              <span className="uppercase text-base font-semibold text-gray-500">Invoice Number:</span>
-              <span>{invoiceNo ? invoiceNo : nextInvoiceNo}</span>
-            </div>
-          </div>
-        )}
         <form onSubmit={handleSubmit} className="divide-y divide-gray-200 w-full">
           {/* Customer Section */}
           <div className="bg-gray-50 px-6 py-6 w-full">

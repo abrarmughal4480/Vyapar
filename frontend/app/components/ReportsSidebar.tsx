@@ -72,6 +72,48 @@ const ReportsSidebar: React.FC<ReportsSidebarProps> = ({ activeTab, onTabChange 
           )
         ))}
       </nav>
+      {/* Party Report Section */}
+      <div className="bg-[#f0f6ff] px-6 py-4 border-b border-gray-100">
+        <h2 className="text-base font-bold text-blue-800 tracking-wide">Party Report</h2>
+      </div>
+      <nav className="flex flex-col">
+        <Link
+          href="/dashboard/reports/party-statement"
+          className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === 'party-statement' ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+        >
+          Party Statement
+        </Link>
+        <Link
+          href="/dashboard/reports/party-wise-profit-and-loss"
+          className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === 'party-wise-profit-and-loss' ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+        >
+          Party Wise Profit and Loss
+        </Link>
+        <Link
+          href="/dashboard/reports/all-parties"
+          className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === 'all-parties' ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+        >
+          All Parties
+        </Link>
+        <Link
+          href="/dashboard/reports/party-report-by-item"
+          className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === 'party-report-by-item' ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+        >
+          Party Report by Item
+        </Link>
+        <Link
+          href="/dashboard/reports/sale-purchase-by-party"
+          className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === 'sale-purchase-by-party' ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+        >
+          Sale Purchase by Party
+        </Link>
+        <Link
+          href="/dashboard/reports/sale-purchase-by-party-group"
+          className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === 'sale-purchase-by-party-group' ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+        >
+          Sale Purchase by Party Group
+        </Link>
+      </nav>
     </aside>
   );
 };

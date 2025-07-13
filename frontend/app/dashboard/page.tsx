@@ -50,7 +50,7 @@ const quickActions = [
     textColor: 'text-emerald-600',
     bgColor: 'bg-emerald-50',
     modalKey: 'saleInvoice',
-    path: '/dashboard/sale'
+    path: '/dashboard/sale/add'
   },
   {
     title: 'New Purchase Bill',
@@ -60,7 +60,7 @@ const quickActions = [
     textColor: 'text-blue-600',
     bgColor: 'bg-blue-50',
     modalKey: 'purchaseBill',
-    path: '/dashboard/purchase'
+    path: '/dashboard/purchaseAdd'
   },
   {
     title: 'Add Item',
@@ -90,7 +90,7 @@ const quickActions = [
     textColor: 'text-rose-600',
     bgColor: 'bg-rose-50',
     modalKey: 'paymentIn',
-    path: '/dashboard/payments'
+    path: '/dashboard/payment-in'
   },
   {
     title: 'Payment Out',
@@ -100,27 +100,7 @@ const quickActions = [
     textColor: 'text-amber-600',
     bgColor: 'bg-amber-50',
     modalKey: 'paymentOut',
-    path: '/dashboard/expences'
-  },
-  {
-    title: 'Quick Expense',
-    icon: '💸',
-    color: 'from-pink-500 to-rose-600',
-    hoverColor: 'hover:from-pink-600 hover:to-rose-700',
-    textColor: 'text-pink-600',
-    bgColor: 'bg-pink-50',
-    modalKey: 'quickExpense',
-    path: '/dashboard/expenses'
-  },
-  {
-    title: 'Stock Adjustment',
-    icon: '📊',
-    color: 'from-indigo-500 to-purple-600',
-    hoverColor: 'hover:from-indigo-600 hover:to-purple-700',
-    textColor: 'text-indigo-600',
-    bgColor: 'bg-indigo-50',
-    modalKey: 'stockAdjustment',
-    path: '/dashboard/inventory'
+    path: '/dashboard/payment-out'
   },
 ];
 
@@ -436,6 +416,7 @@ export default function Dashboard() {
                 <button
                   key={index}
                   className={`group relative overflow-hidden bg-gradient-to-br ${action.color} p-4 rounded-2xl text-white shadow-lg hover:shadow-xl transform hover:scale-105 ${action.hoverColor} transition-all duration-300`}
+                  onClick={() => router.push(action.path)}
                 >
                   <div className="relative z-10">
                     <div className="text-2xl mb-2 group-hover:scale-110 transition-transform duration-200">

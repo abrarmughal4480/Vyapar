@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
-import { getPurchasesByUser, getPurchaseById, getPayments } from "@/http/purchases";
+import { getPurchasesByUser, getPurchaseById, getPayments, getPaymentOutsByUser } from "@/http/purchases";
 import { jwtDecode } from "jwt-decode";
 import Toast from "../../components/Toast";
 import PaymentOutModal from "../../components/PaymentOutModal";
@@ -43,7 +43,7 @@ const PaymentOutPage = () => {
   const router = useRouter();
 
   useEffect(() => {
-    const fetchPayments = async () => {
+    const fetchPaymentOuts = async () => {
       setLoading(true);
       try {
         const token = (typeof window !== "undefined" && (localStorage.getItem("token") || localStorage.getItem("vypar_auth_token"))) || "";
@@ -52,23 +52,31 @@ const PaymentOutPage = () => {
           setLoading(false);
           return;
         }
-        
-        const result = await getPayments(token);
-        console.log('Payment result:', result);
-        if (result && result.success && Array.isArray(result.payments)) {
-          console.log('Payments data:', result.payments);
-          setTransactions(result.payments);
+        let userId = "";
+        try {
+          const decoded: any = jwtDecode(token);
+          userId = decoded.userId || decoded._id || decoded.id || "";
+        } catch (e) {
+          console.error('JWT decode error:', e);
+        }
+        if (!userId) {
+          setTransactions([]);
+          setLoading(false);
+          return;
+        }
+        const result = await getPaymentOutsByUser(userId, token);
+        if (result && result.success && Array.isArray(result.paymentOuts)) {
+          setTransactions(result.paymentOuts);
         } else {
-          console.log('No payments found or invalid response');
           setTransactions([]);
         }
       } catch (err) {
-        console.error('Error fetching payments:', err);
+        console.error('Error fetching payment outs:', err);
         setTransactions([]);
       }
       setLoading(false);
     };
-    fetchPayments();
+    fetchPaymentOuts();
   }, []);
 
   // Filtering logic

@@ -29,7 +29,7 @@ export const getPurchaseById = async (purchaseId: string, token: string) => {
 
 export const makePayment = async (paymentData: any, token: string) => {
   console.log('makePayment called with:', { paymentData, token: token ? 'Present' : 'Missing' });
-  const res = await api.post('/api/purchases/payment-out', paymentData, {
+  const res = await api.post('/api/payment-out', paymentData, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -65,6 +65,15 @@ export const deletePurchase = async (purchaseId: string, token: string) => {
 export const getPayments = async (token: string) => {
   const { data } = await api.get('/api/purchases/payments', {
     headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
+};
+
+export const getPaymentOutsByUser = async (userId: string, token: string) => {
+  const { data } = await api.get(`/api/payment-out/user/${userId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
   });
   return data;
 }; 

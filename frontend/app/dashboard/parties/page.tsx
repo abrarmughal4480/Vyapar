@@ -57,10 +57,6 @@ export default function PartiesPage() {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const dropdownButtonRef = useRef<HTMLButtonElement>(null)
   const [hasFetched, setHasFetched] = useState(false)
-  const [currentPage, setCurrentPage] = useState(1)
-  const partiesPerPage = 10
-  const totalPages = Math.ceil(parties.length / partiesPerPage)
-  const paginatedParties = parties.slice((currentPage - 1) * partiesPerPage, currentPage * partiesPerPage)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [exportModal, setExportModal] = useState(false)
   const { exportCSV, exportExcel } = useExport()
@@ -431,7 +427,7 @@ export default function PartiesPage() {
   }
 
   const importParties = async (file?: File) => {
-    setBulkImportModal(true);
+    router.push('/dashboard/bulk-imports/import-parties')
   }
 
   const resetForm = () => {
@@ -866,7 +862,7 @@ export default function PartiesPage() {
                     </thead>
                   )}
                   <tbody className="bg-white divide-y divide-gray-100">
-                    {paginatedParties.map((party, idx) => (
+                    {filteredParties.map((party, idx) => (
                         <tr key={party.id} className={`hover:bg-blue-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                           <td className="px-6 py-4 whitespace-nowrap flex items-center space-x-3">
                             <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-base">
@@ -919,34 +915,6 @@ export default function PartiesPage() {
                       ))}
                   </tbody>
                 </table>
-                {/* Pagination Controls */}
-                {totalPages > 1 && (
-                  <div className="flex justify-end items-center gap-2 mt-4">
-                    <button
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
-                    >
-                      Prev
-                    </button>
-                    {Array.from({ length: totalPages }, (_, i) => (
-                      <button
-                        key={i + 1}
-                        onClick={() => setCurrentPage(i + 1)}
-                        className={`px-3 py-1 rounded ${currentPage === i + 1 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-                      >
-                        {i + 1}
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                      disabled={currentPage === totalPages}
-                      className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
-                    >
-                      Next
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           </>

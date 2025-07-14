@@ -15,6 +15,7 @@ export interface PartyData {
   tags?: string[];
   status?: string;
   note?: string;
+  openingDate?: string; // Added for bulk import
 }
 
 export const createParty = async (partyData: PartyData, token: string): Promise<any> => {

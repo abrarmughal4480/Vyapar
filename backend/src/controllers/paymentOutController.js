@@ -48,7 +48,19 @@ export const createPaymentOut = async (req, res) => {
     purchase.balance = Math.max(0, currentBalance - amount); // Ensure balance doesn't go negative
     
     await purchase.save();
-    
+
+    // Update supplier openingBalance (add payment amount)
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      const supplierDoc = await Party.findOne({ name: purchase.supplierName, user: userId });
+      if (supplierDoc) {
+        supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + amount;
+        await supplierDoc.save();
+      }
+    } catch (err) {
+      console.error('Failed to update supplier openingBalance on payment out:', err);
+    }
+
     // Create payment out record
     const paymentOut = new PaymentOut({
       userId,

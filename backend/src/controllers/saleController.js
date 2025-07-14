@@ -156,6 +156,19 @@ export const receivePayment = async (req, res) => {
     sale.received = (sale.received || 0) + amount;
     sale.balance = (sale.balance || 0) - amount;
     await sale.save();
+
+    // Update party openingBalance (subtract payment amount)
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      const partyDoc = await Party.findOne({ name: sale.partyName, user: sale.userId });
+      if (partyDoc) {
+        partyDoc.openingBalance = (partyDoc.openingBalance || 0) - amount;
+        await partyDoc.save();
+      }
+    } catch (err) {
+      console.error('Failed to update party openingBalance on payment:', err);
+    }
+
     res.json({ success: true, sale });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

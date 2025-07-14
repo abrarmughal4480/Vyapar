@@ -130,7 +130,7 @@ function SuccessModal({
 }) {
   return (
     <ProfessionalModal
-      title="Welcome to Vypar!"
+      title="Welcome to Devease Digital!"
       open={open}
       onClose={onClose}
       type="success"
@@ -1552,7 +1552,7 @@ export default function Home() {
           setShowSuccess(false);
           router.push('/dashboard');
         }} 
-        message="Welcome to Vypar! Redirecting to your dashboard..." 
+        message="Welcome to Devease Digital! Redirecting to your dashboard..." 
         type={isLogin ? 'login' : 'signup'} 
       />
       

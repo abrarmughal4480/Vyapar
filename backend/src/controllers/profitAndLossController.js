@@ -31,6 +31,13 @@ export const getProfitAndLoss = async (req, res) => {
     if (from) dateFilter.$gte = new Date(from);
     if (to) dateFilter.$lte = new Date(to);
 
+    // Credit Notes
+    const creditNotes = await mongoose.model('CreditNote').aggregate([
+      { $match: { userId: objectUserId, ...(from || to ? { createdAt: dateFilter } : {}) } },
+      { $group: { _id: null, total: { $sum: '$grandTotal' } } }
+    ]);
+    const creditNoteTotal = creditNotes[0]?.total || 0;
+
     // Sales
     const sales = await Sale.aggregate([
       { $match: { userId: objectUserId, ...(from || to ? { createdAt: dateFilter } : {}) } },
@@ -75,7 +82,7 @@ export const getProfitAndLoss = async (req, res) => {
     // You can add more aggregation from other models as needed
     const particulars = [
       { name: 'Sale (+)', amount: saleTotal },
-      { name: 'Credit Note (-)', amount: 0 },
+      { name: 'Credit Note (-)', amount: creditNoteTotal },
       { name: 'Sale FA (+)', amount: 0 },
       { name: 'Purchase (-)', amount: purchaseTotal },
       { name: 'Debit Note (+)', amount: 0 },

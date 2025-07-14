@@ -6,6 +6,7 @@ import Toast from '../../../components/Toast';
 import ReactDOM from 'react-dom';
 import { getCustomerParties, getPartyBalance } from '../../../../http/parties';
 import { getUserItems } from '../../../../http/items';
+import { createCreditNote } from '../../../../http/credit-notes';
 
 // Utility functions for unit conversion
 const getUnitDisplay = (unit: any) => {
@@ -574,7 +575,6 @@ const CreateCreditNotePage = () => {
     try {
       const token =
         (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
-      
       const filteredItems = newCreditNote.items.filter(
         item =>
           item.item &&
@@ -583,7 +583,6 @@ const CreateCreditNotePage = () => {
           !isNaN(Number(item.qty)) &&
           !isNaN(Number(item.price))
       );
-      
       const creditNoteData = {
         ...newCreditNote,
         items: filteredItems,
@@ -591,14 +590,15 @@ const CreateCreditNotePage = () => {
         imageUrl: uploadedImage,
         tax: newCreditNote.tax === 'NONE' || newCreditNote.tax === '' ? 0 : newCreditNote.tax,
       };
-      
-      // Simulate API call for now
-      setTimeout(() => {
+      const result = await createCreditNote(creditNoteData, token);
+      if (result && result.success) {
         setToast({ message: 'Credit note created successfully!', type: 'success' });
         setLoading(false);
         setTimeout(() => router.push('/dashboard/credit-note'), 1500);
-      }, 1000);
-      
+      } else {
+        setToast({ message: result?.message || 'Failed to create credit note', type: 'error' });
+        setLoading(false);
+      }
     } catch (err: any) {
       setToast({ message: err.message || 'Failed to create credit note', type: 'error' });
       setLoading(false);

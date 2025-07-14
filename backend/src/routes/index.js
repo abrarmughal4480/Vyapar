@@ -12,6 +12,7 @@ import quotationRoutes from './quotation.js';
 import deliveryChallanRoutes from './deliveryChallan.js';
 import paymentOutRoutes from './paymentOut.js';
 import profitAndLossController from '../controllers/profitAndLossController.js';
+import creditNoteRoutes from './creditNote.js';
 
 const router = express.Router();
 
@@ -23,6 +24,7 @@ router.use('/api/sale-orders', saleOrderRoutes);
 router.use('/api/purchase-orders', purchaseOrderRoutes);
 router.use('/api/delivery-challan', deliveryChallanRoutes);
 router.use('/api/payment-out', paymentOutRoutes);
+router.use('/api/credit-notes', creditNoteRoutes);
 router.use('/quotations', authMiddleware, quotationRoutes);
 
 // Dashboard stats route

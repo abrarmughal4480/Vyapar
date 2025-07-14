@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, BarChart3, Printer, Settings, ChevronDown, Eye, Edit, MoreHorizontal, Trash2 } from 'lucide-react'
+import { getCreditNotesByUser } from '../../../http/credit-notes';
+import { getToken, getUserIdFromToken } from '../../lib/auth';
 
 interface CreditNoteItem {
   id: string
@@ -174,20 +176,53 @@ export default function CreditNotePage() {
 
   // Initialize component
   useEffect(() => {
-    const initialize = async () => {
-      setErrorMessage(''); // Clear any previous errors
-      
+    const fetchNotes = async () => {
+      setErrorMessage('');
       try {
-        await fetchCreditNotes().catch(err => console.log('Initial fetch failed:', err));
-        console.log('Credit Notes page initialized successfully');
-      } catch (error: any) {
-        console.log('Initialization error:', error.message);
+        const token = getToken();
+        const userId = getUserIdFromToken();
+        if (!userId || !token) return;
+        const result = await getCreditNotesByUser(userId, token);
+        if (result && result.success && Array.isArray(result.creditNotes)) {
+          setCreditNotes(result.creditNotes.map((note: any) => ({
+            id: note._id,
+            noteNumber: note.creditNoteNo,
+            date: note.createdAt,
+            customer: note.partyName,
+            customerPhone: note.phoneNo || '',
+            customerAddress: note.address || '',
+            customerGST: note.gstNumber || '',
+            items: note.items || [],
+            subtotal: note.subTotal || 0,
+            taxAmount: note.taxValue || 0,
+            total: note.grandTotal || 0,
+            received: note.received || 0,
+            balance: note.balance || 0,
+            reason: note.reason || 'Credit Note',
+            notes: note.description || '',
+            status: note.status || 'Issued',
+            businessId: note.userId,
+            createdAt: note.createdAt,
+            updatedAt: note.updatedAt,
+          })));
+        } else {
+          setCreditNotes([]);
+        }
+      } catch (err: any) {
+        setErrorMessage(err.message || 'Failed to fetch credit notes');
+        setCreditNotes([]);
       }
     };
+    fetchNotes();
+  }, []);
 
-    initialize();
-  }, [fetchCreditNotes]);
-
+  // Always load user from localStorage if not set
+  useEffect(() => {
+    if (!user) {
+      const userData = localStorage.getItem('user');
+      if (userData) setUser(JSON.parse(userData));
+    }
+  }, [user]);
 
 
   return (

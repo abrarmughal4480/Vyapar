@@ -65,6 +65,7 @@ export default function PartiesPage() {
   const [exportModal, setExportModal] = useState(false)
   const { exportCSV, exportExcel } = useExport()
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 })
+  const [balanceType, setBalanceType] = useState<'toReceive' | 'toPay'>('toReceive')
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
@@ -87,13 +88,9 @@ export default function PartiesPage() {
     totalTransactions: 0
   })
 
-  const indianStates = [
-    'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
-    'Delhi', 'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand',
-    'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur',
-    'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan',
-    'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh',
-    'Uttarakhand', 'West Bengal'
+  const pakistaniProvinces = [
+    'Punjab', 'Sindh', 'Khyber Pakhtunkhwa', 'Balochistan', 'Gilgit-Baltistan',
+    'Azad Jammu and Kashmir', 'Islamabad Capital Territory'
   ]
 
   const makeApiCall = useCallback(async (endpoint: string, options: RequestInit = {}) => {
@@ -235,9 +232,6 @@ export default function PartiesPage() {
     if (!newParty.name.trim()) {
       return 'Party name is required'
     }
-    if (newParty.phone && !/^\d{10}$/.test(newParty.phone)) {
-      return 'Phone number must be 10 digits'
-    }
     if (newParty.email && !/^\S+@\S+\.\S+$/.test(newParty.email)) {
       return 'Please enter a valid email address'
     }
@@ -266,7 +260,7 @@ export default function PartiesPage() {
         city: newParty.city,
         state: newParty.state,
         pincode: newParty.pincode,
-        openingBalance: newParty.openingBalance,
+        openingBalance: balanceType === 'toPay' ? -Math.abs(newParty.openingBalance) : Math.abs(newParty.openingBalance),
         tags: newParty.tags,
         status: newParty.status === 'Active' ? 'active' : 'inactive',
         note: newParty.notes,
@@ -301,7 +295,7 @@ export default function PartiesPage() {
           setToast({ message: 'Party updated successfully!', type: 'success' });
         } else {
           // Add to local state for add
-          setParties([{
+          setParties([...parties, {
             ...result.data,
             id: result.data._id || result.data.id,
             type: result.data.partyType || 'Customer',
@@ -312,7 +306,7 @@ export default function PartiesPage() {
             currentBalance: result.data.openingBalance || 0,
             totalTransactions: 0,
             lastTransaction: '',
-          }, ...parties]);
+          }]);
           setIsModalOpen(false);
           resetForm();
           setToast({ message: 'Party added successfully!', type: 'success' });
@@ -459,6 +453,7 @@ export default function PartiesPage() {
       status: 'Active',
       totalTransactions: 0
     })
+    setBalanceType('toReceive')
     setEditingParty(null)
   }
 
@@ -466,6 +461,8 @@ export default function PartiesPage() {
     if (party) {
       setEditingParty(party)
       setNewParty({ ...party })
+      // Set balance type based on existing opening balance
+      setBalanceType(party.openingBalance < 0 ? 'toPay' : 'toReceive')
     } else {
       setEditingParty(null)
       resetForm()
@@ -1001,8 +998,7 @@ export default function PartiesPage() {
                     value={newParty.phone}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="10-digit phone number"
-                    maxLength={10}
+                    placeholder="Phone number"
                     suppressHydrationWarning={true}
                   />
                 </div>
@@ -1112,7 +1108,60 @@ export default function PartiesPage() {
                           suppressHydrationWarning={true}
                         />
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">Positive for receivables, negative for payables</p>
+                      
+                      {/* Balance Type Radio Buttons */}
+                      <div className="mt-3">
+                        <label className="block text-sm font-medium text-gray-900 mb-3">Balance Type</label>
+                        <div className="flex space-x-6">
+                          <div 
+                            className={`flex items-center cursor-pointer group p-3 rounded-lg transition-all duration-200 ${
+                              balanceType === 'toReceive' 
+                                ? 'bg-green-50' 
+                                : 'hover:bg-green-25'
+                            }`}
+                            onClick={() => setBalanceType('toReceive')}
+                          >
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
+                              balanceType === 'toReceive'
+                                ? 'border-green-500 bg-green-500'
+                                : 'border-gray-400 bg-white'
+                            }`}>
+                              {balanceType === 'toReceive' && (
+                                <div className="w-2 h-2 rounded-full bg-white"></div>
+                              )}
+                            </div>
+                            <span className="ml-3 text-sm font-medium text-gray-900 group-hover:text-green-600 transition-colors">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 mr-2">
+                                To Receive (+)
+                              </span>
+                            </span>
+                          </div>
+                          
+                          <div 
+                            className={`flex items-center cursor-pointer group p-3 rounded-lg transition-all duration-200 ${
+                              balanceType === 'toPay' 
+                                ? 'bg-red-50' 
+                                : 'hover:bg-red-25'
+                            }`}
+                            onClick={() => setBalanceType('toPay')}
+                          >
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
+                              balanceType === 'toPay'
+                                ? 'border-red-500 bg-red-500'
+                                : 'border-gray-400 bg-white'
+                            }`}>
+                              {balanceType === 'toPay' && (
+                                <div className="w-2 h-2 rounded-full bg-white"></div>
+                              )}
+                            </div>
+                            <span className="ml-3 text-sm font-medium text-gray-900 group-hover:text-red-600 transition-colors">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 mr-2">
+                                To Pay (-)
+                              </span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -1165,17 +1214,17 @@ export default function PartiesPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Province</label>
                       <select
                         name="state"
                         value={newParty.state}
                         onChange={handleInputChange}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       >
-                        <option value="">Select State</option>
-                        {indianStates.map((state) => (
-                          <option key={state} value={state}>
-                            {state}
+                        <option value="">Select Province</option>
+                        {pakistaniProvinces.map((province) => (
+                          <option key={province} value={province}>
+                            {province}
                           </option>
                         ))}
                       </select>

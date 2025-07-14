@@ -11,6 +11,7 @@ import purchaseOrderRoutes from './purchaseOrder.js';
 import quotationRoutes from './quotation.js';
 import deliveryChallanRoutes from './deliveryChallan.js';
 import paymentOutRoutes from './paymentOut.js';
+import profitAndLossController from '../controllers/profitAndLossController.js';
 
 const router = express.Router();
 
@@ -61,6 +62,9 @@ router.delete('/items/:userId/:itemId', itemsController.deleteItem);
 router.put('/items/:userId/:itemId', itemsController.updateItem);
 
 router.get('/parties/balance', authMiddleware, partiesController.getPartyBalance);
+
+// Profit and Loss report route
+router.get('/api/reports/profit-and-loss', authMiddleware, profitAndLossController.getProfitAndLoss);
 
 router.get('/', (req, res) => {
   res.send('Hello from Express backend!');

@@ -437,7 +437,7 @@ function AddItemPageInner() {
                 <input
                   type="text"
                   name="name"
-                  value={newItem.name}
+                  value={newItem.name ?? ''}
                   onChange={handleInputChange}
                   className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
                     formErrors.name ? 'border-red-300 bg-red-50' : 'border-blue-200 focus:border-blue-500'
@@ -502,21 +502,21 @@ function AddItemPageInner() {
                   type="button"
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors font-medium"
                   onClick={() => {
-                    setSelectedBaseUnit(newItem.unit.base || 'Piece');
-                    setSelectedSecondaryUnit(newItem.unit.secondary || 'None');
-                    setCustomBaseUnit(newItem.unit.customBase || '');
-                    setCustomSecondaryUnit(newItem.unit.customSecondary || '');
+                    setSelectedBaseUnit(newItem.unit?.base || 'Piece');
+                    setSelectedSecondaryUnit(newItem.unit?.secondary || 'None');
+                    setCustomBaseUnit(newItem.unit?.customBase || '');
+                    setCustomSecondaryUnit(newItem.unit?.customSecondary || '');
                     setConversionFactor(
-                      typeof newItem.unit.conversionFactor === 'number' && !isNaN(newItem.unit.conversionFactor)
+                      typeof newItem.unit?.conversionFactor === 'number' && !isNaN(newItem.unit?.conversionFactor)
                         ? newItem.unit.conversionFactor
                         : 1
                     );
                     setShowUnitModal(true);
                   }}
                 >
-                  {newItem.unit.base === 'custom' ? newItem.unit.customBase : newItem.unit.base}
-                  {newItem.unit.secondary && newItem.unit.secondary !== 'None' ?
-                    ` (${newItem.unit.secondary === 'custom' ? newItem.unit.customSecondary : newItem.unit.secondary}${newItem.unit.conversionFactor ? ` = ${newItem.unit.conversionFactor} ${newItem.unit.base === 'custom' ? newItem.unit.customBase : newItem.unit.base}` : ''})`
+                  {newItem.unit?.base === 'custom' ? newItem.unit?.customBase : newItem.unit?.base || 'Piece'}
+                  {newItem.unit?.secondary && newItem.unit?.secondary !== 'None' ?
+                    ` (${newItem.unit?.secondary === 'custom' ? newItem.unit?.customSecondary : newItem.unit?.secondary}${newItem.unit?.conversionFactor ? ` = ${newItem.unit?.conversionFactor} ${newItem.unit?.base === 'custom' ? newItem.unit?.customBase : newItem.unit?.base}` : ''})`
                     : ''}
                 </button>
               </div>
@@ -533,7 +533,7 @@ function AddItemPageInner() {
                   <input
                     type="text"
                     name="sku"
-                    value={newItem.sku}
+                    value={newItem.sku ?? ''}
                     onChange={handleInputChange}
                     className={`flex-1 px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
                       formErrors.sku ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
@@ -581,7 +581,7 @@ function AddItemPageInner() {
                   <input
                     type="text"
                     name="subcategory"
-                    value={newItem.subcategory}
+                    value={newItem.subcategory ?? ''}
                     onChange={handleInputChange}
                     className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
                       formErrors.subcategory ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
@@ -707,7 +707,7 @@ function AddItemPageInner() {
                   </label>
                   <textarea
                     name="description"
-                    value={newItem.description}
+                    value={newItem.description ?? ''}
                     onChange={handleInputChange}
                     className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
                       formErrors.description ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
@@ -756,7 +756,7 @@ function AddItemPageInner() {
                   <input
                     type="number"
                     name="salePrice"
-                    value={newItem.salePrice}
+                    value={newItem.salePrice ?? ''}
                     onChange={handleInputChange}
                     className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
                       formErrors.salePrice ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
@@ -773,7 +773,7 @@ function AddItemPageInner() {
                   <input
                     type="number"
                     name="purchasePrice"
-                    value={newItem.purchasePrice}
+                    value={newItem.purchasePrice ?? ''}
                     onChange={handleInputChange}
                     className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
                       formErrors.purchasePrice ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
@@ -813,7 +813,7 @@ function AddItemPageInner() {
                         <input
                           type="number"
                           name="wholesalePrice"
-                          value={newItem.wholesalePrice || ''}
+                          value={newItem.wholesalePrice ?? ''}
                           onChange={handleInputChange}
                           className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
                             formErrors.wholesalePrice ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
@@ -886,7 +886,7 @@ function AddItemPageInner() {
                     <input
                       type="number"
                       name="openingQuantity"
-                      value={newItem.openingQuantity || ''}
+                      value={newItem.openingQuantity ?? ''}
                       onChange={handleInputChange}
                       className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
                         formErrors.openingQuantity ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
@@ -905,7 +905,7 @@ function AddItemPageInner() {
                       <input
                         type="number"
                         name="atPrice"
-                        value={newItem.atPrice || ''}
+                        value={newItem.atPrice ?? ''}
                         onChange={handleInputChange}
                         className={`w-full pl-14 pr-4 py-3 border-2 rounded-lg transition-all duration-200 ${
                           formErrors.atPrice ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
@@ -924,7 +924,7 @@ function AddItemPageInner() {
                       <input
                         type="date"
                         name="asOfDate"
-                        value={newItem.asOfDate || ''}
+                        value={newItem.asOfDate ?? ''}
                         onChange={handleInputChange}
                         className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
                           formErrors.asOfDate ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
@@ -949,7 +949,7 @@ function AddItemPageInner() {
                     <input
                       type="number"
                       name="minStock"
-                      value={newItem.minStock || ''}
+                      value={newItem.minStock ?? ''}
                       onChange={handleInputChange}
                       className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
                         formErrors.minStock ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
@@ -966,7 +966,7 @@ function AddItemPageInner() {
                     <input
                       type="text"
                       name="location"
-                      value={newItem.location || ''}
+                      value={newItem.location ?? ''}
                       onChange={handleInputChange}
                       className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
                         formErrors.location ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'

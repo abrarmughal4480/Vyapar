@@ -65,6 +65,14 @@ const ReportsSidebar: React.FC<ReportsSidebarProps> = ({ activeTab, onTabChange 
             >
               {tab.name}
             </Link>
+          ) : tab.id === 'profitandloss' ? (
+            <Link
+              key={tab.id}
+              href="/dashboard/reports/profit-and-loss"
+              className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === tab.id ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+            >
+              {tab.name}
+            </Link>
           ) : (
           <button
             key={tab.id}

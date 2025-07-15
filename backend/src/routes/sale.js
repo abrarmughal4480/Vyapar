@@ -1,5 +1,5 @@
 import express from 'express';
-import { createSale, getSalesByUser, receivePayment, getSalesStatsByUser, getSalesOverview, deleteSale, updateSale, getBillWiseProfit, getItemPurchasePrices } from '../controllers/saleController.js';
+import { createSale, getSalesByUser, receivePayment, getSalesStatsByUser, deleteSale, updateSale, getBillWiseProfit, getItemPurchasePrices } from '../controllers/saleController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import Sale from '../models/sale.js';
 
@@ -44,8 +44,6 @@ router.get('/by-id/:saleId', authMiddleware, async (req, res) => {
 router.post('/payment-in', receivePayment);
 
 router.get('/stats/:userId', authMiddleware, getSalesStatsByUser);
-
-router.get('/overview/:userId', authMiddleware, getSalesOverview);
 
 router.delete('/:saleId', authMiddleware, deleteSale);
 

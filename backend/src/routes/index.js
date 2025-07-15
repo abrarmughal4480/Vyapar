@@ -13,6 +13,8 @@ import deliveryChallanRoutes from './deliveryChallan.js';
 import paymentOutRoutes from './paymentOut.js';
 import profitAndLossController from '../controllers/profitAndLossController.js';
 import creditNoteRoutes from './creditNote.js';
+import * as dashboardController from '../controllers/dashboardController.js';
+import { getDashboardStats, getSalesOverview, getRecentActivity } from '../controllers/dashboardController.js';
 
 const router = express.Router();
 
@@ -28,22 +30,13 @@ router.use('/api/credit-notes', creditNoteRoutes);
 router.use('/quotations', authMiddleware, quotationRoutes);
 
 // Dashboard stats route
-router.get('/dashboard/stats', authMiddleware, async (req, res) => {
-  try {
-    // TODO: Replace with real stats from your DB
-    const stats = {
-      totalSales: 100000,
-      totalPurchases: 50000,
-      pendingPayments: 20000,
-      lowStockItems: 5,
-      monthlyProfit: 30000,
-      totalInvoices: 120,
-    };
-    res.json({ success: true, data: stats });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Failed to fetch stats', error: err.message });
-  }
-});
+router.get('/dashboard/stats', authMiddleware, dashboardController.getDashboardStats);
+
+// Add the new route for sales overview
+router.get('/api/dashboard/sales-overview/:userId', authMiddleware, getSalesOverview);
+
+// Add the new route for recent activity
+router.get('/dashboard/recent-activity/:userId', getRecentActivity);
 
 // Parties count route
 router.get('/parties/count', authMiddleware, (req, res) => {

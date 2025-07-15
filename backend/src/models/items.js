@@ -16,6 +16,7 @@ const itemSchema = new mongoose.Schema({
   stock: { type: Number },
   minStock: { type: Number },
   openingQuantity: { type: Number },
+  openingStockQuantity: { type: Number },
   location: { type: String },
   // Tax related fields
   taxRate: { type: Number, default: 0 },
@@ -41,7 +42,7 @@ const itemSchema = new mongoose.Schema({
   imageUrl: { type: String },
   atPrice: { type: Number },
   asOfDate: { type: String }
-});
+}, { timestamps: true }); // <-- Enable timestamps
 
 itemSchema.index({ userId: 1, itemId: 1 }, { unique: true });
 

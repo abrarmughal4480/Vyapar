@@ -21,10 +21,11 @@ export const createSale = async (req, res) => {
     if (!userId) {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
+    const userIdObj = new mongoose.Types.ObjectId(userId);
     // Decrement stock for each item
     for (const saleItem of items) {
       // Find the item by userId and name
-      const dbItem = await Item.findOne({ userId: userId.toString(), name: saleItem.item });
+      const dbItem = await Item.findOne({ userId: userIdObj.toString(), name: saleItem.item });
       if (dbItem) {
         dbItem.stock = (dbItem.stock || 0) - Number(saleItem.qty);
         await dbItem.save();
@@ -54,7 +55,7 @@ export const createSale = async (req, res) => {
     const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
     // Generate invoice number for this user
     let invoiceNo = 'INV001';
-    const lastSale = await Sale.findOne({ userId }).sort({ createdAt: -1 });
+    const lastSale = await Sale.findOne({ userId: userIdObj }).sort({ createdAt: -1 });
     if (lastSale && lastSale.invoiceNo) {
       const match = lastSale.invoiceNo.match(/INV(\d+)/);
       if (match) {
@@ -64,7 +65,7 @@ export const createSale = async (req, res) => {
     }
     const sale = new Sale({
       ...req.body,
-      userId,
+      userId: userIdObj,
       discountValue,
       taxType,
       tax,
@@ -182,7 +183,7 @@ export const getSalesStatsByUser = async (req, res) => {
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
     let objectUserId;
     try {
-      objectUserId = mongoose.Types.ObjectId(userId);
+      objectUserId = new mongoose.Types.ObjectId(userId);
     } catch (e) {
       return res.json({ success: true, stats: { totalGrandTotal: 0, totalBalance: 0, totalReceived: 0 } });
     }
@@ -199,42 +200,6 @@ export const getSalesStatsByUser = async (req, res) => {
     ]);
     const result = stats[0] || { totalGrandTotal: 0, totalBalance: 0, totalReceived: 0 };
     res.json({ success: true, stats: result });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-// Get sales overview (total sales per month) for a user
-export const getSalesOverview = async (req, res) => {
-  try {
-    const userId = req.params.userId;
-    if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
-    let objectUserId;
-    try {
-      objectUserId = mongoose.Types.ObjectId(userId);
-    } catch (e) {
-      return res.json({ success: true, overview: [] });
-    }
-    // Group sales by month and sum grandTotal
-    const overview = await Sale.aggregate([
-      { $match: { userId: objectUserId } },
-      {
-        $group: {
-          _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
-          totalSales: { $sum: "$grandTotal" },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { '_id.year': 1, '_id.month': 1 } }
-    ]);
-    // Format result for frontend
-    const formatted = overview.map(item => ({
-      year: item._id.year,
-      month: item._id.month,
-      totalSales: item.totalSales,
-      count: item.count
-    }));
-    res.json({ success: true, overview: formatted });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -469,7 +434,6 @@ export default {
   getSalesByUser,
   receivePayment,
   getSalesStatsByUser,
-  getSalesOverview,
   deleteSale,
   updateSale,
   getBillWiseProfit,

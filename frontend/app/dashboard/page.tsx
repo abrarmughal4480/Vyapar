@@ -21,6 +21,8 @@ import {
   Activity,
   Zap
 } from 'lucide-react';
+import { fetchDashboardStats, fetchSalesOverview, fetchRecentActivity } from '@/http/api';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 // Define your types here
 type User = {
@@ -39,6 +41,12 @@ type BusinessStats = {
   lowStockItems: number;
   monthlyProfit: number;
   totalInvoices: number;
+  totalRevenue?: number;
+  revenueChange?: number;
+  totalOrdersChange?: number;
+  productsChange?: number;
+  customersChange?: number;
+  totalOrders?: number;
 };
 
 const quickActions = [
@@ -117,75 +125,53 @@ export default function Dashboard() {
     totalInvoices: 0
   });
   const [user, setUser] = useState<User | null>(null);
+  const [salesOverview, setSalesOverview] = useState<any[]>([]);
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-  // API call with real authentication
-  const makeApiCall = useCallback(async (endpoint: string, options: RequestInit = {}): Promise<any> => {
-    const url = `${API_BASE_URL}${endpoint}`;
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          ...options.headers,
-        },
-      });
-      
-      if (!response.ok) {
-        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorMessage;
-        } catch (e) {
-          // Use status message if can't parse error
-        }
-        throw new Error(errorMessage);
-      }
-      
-      const data = await response.json();
-      console.log('Real API Response:', data);
-      return data;
-    } catch (error) {
-      console.error('Real API call failed:', error);
-      throw error;
-    }
-  }, [API_BASE_URL]);
-
-  // Simplified stats fetch - with error handling
-  const fetchDashboardStats = useCallback(async () => {
-    try {
-      const salesData = await makeApiCall(`/dashboard/stats`);
-      const customerData = await makeApiCall(`/parties/count`);
-      const itemData = await makeApiCall(`/items/count`);
-
-      setBusinessStats({
-        totalSales: salesData?.data?.totalSales || 0,
-        totalPurchases: salesData?.data?.totalPurchases || 0,
-        totalCustomers: customerData?.data?.count || 0,
-        itemsInStock: itemData?.data?.count || 0,
-        pendingPayments: salesData?.data?.pendingPayments || 0,
-        lowStockItems: salesData?.data?.lowStockItems || 0,
-        monthlyProfit: salesData?.data?.monthlyProfit || 0,
-        totalInvoices: salesData?.data?.totalInvoices || 0
-      });
-    } catch (error) {
-      console.error('Failed to fetch dashboard stats:', error);
-      // Keep default stats if API fails
-    }
-  }, [makeApiCall]);
-
   // Enhanced initialization with real auth check
   useEffect(() => {
-    const initialize = async () => {
-      console.log('Dashboard initializing...');
-      await fetchDashboardStats();
+    const getStats = async () => {
+      try {
+        let token: string | undefined = undefined;
+        if (typeof window !== 'undefined') {
+          const t = localStorage.getItem('token');
+          token = t !== null ? t : undefined;
+        }
+        // Fetch dashboard stats and sales overview for area chart
+        const result = await fetchDashboardStats(token);
+        if (result && result.success && result.data) {
+          setBusinessStats((prev) => ({
+            ...prev,
+            ...result.data,
+          }));
+        }
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        if (user && user._id) {
+          const data = await fetchSalesOverview(user._id, token);
+          if (data && data.success && data.overview && Array.isArray(data.overview)) {
+            // Format for recharts: label as date, value as netSales
+            const formatted = data.overview.map((item: any) => ({
+              name: item.date,
+              netSales: item.netSales,
+              totalSales: item.totalSales,
+              totalCredit: item.totalCredit
+            }));
+            setSalesOverview(formatted);
+          }
+          // Fetch recent activity
+          const activityRes = await fetchRecentActivity(user._id, token);
+          if (activityRes && activityRes.success && Array.isArray(activityRes.activities)) {
+            setRecentActivity(activityRes.activities);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch dashboard stats:', error);
+      }
     };
-
-    initialize();
-  }, [fetchDashboardStats]);
+    getStats();
+  }, []);
 
   // Fetch logged-in user details
   useEffect(() => {
@@ -210,7 +196,8 @@ export default function Dashboard() {
   // Simplified helper functions - with error handling
   const fetchSales = async (): Promise<any[]> => {
     try {
-      const result = await makeApiCall(`/sale`, { method: 'GET' });
+      const response = await fetch(`${API_BASE_URL}/sale`, { method: 'GET' });
+      const result = await response.json();
       return result.data || [];
     } catch (error) {
       console.error('Failed to fetch sales:', error);
@@ -220,10 +207,12 @@ export default function Dashboard() {
 
   const updateItem = async (itemId: string, updateData: any): Promise<any> => {
     try {
-      const result = await makeApiCall(`/items/${itemId}`, {
+      const response = await fetch(`${API_BASE_URL}/items/${itemId}`, {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData),
       });
+      const result = await response.json();
       return result.data;
     } catch (error) {
       console.error('Failed to update item:', error);
@@ -233,10 +222,11 @@ export default function Dashboard() {
 
   const deleteParty = async (partyId: string): Promise<boolean> => {
     try {
-      await makeApiCall(`/parties/${partyId}`, {
+      const response = await fetch(`${API_BASE_URL}/parties/${partyId}`, {
         method: 'DELETE',
       });
-      return true;
+      const result = await response.json();
+      return result.success;
     } catch (error) {
       console.error('Failed to delete party:', error);
       return false;
@@ -247,45 +237,66 @@ export default function Dashboard() {
   const dashboardStats = [
     { 
       title: 'Total Revenue', 
-      value: `PKR ${(businessStats.totalSales ?? 0).toLocaleString()}`, 
-      change: '+12%', 
+      value: `PKR ${(businessStats.totalRevenue ?? 0).toLocaleString()}`, 
+      change: `${businessStats.revenueChange !== undefined ? (businessStats.revenueChange >= 0 ? '+' : '') + businessStats.revenueChange.toFixed(1) + '%' : ''}`, 
       icon: DollarSign, 
-      color: 'text-emerald-600',
+      color: businessStats.revenueChange !== undefined ? (businessStats.revenueChange >= 0 ? 'text-emerald-600' : 'text-red-600') : 'text-emerald-600',
       bgGradient: 'from-emerald-500 to-teal-600',
       bgLight: 'bg-emerald-50',
-      trend: 'up'
+      trend: businessStats.revenueChange !== undefined ? (businessStats.revenueChange >= 0 ? 'up' : 'down') : 'up'
     },
     { 
       title: 'Total Orders', 
-      value: `${(businessStats.totalInvoices ?? 0).toLocaleString()}`, 
-      change: '+8%', 
+      value: `${(businessStats.totalOrders ?? 0).toLocaleString()}`, 
+      change: `${businessStats.totalOrdersChange !== undefined ? (businessStats.totalOrdersChange >= 0 ? '+' : '') + businessStats.totalOrdersChange.toFixed(1) + '%' : ''}`, 
       icon: ShoppingCart, 
-      color: 'text-blue-600',
+      color: businessStats.totalOrdersChange !== undefined ? (businessStats.totalOrdersChange >= 0 ? 'text-blue-600' : 'text-red-600') : 'text-blue-600',
       bgGradient: 'from-blue-500 to-indigo-600',
       bgLight: 'bg-blue-50',
-      trend: 'up'
+      trend: businessStats.totalOrdersChange !== undefined ? (businessStats.totalOrdersChange >= 0 ? 'up' : 'down') : 'up'
     },
     { 
       title: 'Products', 
       value: `${(businessStats.itemsInStock ?? 0).toLocaleString()}`, 
-      change: '+3%', 
+      change: `${businessStats.productsChange !== undefined ? (businessStats.productsChange >= 0 ? '+' : '') + businessStats.productsChange.toFixed(1) + '%' : ''}`, 
       icon: Package, 
-      color: 'text-purple-600',
+      color: businessStats.productsChange !== undefined ? (businessStats.productsChange >= 0 ? 'text-purple-600' : 'text-red-600') : 'text-purple-600',
       bgGradient: 'from-purple-500 to-violet-600',
       bgLight: 'bg-purple-50',
-      trend: 'up'
+      trend: businessStats.productsChange !== undefined ? (businessStats.productsChange >= 0 ? 'up' : 'down') : 'up'
     },
     { 
       title: 'Customers', 
       value: `${(businessStats.totalCustomers ?? 0).toLocaleString()}`, 
-      change: '+15%', 
+      change: `${businessStats.customersChange !== undefined ? (businessStats.customersChange >= 0 ? '+' : '') + businessStats.customersChange.toFixed(1) + '%' : ''}`, 
       icon: Users, 
-      color: 'text-orange-600',
+      color: businessStats.customersChange !== undefined ? (businessStats.customersChange >= 0 ? 'text-orange-600' : 'text-red-600') : 'text-orange-600',
       bgGradient: 'from-orange-500 to-red-500',
       bgLight: 'bg-orange-50',
-      trend: 'up'
+      trend: businessStats.customersChange !== undefined ? (businessStats.customersChange >= 0 ? 'up' : 'down') : 'up'
     },
   ];
+
+  // Icon map for activity types
+  const activityIcons: Record<string, any> = {
+    'Sale': DollarSign,
+    'Purchase': ShoppingCart,
+    'Credit Note': FileText,
+    'Delivery Challan': Package,
+    'Estimate': FileText,
+    'Item': Package,
+    'Party': Users,
+  };
+  // Color map for activity types
+  const activityColors: Record<string, string> = {
+    'Sale': 'from-emerald-500 to-teal-600',
+    'Purchase': 'from-blue-500 to-indigo-600',
+    'Credit Note': 'from-rose-500 to-pink-600',
+    'Delivery Challan': 'from-purple-500 to-violet-600',
+    'Estimate': 'from-indigo-500 to-purple-600',
+    'Item': 'from-amber-500 to-yellow-500',
+    'Party': 'from-orange-500 to-red-500',
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 relative overflow-hidden">
@@ -435,7 +446,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Enhanced Recent Activity */}
+          {/* Enhanced Recent Activity (dynamic) */}
           <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-8">
             <div className="flex items-center space-x-3 mb-6">
               <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
@@ -444,70 +455,80 @@ export default function Dashboard() {
               <h3 className="text-xl font-bold text-gray-900">Recent Activity</h3>
             </div>
             <div className="space-y-6">
-              <div className="flex items-start space-x-4 group hover:bg-emerald-50 p-3 rounded-2xl transition-colors duration-200">
-                <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-200">
-                  <DollarSign className="w-5 h-5 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">Payment received</p>
-                  <p className="text-xs text-gray-500 mt-1">₹15,000 from Kumar Electronics</p>
-                  <p className="text-xs text-emerald-600 mt-1">2 minutes ago</p>
-                </div>
-              </div>
-              
-              <div className="flex items-start space-x-4 group hover:bg-blue-50 p-3 rounded-2xl transition-colors duration-200">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-200">
-                  <FileText className="w-5 h-5 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">Invoice created</p>
-                  <p className="text-xs text-gray-500 mt-1">INV-001 for ₹8,500</p>
-                  <p className="text-xs text-blue-600 mt-1">15 minutes ago</p>
-                </div>
-              </div>
-              
-              <div className="flex items-start space-x-4 group hover:bg-purple-50 p-3 rounded-2xl transition-colors duration-200">
-                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-violet-600 rounded-2xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-200">
-                  <Package className="w-5 h-5 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">Product updated</p>
-                  <p className="text-xs text-gray-500 mt-1">Stock level for Laptop increased</p>
-                  <p className="text-xs text-purple-600 mt-1">1 hour ago</p>
-                </div>
-              </div>
+              {recentActivity.length === 0 && (
+                <div className="text-gray-500 text-sm">No recent activity</div>
+              )}
+              {recentActivity.map((act, idx) => {
+                const Icon = activityIcons[act.type] || FileText;
+                const bgColor = activityColors[act.type] || 'from-gray-400 to-gray-600';
+                // Professional label and details
+                let mainLabel = '';
+                let subLabel = '';
+                if (act.type === 'Party') {
+                  mainLabel = act.party || 'Party created';
+                  subLabel = 'Party created';
+                } else if (act.type === 'Item') {
+                  mainLabel = act.party || 'Item added';
+                  subLabel = 'Item added';
+                } else {
+                  mainLabel = `${act.type}${act.refNo ? ` (${act.refNo})` : ''}`;
+                  subLabel = act.party ? act.party : '';
+                }
+                return (
+                  <div key={idx} className={`flex items-start space-x-4 group hover:bg-emerald-50 p-3 rounded-2xl transition-colors duration-200`}>
+                    <div className={`w-12 h-12 bg-gradient-to-br ${bgColor} rounded-2xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-200`}>
+                      <Icon className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{mainLabel}</p>
+                      <p className="text-xs text-gray-500 mt-1">{subLabel}{act.amount && act.type !== 'Party' && act.type !== 'Item' ? ` • PKR ${act.amount.toLocaleString()}` : ''}</p>
+                      {/* For Party: only show if nonzero. For Item: always show, default 0 */}
+                      {act.type === 'Party' && act.amount && act.amount !== 0 && (
+                        <p className="text-xs text-gray-500 mt-1">Opening Balance: PKR {act.amount.toLocaleString()}</p>
+                      )}
+                      {act.type === 'Item' && (
+                        <p className="text-xs text-gray-500 mt-1">Opening Stock: {act.amount ?? 0}</p>
+                      )}
+                      <p className="text-xs text-emerald-600 mt-1">{act.date ? new Date(act.date).toLocaleString() : ''}</p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* Enhanced Chart placeholder */}
-          <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-8">
+          {/* Enhanced Chart placeholder (replace this with real area chart) */}
+          <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-8 flex flex-col justify-between">
             <div className="flex items-center space-x-3 mb-6">
               <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
                 <BarChart3 className="w-5 h-5 text-white" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900">Sales Overview</h3>
+              <h3 className="text-xl font-bold text-gray-900">Sales Overview (Last 30 Days)</h3>
             </div>
-            <div className="relative h-48 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-2xl flex items-center justify-center overflow-hidden">
-              {/* Animated background pattern */}
-              <div className="absolute inset-0 opacity-10">
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-600" style={{
-                  maskImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, black 10px, black 20px)',
-                  WebkitMaskImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, black 10px, black 20px)'
-                }}></div>
-              </div>
-              
-              <div className="text-center z-10">
-                <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-bounce">
-                  <BarChart3 className="w-8 h-8 text-white" />
-                </div>
-                <p className="text-sm font-medium text-gray-600">Interactive Chart</p>
-                <p className="text-xs text-gray-500 mt-1">Coming Soon</p>
+            <div className="flex-1 flex items-center justify-center">
+              <div className="relative h-48 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-2xl flex items-center justify-center overflow-hidden">
+                <ResponsiveContainer width="100%" height={180}>
+                  <AreaChart data={salesOverview} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="name" tick={{ fontSize: 12 }}/>
+                    <YAxis tick={{ fontSize: 12 }}/>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <Tooltip formatter={(value: any) => `PKR ${value.toLocaleString()}`}/>
+                    <Area type="monotone" dataKey="netSales" stroke="#6366f1" fillOpacity={1} fill="url(#colorSales)" name="Net Sales" />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
             </div>
           </div>
         </div>
 
         {/* Enhanced Welcome Banner */}
+        {false && (
         <div className="relative bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-3xl p-10 text-white overflow-hidden">
           {/* Animated background elements */}
           <div className="absolute inset-0 overflow-hidden">
@@ -555,6 +576,7 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+        )}
       </main>
 
       {/* Enhanced Modal Styles */}

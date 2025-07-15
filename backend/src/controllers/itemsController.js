@@ -49,6 +49,8 @@ function processBulkImportData(data) {
     minStock: data.minimumStockQuantity,
     openingQuantity: data.openingStockQuantity,
     location: data.itemLocation,
+    subcategory: data.subcategory,
+    openingStockQuantity: data.openingStockQuantity,
     // Tax related fields
     taxRate: data.taxRate,
     inclusiveOfTax: inclusiveOfTax,
@@ -80,8 +82,24 @@ export const addItem = async (req, res) => {
     const userId = req.params.userId;
     const data = req.body;
     
+    // Log only openingQuantity, minStock, and location from the request
+    console.log('openingQuantity:', data.openingQuantity, 'minStock:', data.minStock, 'location:', data.location);
+
     // Process bulk import data if it contains bulk import fields
     const processedData = processBulkImportData({ ...data, userId });
+
+    // Explicitly set openingQuantity, minStock, and location from req.body if present
+    if (data.openingQuantity !== undefined) {
+      processedData.openingQuantity = data.openingQuantity;
+    }
+    if (data.minStock !== undefined) {
+      processedData.minStock = data.minStock;
+    }
+    if (data.location !== undefined) {
+      processedData.location = data.location;
+    } else if (data.itemLocation !== undefined) {
+      processedData.location = data.itemLocation;
+    }
     
     // Generate a unique itemId for this user (could use uuid or Date.now())
     const itemId = processedData.itemId || ('ITM' + Date.now());
@@ -89,6 +107,8 @@ export const addItem = async (req, res) => {
     await item.save();
     const itemObj = item.toObject();
     itemObj.unit = typeof itemObj.unit === 'object' ? getUnitDisplay(itemObj.unit) : itemObj.unit;
+    // Log what was actually saved
+    console.log('SAVED openingQuantity:', itemObj.openingQuantity, 'minStock:', itemObj.minStock, 'location:', itemObj.location);
     res.status(201).json({ success: true, data: itemObj });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -253,9 +273,24 @@ export const updateItem = async (req, res) => {
     // Process bulk import data if it contains bulk import fields
     const processedData = processBulkImportData({ ...data, userId, itemId });
     
+    // Explicitly set openingQuantity, minStock, and location from req.body if present
+    if (data.openingQuantity !== undefined) {
+      processedData.openingQuantity = data.openingQuantity;
+    }
+    if (data.minStock !== undefined) {
+      processedData.minStock = data.minStock;
+    }
+    if (data.location !== undefined) {
+      processedData.location = data.location;
+    } else if (data.itemLocation !== undefined) {
+      processedData.location = data.itemLocation;
+    }
+
     const updated = await Item.findOneAndUpdate({ userId, itemId }, processedData, { new: true });
     const updatedObj = updated.toObject();
     updatedObj.unit = typeof updatedObj.unit === 'object' ? getUnitDisplay(updatedObj.unit) : updatedObj.unit;
+    // Log what was actually updated
+    console.log('UPDATED openingQuantity:', updatedObj.openingQuantity, 'minStock:', updatedObj.minStock, 'location:', updatedObj.location);
     res.json({ success: true, data: updatedObj });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });

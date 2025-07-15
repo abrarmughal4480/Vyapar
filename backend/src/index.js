@@ -19,6 +19,9 @@ async function dbConnect() {
   }
 }
 
+// Create express app before using it
+const app = express();
+
 // Allow all origins, methods, and headers
 app.use(cors({
   origin: '*',

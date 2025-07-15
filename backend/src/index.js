@@ -19,9 +19,12 @@ async function dbConnect() {
   }
 }
 
-// Allow all origins for development (open CORS)
-const app = express();
-app.use(cors());
+// Allow all origins, methods, and headers
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 
 // Increase payload limit for bulk imports
 app.use(express.json({ limit: '50mb' }));

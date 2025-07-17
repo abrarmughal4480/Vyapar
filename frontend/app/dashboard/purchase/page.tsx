@@ -1059,9 +1059,7 @@ export default function PurchaseBillsPage() {
     try {
       const token = getToken();
       if (!selectedPurchase || !selectedPurchase._id) return;
-
       if (!token) return;
-
       const result = await getPurchaseById(selectedPurchase._id, token as string);
       if (result && result.success && result.purchase) {
         setPurchases((prev) =>
@@ -1071,12 +1069,11 @@ export default function PurchaseBillsPage() {
         );
       }
     } catch (err) {
-      // fallback: just reload all
       setShowPaymentOut(false);
     }
     setShowPaymentOut(false);
   }}
-  partyName={selectedPurchase?.supplierName || ''}
+  partyName={selectedPurchase?.supplierName || selectedPurchase?.partyName || selectedPurchase?.name || selectedPurchase?.phoneNo || ''}
   total={typeof selectedPurchase?.grandTotal === 'number' ? selectedPurchase.grandTotal : 0}
   dueBalance={typeof selectedPurchase?.balance === 'number' ? selectedPurchase.balance : 0}
   purchaseId={selectedPurchase?._id || '0'}

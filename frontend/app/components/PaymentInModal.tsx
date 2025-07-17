@@ -94,7 +94,7 @@ function PaymentTypeDropdown({ value, onChange }: { value: string; onChange: (va
   );
 }
 
-const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyName: initialPartyName, total, dueBalance, saleId, onSave }) => {
+const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyName, total, dueBalance, saleId, onSave }) => {
   const [paymentType, setPaymentType] = useState('Cash');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [receivedAmount, setReceivedAmount] = useState('');
@@ -102,13 +102,20 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageName, setImageName] = useState<string>('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [partySearch, setPartySearch] = useState(initialPartyName || '');
+  const [partySearch, setPartySearch] = useState(partyName || '');
   const [partySuggestions, setPartySuggestions] = useState<any[]>([]);
   const [showPartyDropdown, setShowPartyDropdown] = useState(false);
   const [selectedParty, setSelectedParty] = useState<any>(null);
   const partyInputRef = React.useRef<HTMLInputElement>(null);
   const [dropdownPos, setDropdownPos] = useState<{top: number, left: number, width: number}>({top: 0, left: 0, width: 0});
   const [partyDropdownIndex, setPartyDropdownIndex] = useState(-1);
+
+  // Update partySearch if partyName prop changes (e.g. when modal is reused for different transactions)
+  useEffect(() => {
+    if (isOpen) {
+      setPartySearch(partyName || '');
+    }
+  }, [partyName, isOpen]);
 
   // Prevent background scrolling when modal is open
   useEffect(() => {

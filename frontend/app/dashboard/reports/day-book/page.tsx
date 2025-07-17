@@ -2,34 +2,102 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Calendar, ChevronDown, Printer, Share2 } from 'lucide-react';
 import TableActionMenu from '../../../components/TableActionMenu';
-
-const dummyDayBookData = [
-  { id: 1, name: 'ABC Traders', ref: 'INV-123', type: 'Sale', total: 5000, totalIn: 5000, out: 0, date: '2024-06-19' },
-  { id: 2, name: 'XYZ Suppliers', ref: 'BILL-456', type: 'Purchase', total: 3000, totalIn: 0, out: 3000, date: '2024-06-19' },
-  { id: 3, name: 'ABC Traders', ref: 'PAY-789', type: 'Payment In', total: 2000, totalIn: 2000, out: 0, date: '2024-06-19' },
-  { id: 4, name: 'XYZ Suppliers', ref: 'PMT-101', type: 'Payment Out', total: 1000, totalIn: 0, out: 1000, date: '2024-06-19' },
-];
+import { getToken, getUserIdFromToken } from '../../../lib/auth';
+import { getSalesByUser } from '../../../../http/sales';
+import { getPurchasesByUser, getPayments, getPaymentOutsByUser } from '../../../../http/purchases';
 
 export default function DayBookPage() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
-  const [filteredData, setFilteredData] = useState(dummyDayBookData);
+  const [dateFilter, setDateFilter] = useState(() => {
+    const today = new Date();
+    return today.toISOString().slice(0, 10);
+  });
+  const [filteredData, setFilteredData] = useState([]);
   const [statusFilter, setStatusFilter] = useState('All');
-
-  // Calculate stats
-  const totalIn = filteredData.reduce((sum, entry) => sum + (entry.totalIn || 0), 0);
-  const totalOut = filteredData.reduce((sum, entry) => sum + (entry.out || 0), 0);
-  const balance = totalIn - totalOut;
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [allData, setAllData] = useState([]);
 
   useEffect(() => {
-    let data = dummyDayBookData;
+    const fetchData = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const token = getToken();
+        const userId = getUserIdFromToken();
+        if (!token || !userId) throw new Error('Not authenticated');
+        // Fetch all data
+        const [salesRes, purchasesRes, paymentsRes, paymentOutsRes] = await Promise.all([
+          getSalesByUser(userId, token),
+          getPurchasesByUser(userId, token),
+          getPayments(token),
+          getPaymentOutsByUser(userId, token)
+        ]);
+        // Map to unified format
+        const sales = (salesRes.sales || []).map((s) => ({
+          id: s._id,
+          name: s.partyName,
+          ref: s.invoiceNo || s._id,
+          type: 'Sale',
+          total: s.grandTotal,
+          totalIn: s.grandTotal,
+          out: 0,
+          date: s.createdAt?.slice(0, 10) || '',
+        }));
+        const purchases = (purchasesRes.purchases || []).map((p) => ({
+          id: p._id,
+          name: p.supplierName,
+          ref: p.billNo || p._id,
+          type: 'Purchase',
+          total: p.grandTotal,
+          totalIn: 0,
+          out: p.grandTotal,
+          date: p.createdAt?.slice(0, 10) || '',
+        }));
+        const paymentIns = (salesRes.sales || []).filter(s => s.received > 0).map((s) => ({
+          id: s._id + '-payin',
+          name: s.partyName,
+          ref: s.invoiceNo || s._id,
+          type: 'Payment In',
+          total: s.received,
+          totalIn: s.received,
+          out: 0,
+          date: s.createdAt?.slice(0, 10) || '',
+        }));
+        const paymentOuts = (paymentsRes.payments || []).map((p) => ({
+          id: p._id,
+          name: p.supplierName,
+          ref: p.billNo || p._id,
+          type: 'Payment Out',
+          total: p.amount,
+          totalIn: 0,
+          out: p.amount,
+          date: p.paymentDate?.slice(0, 10) || '',
+        }));
+        let all = [...sales, ...purchases, ...paymentIns, ...paymentOuts];
+        // Sort by date descending
+        all = all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setAllData(all);
+        setFilteredData(all);
+      } catch (err) {
+        setError(err.message || 'Failed to fetch data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  useEffect(() => {
+    let data = allData;
     if (searchTerm) {
       data = data.filter(entry =>
-        entry.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        entry.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (entry.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (entry.type || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (entry.ref && entry.ref.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
+    // Always filter by date (selected or today)
     if (dateFilter) {
       data = data.filter(entry => entry.date === dateFilter);
     }
@@ -37,9 +105,22 @@ export default function DayBookPage() {
       data = data.filter(entry => entry.type === statusFilter);
     }
     setFilteredData(data);
-  }, [searchTerm, dateFilter, statusFilter]);
+  }, [searchTerm, dateFilter, statusFilter, allData]);
+
+  // Calculate stats
+  const totalIn = filteredData.reduce((sum, entry) => sum + (entry.totalIn || 0), 0);
+  const totalOut = filteredData.reduce((sum, entry) => sum + (entry.out || 0), 0);
+  const balance = totalIn - totalOut;
 
   const statusTabs = ['All', 'Sale', 'Purchase', 'Payment In', 'Payment Out'];
+
+  if (loading) {
+    return <div className="text-center py-8 text-gray-400">Loading...</div>;
+  }
+
+  if (error) {
+    return <div className="text-center py-8 text-red-500">{error}</div>;
+  }
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">

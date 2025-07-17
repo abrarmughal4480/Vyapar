@@ -1165,7 +1165,10 @@ Your Business Name`;
           </div>
         </>
       </div>
-      {/* PaymentInModal integration */}
+      {/* Debug: Log selectedTransaction for Receive Payment */}
+      {showPaymentIn && selectedTransaction && (
+        console.log('Selected Transaction for PaymentInModal:', selectedTransaction)
+      )}
       <PaymentInModal
         isOpen={showPaymentIn}
         onClose={() => {
@@ -1189,7 +1192,13 @@ Your Business Name`;
           setShowPaymentIn(false);
           setToast({ message: 'Payment received successfully!', type: 'success' });
         }}
-        partyName={selectedTransaction?.partyName || ''}
+        partyName={
+          selectedTransaction?.partyName ||
+          selectedTransaction?.customerName ||
+          selectedTransaction?.name ||
+          selectedTransaction?.phoneNo ||
+          '-' // fallback
+        }
         total={typeof selectedTransaction?.grandTotal === 'number' ? selectedTransaction.grandTotal : 0}
         dueBalance={typeof selectedTransaction?.balance === 'number' ? selectedTransaction.balance : 0}
         saleId={selectedTransaction?._id || selectedTransaction?.id || ''}

@@ -5,6 +5,7 @@ import ReactDOM from 'react-dom';
 import { makePayment } from '@/http/purchases';
 import Toast from './Toast';
 import { fetchPartiesByUserId } from '@/http/parties';
+import { Settings } from 'lucide-react';
 
 interface PaymentOutModalProps {
   isOpen: boolean;
@@ -109,6 +110,7 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
   const partyInputRef = React.useRef<HTMLInputElement>(null);
   const [dropdownPos, setDropdownPos] = useState<{top: number, left: number, width: number}>({top: 0, left: 0, width: 0});
   const [partyDropdownIndex, setPartyDropdownIndex] = useState(-1);
+  const [showSettings, setShowSettings] = useState(false);
 
   // Prevent background scrolling when modal is open
   useEffect(() => {
@@ -232,144 +234,176 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
         padding: 0,
         overflow: 'visible',
         position: 'relative',
+        display: 'flex',
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '32px 40px 0 40px' }}>
-          <h2 style={{ fontSize: 26, fontWeight: 700, color: '#1e293b', letterSpacing: '-0.5px' }}>Make Payment</h2>
-          <button onClick={onClose} style={{ fontSize: 28, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>✕</button>
-        </div>
-        <div style={{ display: 'flex', gap: 48, flexWrap: 'wrap', padding: '32px 40px 0 40px' }}>
-          {/* Left Side */}
-          <div style={{ flex: 1, minWidth: 240 }}>
-            {/* Party selection field with live suggestions */}
-            <div className="mb-4" style={{ position: 'relative' }}>
-              <label className="block text-gray-700 font-medium mb-1">Party</label>
-              <input
-                ref={partyInputRef}
-                type="text"
-                value={partySearch}
-                onChange={e => { setPartySearch(e.target.value); setShowPartyDropdown(true); }}
-                onFocus={() => setShowPartyDropdown(true)}
-                onBlur={() => setTimeout(() => setShowPartyDropdown(false), 200)}
-                placeholder="Search or select supplier..."
-                className="w-full px-4 py-3 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500 transition-all"
-                autoComplete="off"
-                onKeyDown={e => {
-                  if (!showPartyDropdown) return;
-                  if (e.key === 'ArrowDown') {
-                    setPartyDropdownIndex(i => Math.min(i + 1, filteredPartySuggestions.length - 1));
-                  } else if (e.key === 'ArrowUp') {
-                    setPartyDropdownIndex(i => Math.max(i - 1, 0));
-                  } else if (e.key === 'Enter') {
-                    if (filteredPartySuggestions[partyDropdownIndex]) {
-                      setSelectedParty(filteredPartySuggestions[partyDropdownIndex]);
-                      setPartySearch(filteredPartySuggestions[partyDropdownIndex].name);
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '32px 40px 0 40px' }}>
+            <h2 style={{ fontSize: 26, fontWeight: 700, color: '#1e293b', letterSpacing: '-0.5px' }}>Make Payment</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <button onClick={() => setShowSettings(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 26, marginRight: 8 }} title="Settings">
+                <Settings size={26} />
+              </button>
+              <button onClick={onClose} style={{ fontSize: 28, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 48, flexWrap: 'wrap', padding: '32px 40px 0 40px' }}>
+            {/* Left Side */}
+            <div style={{ flex: 1, minWidth: 240 }}>
+              {/* Party selection field with live suggestions */}
+              <div className="mb-4" style={{ position: 'relative' }}>
+                <label className="block text-gray-700 font-medium mb-1">Party</label>
+                <input
+                  ref={partyInputRef}
+                  type="text"
+                  value={partySearch}
+                  onChange={e => { setPartySearch(e.target.value); setShowPartyDropdown(true); }}
+                  onFocus={() => setShowPartyDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowPartyDropdown(false), 200)}
+                  placeholder="Search or select supplier..."
+                  className="w-full px-4 py-3 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500 transition-all"
+                  autoComplete="off"
+                  onKeyDown={e => {
+                    if (!showPartyDropdown) return;
+                    if (e.key === 'ArrowDown') {
+                      setPartyDropdownIndex(i => Math.min(i + 1, filteredPartySuggestions.length - 1));
+                    } else if (e.key === 'ArrowUp') {
+                      setPartyDropdownIndex(i => Math.max(i - 1, 0));
+                    } else if (e.key === 'Enter') {
+                      if (filteredPartySuggestions[partyDropdownIndex]) {
+                        setSelectedParty(filteredPartySuggestions[partyDropdownIndex]);
+                        setPartySearch(filteredPartySuggestions[partyDropdownIndex].name);
+                        setShowPartyDropdown(false);
+                      }
+                    } else if (e.key === 'Escape') {
                       setShowPartyDropdown(false);
                     }
-                  } else if (e.key === 'Escape') {
-                    setShowPartyDropdown(false);
-                  }
-                }}
-              />
-            </div>
-            {/* Render dropdown in portal for robust positioning */}
-            {showPartyDropdown && filteredPartySuggestions.length > 0 && ReactDOM.createPortal(
-              <ul
-                className="absolute z-[9999] bg-white rounded-xl shadow-lg border border-gray-100 py-1 max-h-60 overflow-auto animate-fadeinup"
-                style={{
-                  top: dropdownPos.top,
-                  left: dropdownPos.left,
-                  width: dropdownPos.width,
-                  position: 'absolute',
-                }}
-                tabIndex={-1}
-                role="listbox"
-              >
-                {filteredPartySuggestions.map((party, idx) => (
-                  <li
-                    key={party._id}
-                    className={`px-4 py-2 cursor-pointer rounded-lg transition-all ${partyDropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-blue-50 text-gray-700'}`}
-                    onMouseDown={e => {
-                      e.preventDefault();
-                      setSelectedParty(party);
-                      setPartySearch(party.name);
-                      setShowPartyDropdown(false);
-                    }}
-                    role="option"
-                    aria-selected={partyDropdownIndex === idx}
-                    ref={el => {
-                      if (partyDropdownIndex === idx && el) el.scrollIntoView({ block: 'nearest' });
-                    }}
-                  >
-                    {party.name}
-                  </li>
-                ))}
-              </ul>,
-              document.body
-            )}
-            <div style={{ marginBottom: 22, position: 'relative' }}>
-              <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Payment Type</label>
-              <PaymentTypeDropdown value={paymentType} onChange={setPaymentType} />
-            </div>
-            <div style={{ marginBottom: 22 }}>
-              <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Date</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ width: '100%', padding: 12, border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#334155', fontSize: 15, fontWeight: 500 }} />
-            </div>
-            <div style={{ marginBottom: 22 }}>
-              <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Add Image (Proof/Receipt)</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <label style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  padding: '10px 18px',
-                  background: '#f1f5f9',
-                  color: '#2563eb',
-                  border: '1.5px solid #e2e8f0',
-                  borderRadius: 8,
-                  fontWeight: 600,
-                  fontSize: 15,
-                  cursor: 'pointer',
-                  transition: 'background 0.2s',
-                }}>
-                  <span style={{ fontSize: 18, marginRight: 8 }}>📷</span> Choose Image
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageChange}
-                    style={{ display: 'none' }}
-                  />
-                </label>
-                {imageName && (
-                  <span style={{ color: '#334155', fontSize: 14, fontWeight: 500, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{imageName}</span>
-                )}
-                {image && (
-                  <button onClick={handleRemoveImage} style={{ marginLeft: 4, background: 'none', border: 'none', color: '#e11d48', fontSize: 20, cursor: 'pointer', lineHeight: 1 }} title="Remove image">✕</button>
+                  }}
+                />
+              </div>
+              {/* Render dropdown in portal for robust positioning */}
+              {showPartyDropdown && filteredPartySuggestions.length > 0 && ReactDOM.createPortal(
+                <ul
+                  className="absolute z-[9999] bg-white rounded-xl shadow-lg border border-gray-100 py-1 max-h-60 overflow-auto animate-fadeinup"
+                  style={{
+                    top: dropdownPos.top,
+                    left: dropdownPos.left,
+                    width: dropdownPos.width,
+                    position: 'absolute',
+                  }}
+                  tabIndex={-1}
+                  role="listbox"
+                >
+                  {filteredPartySuggestions.map((party, idx) => (
+                    <li
+                      key={party._id}
+                      className={`px-4 py-2 cursor-pointer rounded-lg transition-all ${partyDropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-blue-50 text-gray-700'}`}
+                      onMouseDown={e => {
+                        e.preventDefault();
+                        setSelectedParty(party);
+                        setPartySearch(party.name);
+                        setShowPartyDropdown(false);
+                      }}
+                      role="option"
+                      aria-selected={partyDropdownIndex === idx}
+                      ref={el => {
+                        if (partyDropdownIndex === idx && el) el.scrollIntoView({ block: 'nearest' });
+                      }}
+                    >
+                      {party.name}
+                    </li>
+                  ))}
+                </ul>,
+                document.body
+              )}
+              <div style={{ marginBottom: 22, position: 'relative' }}>
+                <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Payment Type</label>
+                <PaymentTypeDropdown value={paymentType} onChange={setPaymentType} />
+              </div>
+              <div style={{ marginBottom: 22 }}>
+                <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Date</label>
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ width: '100%', padding: 12, border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#334155', fontSize: 15, fontWeight: 500 }} />
+              </div>
+              <div style={{ marginBottom: 22 }}>
+                <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Add Image (Proof/Receipt)</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <label style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '10px 18px',
+                    background: '#f1f5f9',
+                    color: '#2563eb',
+                    border: '1.5px solid #e2e8f0',
+                    borderRadius: 8,
+                    fontWeight: 600,
+                    fontSize: 15,
+                    cursor: 'pointer',
+                    transition: 'background 0.2s',
+                  }}>
+                    <span style={{ fontSize: 18, marginRight: 8 }}>📷</span> Choose Image
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                  {imageName && (
+                    <span style={{ color: '#334155', fontSize: 14, fontWeight: 500, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{imageName}</span>
+                  )}
+                  {image && (
+                    <button onClick={handleRemoveImage} style={{ marginLeft: 4, background: 'none', border: 'none', color: '#e11d48', fontSize: 20, cursor: 'pointer', lineHeight: 1 }} title="Remove image">✕</button>
+                  )}
+                </div>
+                {imagePreview && (
+                  <div style={{ marginTop: 12, position: 'relative', display: 'inline-block' }}>
+                    <img src={imagePreview} alt="Proof" style={{ maxHeight: 90, borderRadius: 8, border: '1.5px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
+                  </div>
                 )}
               </div>
-              {imagePreview && (
-                <div style={{ marginTop: 12, position: 'relative', display: 'inline-block' }}>
-                  <img src={imagePreview} alt="Proof" style={{ maxHeight: 90, borderRadius: 8, border: '1.5px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
-                </div>
-              )}
+            </div>
+            {/* Right Side */}
+            <div style={{ flex: 1, minWidth: 240, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div style={{ background: '#f8fafc', borderRadius: 14, padding: 28, marginBottom: 22, border: '1.5px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.01)' }}>
+                <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>Total</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: '#2563eb', marginBottom: 18 }}>PKR {total.toLocaleString()}</div>
+                <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>Due Balance</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#ea580c' }}>PKR {dueBalance.toLocaleString()}</div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Paid Amount</label>
+                <input type="number" value={paidAmount} onChange={e => setPaidAmount(e.target.value)} style={{ width: '100%', padding: 12, border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#334155', fontSize: 15, fontWeight: 500 }} placeholder="Enter amount paid" />
+              </div>
             </div>
           </div>
-          {/* Right Side */}
-          <div style={{ flex: 1, minWidth: 240, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <div style={{ background: '#f8fafc', borderRadius: 14, padding: 28, marginBottom: 22, border: '1.5px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.01)' }}>
-              <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>Total</div>
-              <div style={{ fontSize: 28, fontWeight: 800, color: '#2563eb', marginBottom: 18 }}>PKR {total.toLocaleString()}</div>
-              <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>Due Balance</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#ea580c' }}>PKR {dueBalance.toLocaleString()}</div>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Paid Amount</label>
-              <input type="number" value={paidAmount} onChange={e => setPaidAmount(e.target.value)} style={{ width: '100%', padding: 12, border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#334155', fontSize: 15, fontWeight: 500 }} placeholder="Enter amount paid" />
-            </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '32px 40px', borderTop: '1.5px solid #e2e8f0', marginTop: 32 }}>
+            <button onClick={onClose} style={{ padding: '12px 24px', border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#f1f5f9', color: '#334155', marginRight: 14, fontWeight: 600, fontSize: 15, cursor: 'pointer', transition: 'background 0.2s' }}>Cancel</button>
+            <button onClick={handleSave} style={{ padding: '12px 32px', borderRadius: 8, background: '#2563eb', color: 'white', fontWeight: 700, border: 'none', fontSize: 15, cursor: 'pointer', transition: 'background 0.2s' }}>Save</button>
           </div>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '32px 40px', borderTop: '1.5px solid #e2e8f0', marginTop: 32 }}>
-          <button onClick={onClose} style={{ padding: '12px 24px', border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#f1f5f9', color: '#334155', marginRight: 14, fontWeight: 600, fontSize: 15, cursor: 'pointer', transition: 'background 0.2s' }}>Cancel</button>
-          <button onClick={handleSave} style={{ padding: '12px 32px', borderRadius: 8, background: '#2563eb', color: 'white', fontWeight: 700, border: 'none', fontSize: 15, cursor: 'pointer', transition: 'background 0.2s' }}>Save</button>
-        </div>
+        {/* Settings Drawer */}
+        {showSettings && (
+          <div style={{
+            width: 340,
+            background: '#f8fafc',
+            borderLeft: '1.5px solid #e2e8f0',
+            height: '100%',
+            position: 'absolute',
+            right: 0,
+            top: 0,
+            zIndex: 10000,
+            boxShadow: '-2px 0 12px rgba(0,0,0,0.04)',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '24px 24px 0 24px' }}>
+              <h3 style={{ fontSize: 20, fontWeight: 700, color: '#1e293b' }}>Settings</h3>
+              <button onClick={() => setShowSettings(false)} style={{ fontSize: 24, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ padding: 24, color: '#334155', fontSize: 16 }}>
+              Add your settings here...
+            </div>
+          </div>
+        )}
       </div>
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />

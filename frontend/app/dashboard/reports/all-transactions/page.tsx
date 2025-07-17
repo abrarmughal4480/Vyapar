@@ -2,91 +2,169 @@
 import React, { useState, useEffect } from 'react';
 import { Printer, Share2, ChevronDown } from 'lucide-react';
 import TableActionMenu from '../../../components/TableActionMenu';
-
-const dummyAllTransactionsData = [
-  {
-    id: 1,
-    date: '2024-06-19',
-    ref: 'INV-123',
-    partyName: 'ABC Traders',
-    type: 'Sale',
-    paymentType: 'Cash',
-    amount: 5000,
-    paid: 5000,
-    balance: 0,
-    status: 'Paid',
-    firm: 'Vyapar Pvt Ltd',
-  },
-  {
-    id: 2,
-    date: '2024-06-19',
-    ref: 'BILL-456',
-    partyName: 'XYZ Suppliers',
-    type: 'Purchase',
-    paymentType: 'Credit',
-    amount: 3000,
-    paid: 1000,
-    balance: 2000,
-    status: 'Partial',
-    firm: 'Vyapar Pvt Ltd',
-  },
-  {
-    id: 3,
-    date: '2024-06-19',
-    ref: 'PAY-789',
-    partyName: 'ABC Traders',
-    type: 'Payment In',
-    paymentType: 'Cash',
-    amount: 2000,
-    paid: 2000,
-    balance: 0,
-    status: 'Paid',
-    firm: 'Vyapar Associates',
-  },
-  {
-    id: 4,
-    date: '2024-06-19',
-    ref: 'PMT-101',
-    partyName: 'XYZ Suppliers',
-    type: 'Payment Out',
-    paymentType: 'Bank',
-    amount: 1000,
-    paid: '-',
-    balance: '-',
-    status: '-',
-    firm: 'Vyapar Associates',
-  },
-];
+import { getToken } from '../../../lib/auth';
+import { getSalesByUser } from '../../../../http/sales';
+import { getPurchasesByUser, getPayments, getPaymentOutsByUser } from '../../../../http/purchases';
+import { getCreditNotesByUser } from '../../../../http/credit-notes';
+import { getDeliveryChallans } from '../../../../http/deliveryChallan';
+import { getCustomerParties } from '../../../../http/parties';
 
 export default function AllTransactionsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [filteredData, setFilteredData] = useState(dummyAllTransactionsData);
+  const [allData, setAllData] = useState<any[]>([]);
+  const [filteredData, setFilteredData] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState('All');
   const [firmFilter, setFirmFilter] = useState('All Firms');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // Calculate stats
-  const totalIn = filteredData.reduce((sum, entry) => {
-    if (entry.type === 'Sale' || entry.type === 'Payment In') {
-      return sum + (typeof entry.amount === 'number' ? entry.amount : 0);
-    }
-    return sum;
-  }, 0);
-  const totalOut = filteredData.reduce((sum, entry) => {
-    if (entry.type === 'Purchase' || entry.type === 'Payment Out') {
-      return sum + (typeof entry.amount === 'number' ? entry.amount : 0);
-    }
-    return sum;
-  }, 0);
-  const balance = totalIn - totalOut;
-
+  // Fetch all transactions on mount
   useEffect(() => {
-    let data = dummyAllTransactionsData;
+    async function fetchAll() {
+      setLoading(true);
+      setError('');
+      try {
+        const token = getToken();
+        if (!token) throw new Error('Not authenticated');
+        // Get userId from token (decode or fetch from backend if needed)
+        // For now, fetch parties and use the first party's userId if available
+        let userId = '';
+        try {
+          const parties = await getCustomerParties(token);
+          if (parties && parties.length > 0 && parties[0].user) userId = parties[0].user;
+        } catch {}
+        // Fallback: try to get userId from sales
+        if (!userId) {
+          try {
+            const sales = await getSalesByUser('', token);
+            if (sales && sales.sales && sales.sales.length > 0 && sales.sales[0].userId) userId = sales.sales[0].userId;
+          } catch {}
+        }
+        // Fetch all data
+        const [salesRes, purchasesRes, creditNotesRes, deliveryChallansRes, paymentsRes] = await Promise.all([
+          getSalesByUser(userId, token),
+          getPurchasesByUser(userId, token),
+          getCreditNotesByUser(userId, token),
+          getDeliveryChallans(token),
+          getPayments(token),
+        ]);
+        // Map all to unified format
+        const sales = (salesRes.sales || []).map((s: any) => ({
+          id: s._id,
+          date: s.createdAt?.slice(0, 10) || '',
+          ref: s.invoiceNo || s._id,
+          partyName: s.partyName,
+          type: 'Sale',
+          paymentType: s.paymentType || (s.received === s.grandTotal ? 'Cash' : 'Credit'),
+          amount: s.grandTotal,
+          paid: s.received,
+          balance: s.balance,
+          status: s.balance === 0 ? 'Paid' : (s.received > 0 ? 'Partial' : 'Unpaid'),
+          firm: s.firmName || 'Vyapar Pvt Ltd',
+        }));
+        // Add Payment In for each sale with received > 0
+        const paymentIns = (salesRes.sales || [])
+          .filter((s: any) => s.received && s.received > 0)
+          .map((s: any) => ({
+            id: s._id + '-paymentin',
+            date: s.updatedAt?.slice(0, 10) || s.createdAt?.slice(0, 10) || '',
+            ref: s.invoiceNo || s._id,
+            partyName: s.partyName,
+            type: 'Payment In',
+            paymentType: s.paymentType || (s.received === s.grandTotal ? 'Cash' : 'Credit'),
+            amount: s.received,
+            paid: s.received,
+            balance: s.balance,
+            status: s.balance === 0 ? 'Paid' : (s.received > 0 ? 'Partial' : 'Unpaid'),
+            firm: s.firmName || 'Vyapar Pvt Ltd',
+          }));
+        const purchases = (purchasesRes.purchases || []).map((p: any) => ({
+          id: p._id,
+          date: p.createdAt?.slice(0, 10) || '',
+          ref: p.billNo || p._id,
+          partyName: p.supplierName,
+          type: 'Purchase',
+          paymentType: p.paymentType || (p.paid === p.grandTotal ? 'Cash' : 'Credit'),
+          amount: p.grandTotal,
+          paid: p.paid,
+          balance: p.balance,
+          status: p.balance === 0 ? 'Paid' : (p.paid > 0 ? 'Partial' : 'Unpaid'),
+          firm: p.firmName || 'Vyapar Pvt Ltd',
+        }));
+        const creditNotes = (creditNotesRes.data || []).map((c: any) => ({
+          id: c._id,
+          date: c.createdAt?.slice(0, 10) || '',
+          ref: c.creditNoteNo || c._id,
+          partyName: c.partyName,
+          type: 'Credit Note',
+          paymentType: '-',
+          amount: c.grandTotal,
+          paid: '-',
+          balance: '-',
+          status: '-',
+          firm: c.firmName || 'Vyapar Pvt Ltd',
+        }));
+        const deliveryChallans = (deliveryChallansRes.data || []).map((d: any) => ({
+          id: d._id,
+          date: d.createdAt?.slice(0, 10) || '',
+          ref: d.challanNumber || d._id,
+          partyName: d.customerName || d.partyName,
+          type: 'Delivery Challan',
+          paymentType: '-',
+          amount: d.total || 0,
+          paid: '-',
+          balance: '-',
+          status: '-',
+          firm: d.firmName || 'Vyapar Pvt Ltd',
+        }));
+        const payments = (paymentsRes.payments || []).map((p: any) => ({
+          id: p._id,
+          date: p.paymentDate?.slice(0, 10) || '',
+          ref: p.billNo || p._id,
+          partyName: p.supplierName,
+          type: 'Payment Out',
+          paymentType: p.paymentType || 'Cash',
+          amount: p.amount,
+          paid: p.amount,
+          balance: p.remainingBalance,
+          status: p.status || '-',
+          firm: p.firmName || 'Vyapar Pvt Ltd',
+        }));
+        // Combine all
+        let all = [
+          ...sales,
+          ...paymentIns,
+          ...purchases,
+          ...creditNotes,
+          ...deliveryChallans,
+          ...payments
+        ];
+        // Sort by date descending (latest first)
+        all = all.sort((a, b) => {
+          const dateA = new Date(a.date || a.createdAt);
+          const dateB = new Date(b.date || b.createdAt);
+          return dateB.getTime() - dateA.getTime();
+        });
+        setAllData(all);
+        setFilteredData(all);
+      } catch (err: any) {
+        setError(err.message || 'Failed to fetch transactions');
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchAll();
+  }, []);
+
+  // Filtering logic (search, date, status, firm)
+  useEffect(() => {
+    let data = allData;
     if (searchTerm) {
       data = data.filter(entry =>
-        entry.partyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        entry.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (entry.partyName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (entry.type || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (entry.ref && entry.ref.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
@@ -103,7 +181,22 @@ export default function AllTransactionsPage() {
       data = data.filter(entry => entry.type === statusFilter);
     }
     setFilteredData(data);
-  }, [searchTerm, firmFilter, dateFrom, dateTo, statusFilter]);
+  }, [searchTerm, firmFilter, dateFrom, dateTo, statusFilter, allData]);
+
+  // Calculate stats
+  const totalIn = filteredData.reduce((sum, entry) => {
+    if (entry.type === 'Sale' || entry.type === 'Payment In') {
+      return sum + (typeof entry.amount === 'number' ? entry.amount : 0);
+    }
+    return sum;
+  }, 0);
+  const totalOut = filteredData.reduce((sum, entry) => {
+    if (entry.type === 'Purchase' || entry.type === 'Payment Out') {
+      return sum + (typeof entry.amount === 'number' ? entry.amount : 0);
+    }
+    return sum;
+  }, 0);
+  const balance = totalIn - totalOut;
 
   const statusTabs = ['All', 'Sale', 'Purchase', 'Payment In', 'Payment Out'];
 
@@ -215,14 +308,27 @@ export default function AllTransactionsPage() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {filteredData.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={10} className="text-center py-8 text-gray-400">Loading transactions...</td>
+              </tr>
+            ) : error ? (
+              <tr>
+                <td colSpan={10} className="text-center py-8 text-red-500">{error}</td>
+              </tr>
+            ) : filteredData.length === 0 ? (
               <tr>
                 <td colSpan={10} className="text-center py-8 text-gray-400">No records found.</td>
               </tr>
             ) : (
               filteredData.map(entry => (
                 <tr key={entry.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{entry.date}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {/* Show only date according to browser locale */}
+                    {entry.date || entry.createdAt ?
+                      new Date(entry.date || entry.createdAt).toLocaleDateString() :
+                      '-'}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{entry.ref}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{entry.partyName}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-indigo-700 font-semibold">{entry.type}</td>

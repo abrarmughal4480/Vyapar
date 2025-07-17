@@ -76,7 +76,13 @@ export const getProfitAndLoss = async (req, res) => {
     ]);
     const openingStockTotal = openingStock[0]?.total || 0;
     // For closing stock, you may need a separate logic or model
-    const closingStockTotal = 0;
+    // Closing Stock (sum of all items' stock * purchasePrice)
+    const items = await mongoose.model('Item').find({ userId: objectUserId });
+    const closingStockTotal = items.reduce((sum, item) => {
+      const stock = item.stock || 0;
+      const price = item.purchasePrice || 0;
+      return sum + (stock * price);
+    }, 0);
 
     // Direct/Indirect Expenses, Taxes, Other Income/Expense, etc. (placeholders)
     // You can add more aggregation from other models as needed

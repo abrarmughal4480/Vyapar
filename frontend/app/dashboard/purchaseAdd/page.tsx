@@ -186,9 +186,12 @@ interface CustomDropdownProps {
   className?: string;
   placeholder?: string;
   disabled?: boolean;
+  dropdownIndex: number;
+  setDropdownIndex: React.Dispatch<React.SetStateAction<number>>;
+  optionsCount: number;
 }
 
-function CustomDropdown({ options, value, onChange, className = '', placeholder = 'Select', disabled = false }: CustomDropdownProps) {
+function CustomDropdown({ options, value, onChange, className = '', placeholder = 'Select', disabled = false, dropdownIndex, setDropdownIndex, optionsCount }: CustomDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -220,6 +223,28 @@ function CustomDropdown({ options, value, onChange, className = '', placeholder 
     }
   }, [open]);
 
+  // Keyboard navigation on button
+  const handleButtonKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!open) return;
+    if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (e.key === 'ArrowDown') {
+      setDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
+    } else if (e.key === 'ArrowUp') {
+      setDropdownIndex(i => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      const selected = options[dropdownIndex];
+      if (selected) {
+        onChange(selected.value);
+        setOpen(false);
+      }
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+    }
+  };
+
   return (
     <div ref={ref} className={`relative ${disabled ? 'opacity-60 pointer-events-none' : ''} ${className}`}> 
       <button
@@ -229,6 +254,7 @@ function CustomDropdown({ options, value, onChange, className = '', placeholder 
         onClick={() => setOpen((v) => !v)}
         disabled={disabled}
         tabIndex={0}
+        onKeyDown={handleButtonKeyDown}
       >
         <span className="truncate text-left">{options.find((o: DropdownOption) => o.value === value)?.label || placeholder}</span>
         <span className={`ml-2 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}>
@@ -241,14 +267,19 @@ function CustomDropdown({ options, value, onChange, className = '', placeholder 
           className="bg-white border-2 border-blue-100 rounded-lg shadow-lg animate-fadeinup custom-dropdown-scrollbar"
           onMouseDown={e => e.preventDefault()}
         >
-          {options.map((opt: DropdownOption) => (
+          {options.map((opt: DropdownOption, idx: number) => (
             <li
               key={opt.value}
-              className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'}`}
-              onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); }}
-              tabIndex={0}
-              onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { if (e.key === 'Enter') { onChange(opt.value); setOpen(false); }}}
+              className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'} ${dropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+              onMouseDown={e => {
+                e.preventDefault();
+                onChange(opt.value);
+                setOpen(false);
+                setDropdownIndex(idx);
+              }}
+              tabIndex={-1}
               aria-selected={value === opt.value}
+              ref={el => { if (dropdownIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
             >
               {opt.label}
             </li>
@@ -334,6 +365,17 @@ export default function AddPurchasePage() {
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const itemInputRefs = useRef<{[id: number]: HTMLInputElement | null}>({});
   const [redirectTo, setRedirectTo] = useState('/dashboard/purchase');
+  
+  // Add state for add supplier
+  const [showAddSupplierInput, setShowAddSupplierInput] = useState(false);
+  const [newSupplierName, setNewSupplierName] = useState('');
+  const [supplierDropdownIndex, setSupplierDropdownIndex] = useState(-1);
+  const supplierInputRef = useRef<HTMLInputElement>(null);
+  const supplierDropdownRef = useRef<HTMLUListElement>(null);
+  
+  // 1. Add state for item and unit dropdown keyboard navigation
+  const [itemDropdownIndex, setItemDropdownIndex] = useState<{[id: number]: number}>({});
+  const [unitDropdownIndex, setUnitDropdownIndex] = useState<{[id: number]: number}>({});
   
   // Check if opened from different contexts
   useEffect(() => {
@@ -835,7 +877,11 @@ export default function AddPurchasePage() {
                           type="text"
                           name="partyName"
                           value={newPurchase.partyName}
-                          onChange={handleInputChange}
+                          onChange={e => {
+                            handleInputChange(e);
+                            setShowPartySuggestions(true);
+                            setSupplierDropdownIndex(0);
+                          }}
                           onFocus={() => {
                             fetchPartySuggestions();
                             setShowPartySuggestions(true);
@@ -843,24 +889,75 @@ export default function AddPurchasePage() {
                           onBlur={() => setTimeout(() => setShowPartySuggestions(false), 200)}
                           className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${formErrors.partyName ? 'border-red-300 bg-red-50' : 'border-blue-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-200 focus:outline-none`}
                           placeholder="Search or enter supplier name"
+                          autoComplete="off"
+                          ref={supplierInputRef}
+                          onKeyDown={e => {
+                            if (!showPartySuggestions) return;
+                            const optionsCount = parties.length + 1; // +1 for Add Supplier
+                            if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }
+                            if (e.key === 'ArrowDown') {
+                              setSupplierDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
+                            } else if (e.key === 'ArrowUp') {
+                              setSupplierDropdownIndex(i => Math.max(i - 1, 0));
+                            } else if (e.key === 'Enter') {
+                              if (supplierDropdownIndex < parties.length) {
+                                const party = parties[supplierDropdownIndex];
+                                setNewPurchase(prev => ({ ...prev, partyName: party.name, phoneNo: party.phone || '' }));
+                                setShowPartySuggestions(false);
+                                fetchPartyBalance(party.name);
+                              } else if (supplierDropdownIndex === parties.length) {
+                                setShowAddSupplierInput(true);
+                                setShowPartySuggestions(false);
+                                setTimeout(() => {
+                                  if (supplierInputRef.current) supplierInputRef.current.focus();
+                                }, 100);
+                              }
+                            } else if (e.key === 'Escape') {
+                              setShowPartySuggestions(false);
+                            }
+                          }}
                         />
                         {showPartySuggestions && (
                           <div className="absolute left-0 right-0 mt-1 w-full z-50">
-                            {parties.length > 0 ? (
-                              <ul className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                                {parties.map((party: any) => (
+                            {parties.length > 0 || true ? (
+                              <ul
+                                className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                                ref={supplierDropdownRef}
+                                tabIndex={-1}
+                                role="listbox"
+                              >
+                                {/* Add Supplier option at the top */}
+                                <li
+                                  className={`px-4 py-2 cursor-pointer text-blue-600 font-semibold hover:bg-blue-50 rounded-t-lg ${supplierDropdownIndex === 0 ? 'bg-blue-100 text-blue-700' : ''}`}
+                                  onMouseDown={e => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    router.push('/dashboard/parties?addParty=1');
+                                    setShowPartySuggestions(false);
+                                  }}
+                                  ref={el => { if (supplierDropdownIndex === 0 && el) el.scrollIntoView({ block: 'nearest' }); }}
+                                  role="option"
+                                  aria-selected={supplierDropdownIndex === 0}
+                                >
+                                  + Add Supplier
+                                </li>
+                                {parties.map((party, idx) => (
                                   <li
                                     key={party._id}
-                                    className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
-                                    onMouseDown={() => {
-                                      setNewPurchase(prev => ({ 
-                                        ...prev, 
-                                        partyName: party.name, 
-                                        phoneNo: party.phone || '' 
-                                      }));
+                                    className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors ${supplierDropdownIndex === idx + 1 ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+                                    onMouseDown={e => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setNewPurchase(prev => ({ ...prev, partyName: party.name, phoneNo: party.phone || '' }));
                                       setShowPartySuggestions(false);
                                       fetchPartyBalance(party.name);
                                     }}
+                                    ref={el => { if (supplierDropdownIndex === idx + 1 && el) el.scrollIntoView({ block: 'nearest' }); }}
+                                    role="option"
+                                    aria-selected={supplierDropdownIndex === idx + 1}
                                   >
                                     {party.name} {party.phone && <span className="text-xs text-gray-400">({party.phone})</span>}
                                   </li>
@@ -967,6 +1064,39 @@ export default function AddPurchasePage() {
                           setDropdownStyle(style);
                         };
 
+                        // In the tbody map for items, before rendering CustomDropdown, define unitOptions for each row
+                        const unitOptions = (() => {
+                          const options: DropdownOption[] = [];
+                          if (item.item) {
+                            const selectedItem = itemSuggestions.find(i => i.name === item.item);
+                            if (selectedItem && selectedItem.unit) {
+                              const unit = selectedItem.unit;
+                              if (typeof unit === 'object' && unit.base) {
+                                if (unit.base && unit.base !== 'NONE') {
+                                  options.push({ value: unit.base, label: unit.base });
+                                }
+                                if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) {
+                                  options.push({ value: unit.secondary, label: unit.secondary });
+                                }
+                              } else if (typeof unit === 'string' && unit.includes(' / ')) {
+                                const parts = unit.split(' / ');
+                                if (parts[0] && parts[0] !== 'NONE') {
+                                  options.push({ value: parts[0], label: parts[0] });
+                                }
+                                if (parts[1] && parts[1] !== 'None') {
+                                  options.push({ value: parts[1], label: parts[1] });
+                                }
+                              } else if (typeof unit === 'string') {
+                                options.push({ value: unit, label: unit });
+                              }
+                            }
+                          }
+                          if (options.length === 0) {
+                            options.push({ value: 'NONE', label: 'NONE' });
+                          }
+                          return options;
+                        })();
+
                         return (
                           <tr
                             key={item.id}
@@ -977,11 +1107,41 @@ export default function AddPurchasePage() {
                               <input
                                 type="text"
                                 value={item.item}
-                                onChange={e => handleItemChange(item.id, 'item', e.target.value)}
+                                onChange={e => {
+                                  handleItemChange(item.id, 'item', e.target.value);
+                                  setItemDropdownIndex(idx => ({ ...idx, [item.id]: 0 }));
+                                }}
                                 onFocus={handleFocus}
                                 onBlur={() => setTimeout(() => setShowItemSuggestions(prev => ({ ...prev, [item.id]: false })), 200)}
                                 className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
                                 placeholder="Enter item name..."
+                                onKeyDown={e => {
+                                  if (!showItemSuggestions[item.id]) return;
+                                  const filtered = itemSuggestions.filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
+                                  const optionsCount = filtered.length;
+                                  if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }
+                                  if (e.key === 'ArrowDown') {
+                                    setItemDropdownIndex(idx => ({ ...idx, [item.id]: Math.min((idx[item.id] || 0) + 1, optionsCount - 1) }));
+                                  } else if (e.key === 'ArrowUp') {
+                                    setItemDropdownIndex(idx => ({ ...idx, [item.id]: Math.max((idx[item.id] || 0) - 1, 0) }));
+                                  } else if (e.key === 'Enter') {
+                                    const idx = itemDropdownIndex[item.id] || 0;
+                                    const selected = filtered[idx];
+                                    if (selected) {
+                                      handleItemChange(item.id, 'item', selected.name);
+                                      const unitDisplay = getUnitDisplay(selected.unit);
+                                      handleItemChange(item.id, 'unit', unitDisplay);
+                                      handleItemChange(item.id, 'price', selected.purchasePrice || 0);
+                                      handleItemChange(item.id, 'qty', '');
+                                      setShowItemSuggestions(prev => ({ ...prev, [item.id]: false }));
+                                    }
+                                  } else if (e.key === 'Escape') {
+                                    setShowItemSuggestions(prev => ({ ...prev, [item.id]: false }));
+                                  }
+                                }}
                               />
                               {showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
                                 <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
@@ -989,26 +1149,28 @@ export default function AddPurchasePage() {
                                   {itemSuggestions.length > 0 ? (
                                     itemSuggestions
                                       .filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()))
-                                    .map(i => (
+                                    .map((i, idx) => (
                                       <li
                                         key={i._id}
-                                          className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
-                                        onMouseDown={() => {
-                                          console.log('Selected item:', i);
+                                        className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 ${itemDropdownIndex[item.id] === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+                                        onMouseDown={e => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
                                           handleItemChange(item.id, 'item', i.name);
-                                          // Set the unit to the item's base unit or secondary unit from backend
                                           const unitDisplay = getUnitDisplay(i.unit);
                                           handleItemChange(item.id, 'unit', unitDisplay);
                                           handleItemChange(item.id, 'price', i.purchasePrice || 0);
-                                          // Keep quantity empty when item is selected
                                           handleItemChange(item.id, 'qty', '');
                                           setShowItemSuggestions(prev => ({ ...prev, [item.id]: false }));
                                         }}
+                                        ref={el => { if (itemDropdownIndex[item.id] === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
+                                        role="option"
+                                        aria-selected={itemDropdownIndex[item.id] === idx}
                                       >
-                                                          <div className="flex justify-between items-center">
-                        <span className="font-medium text-gray-800">{i.name}</span>
-                        <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.purchasePrice || 0} • Qty: {i.openingQuantity ?? (i.stock || 0)}</span>
-                      </div>
+                                        <div className="flex justify-between items-center">
+                                          <span className="font-medium text-gray-800">{i.name}</span>
+                                          <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.purchasePrice || 0} • Qty: {i.openingQuantity ?? (i.stock || 0)}</span>
+                                        </div>
                                       </li>
                                       ))
                                   ) : (
@@ -1056,50 +1218,7 @@ export default function AddPurchasePage() {
                             </td>
                             <td className="py-2 px-2">
                               <CustomDropdown
-                                options={(() => {
-                                  const options: DropdownOption[] = [];
-                                  
-                                  // Add base and secondary units if they exist in the item data
-                                  if (item.item) {
-                                    const selectedItem = itemSuggestions.find(i => i.name === item.item);
-                                    if (selectedItem && selectedItem.unit) {
-                                      const unit = selectedItem.unit;
-                                      
-                                      // Handle object format with conversion factor
-                                      if (typeof unit === 'object' && unit.base) {
-                                        // Add base unit
-                                        if (unit.base && unit.base !== 'NONE') {
-                                          options.push({ value: unit.base, label: unit.base });
-                                        }
-                                        // Add secondary unit if it exists and is different from base
-                                        if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) {
-                                          options.push({ value: unit.secondary, label: unit.secondary });
-                                        }
-                                      }
-                                      // Handle string format like "Piece / Packet"
-                                      else if (typeof unit === 'string' && unit.includes(' / ')) {
-                                        const parts = unit.split(' / ');
-                                        // Add both parts as separate options
-                                        if (parts[0] && parts[0] !== 'NONE') {
-                                          options.push({ value: parts[0], label: parts[0] });
-                                        }
-                                        if (parts[1] && parts[1] !== 'None') {
-                                          options.push({ value: parts[1], label: parts[1] });
-                                        }
-                                      }
-                                      // Handle simple string unit
-                                      else if (typeof unit === 'string') {
-                                        options.push({ value: unit, label: unit });
-                                      }
-                                    }
-                                  }
-                                  
-                                  // If no units found from item, add NONE
-                                  if (options.length === 0) {
-                                    options.push({ value: 'NONE', label: 'NONE' });
-                                  }
-                                  return options;
-                                })()}
+                                options={unitOptions}
                                 value={item.unit}
                                 onChange={val => {
                                   // Get the selected item data for conversion
@@ -1118,6 +1237,9 @@ export default function AddPurchasePage() {
                                   }
                                   handleItemChange(item.id, 'unit', val);
                                 }}
+                                dropdownIndex={0}
+                                setDropdownIndex={()=>{}}
+                                optionsCount={unitOptions.length}
                               />
                               {item.unit === 'Custom' && (
                                 <input
@@ -1249,6 +1371,9 @@ export default function AddPurchasePage() {
                             value={newPurchase.discountType}
                             onChange={val => setNewPurchase({ ...newPurchase, discountType: val })}
                             className="w-28 min-w-[72px] mb-1 h-11"
+                            dropdownIndex={0}
+                            setDropdownIndex={()=>{}}
+                            optionsCount={2}
                           />
                         </div>
                         <div className="text-xs text-gray-500 min-h-[24px] mt-1">
@@ -1285,6 +1410,9 @@ export default function AddPurchasePage() {
                         value={newPurchase.taxType}
                         onChange={val => setNewPurchase({ ...newPurchase, taxType: val })}
                         className="w-28 min-w-[72px] mb-1 h-11"
+                        dropdownIndex={0}
+                        setDropdownIndex={()=>{}}
+                        optionsCount={2}
                       />
                     </div>
                     <div className="text-xs text-gray-500 min-h-[24px] mt-1">
@@ -1313,6 +1441,9 @@ export default function AddPurchasePage() {
                         value={newPurchase.paymentType}
                         onChange={val => setNewPurchase({ ...newPurchase, paymentType: val })}
                         className="mb-1"
+                        dropdownIndex={0}
+                        setDropdownIndex={()=>{}}
+                        optionsCount={4}
                       />
                       <div className="text-xs text-gray-500 min-h-[24px] mt-1"></div>
                     </div>

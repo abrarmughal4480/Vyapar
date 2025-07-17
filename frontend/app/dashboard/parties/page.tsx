@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import ReactDOM from 'react-dom'
 import { createParty, fetchPartiesByUserId, updateParty, deleteParty } from '@/http/parties'
 import Toast from '../../components/Toast'
@@ -39,6 +39,7 @@ interface PartyCategory {
 
 export default function PartiesPage() {
   const router = useRouter()
+  const searchParams = useSearchParams();
   const [parties, setParties] = useState<Party[]>([])
   const [categories, setCategories] = useState<PartyCategory[]>([])
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -196,6 +197,13 @@ export default function PartiesPage() {
       loadPartiesFromAPI()
     }
   }, [loadPartiesFromAPI, authToken])
+
+  useEffect(() => {
+    // Open Add Party modal if ?addParty=1 is present in the URL
+    if (searchParams?.get('addParty') === '1') {
+      setIsModalOpen(true);
+    }
+  }, [searchParams]);
 
   const calculateStats = () => {
     const totalParties = parties.length

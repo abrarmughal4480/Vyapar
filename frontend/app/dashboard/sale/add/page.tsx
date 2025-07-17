@@ -30,9 +30,12 @@ interface CustomDropdownProps {
   className?: string;
   placeholder?: string;
   disabled?: boolean;
+  dropdownIndex: number;
+  setDropdownIndex: React.Dispatch<React.SetStateAction<number>>;
+  optionsCount: number;
 }
 
-function CustomDropdown({ options, value, onChange, className = '', placeholder = 'Select', disabled = false }: CustomDropdownProps) {
+function CustomDropdown({ options, value, onChange, className = '', placeholder = 'Select', disabled = false, dropdownIndex, setDropdownIndex, optionsCount }: CustomDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -85,13 +88,13 @@ function CustomDropdown({ options, value, onChange, className = '', placeholder 
           className="bg-white border-2 border-blue-100 rounded-lg shadow-lg animate-fadeinup custom-dropdown-scrollbar"
           onMouseDown={e => e.preventDefault()}
         >
-          {options.map((opt: DropdownOption) => (
+          {options.map((opt: DropdownOption, idx: number) => (
             <li
               key={opt.value}
-              className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'}`}
-              onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); }}
+              className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'} ${dropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+              onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); setDropdownIndex(idx); }}
               tabIndex={0}
-              onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { if (e.key === 'Enter') { onChange(opt.value); setOpen(false); }}}
+              onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { if (e.key === 'Enter') { onChange(opt.value); setOpen(false); setDropdownIndex(idx); }}}
               aria-selected={value === opt.value}
             >
               {opt.label}
@@ -235,10 +238,14 @@ function ItemRow({
 }) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [dropdownStyle, setDropdownStyle] = React.useState<React.CSSProperties>({});
+  // Add state for item and unit dropdown highlight
+  const [itemDropdownIndex, setItemDropdownIndex] = React.useState(0);
+  const [unitDropdownIndex, setUnitDropdownIndex] = React.useState(0);
 
   const handleFocus = () => {
     fetchItemSuggestions();
     setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: true }));
+    setItemDropdownIndex(0); // reset highlight
     if (inputRef.current) {
       const rect = inputRef.current.getBoundingClientRect();
       const style: React.CSSProperties = {
@@ -250,10 +257,42 @@ function ItemRow({
         maxHeight: '200px',
         overflowY: 'auto' as const
       };
-      console.log('Setting dropdown style:', style);
       setDropdownStyle(style);
     }
   };
+
+  // Prepare unit options
+  const unitOptions = (() => {
+    const options: DropdownOption[] = [];
+    if (item.item) {
+      const selectedItem = itemSuggestions.find(i => i.name === item.item);
+      if (selectedItem && selectedItem.unit) {
+        const unit = selectedItem.unit;
+        if (typeof unit === 'object' && unit.base) {
+          if (unit.base && unit.base !== 'NONE') {
+            options.push({ value: unit.base, label: unit.base });
+          }
+          if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) {
+            options.push({ value: unit.secondary, label: unit.secondary });
+          }
+        } else if (typeof unit === 'string' && unit.includes(' / ')) {
+          const parts = unit.split(' / ');
+          if (parts[0] && parts[0] !== 'NONE') {
+            options.push({ value: parts[0], label: parts[0] });
+          }
+          if (parts[1] && parts[1] !== 'None') {
+            options.push({ value: parts[1], label: parts[1] });
+          }
+        } else if (typeof unit === 'string') {
+          options.push({ value: unit, label: unit });
+        }
+      }
+    }
+    if (options.length === 0) {
+      options.push({ value: 'NONE', label: 'NONE' });
+    }
+    return options;
+  })();
 
   return (
     <tr
@@ -265,59 +304,71 @@ function ItemRow({
           ref={inputRef}
           type="text"
           value={item.item}
-          onChange={e => handleItemChange(item.id, 'item', e.target.value)}
+          onChange={e => {
+            handleItemChange(item.id, 'item', e.target.value);
+            setItemDropdownIndex(0); // reset highlight
+          }}
           onFocus={handleFocus}
           onBlur={() => setTimeout(() => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false })), 200)}
           className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
           placeholder="Enter item name..."
           autoComplete="off"
+          onKeyDown={e => {
+            if (!showItemSuggestions[item.id]) return;
+            const filtered = itemSuggestions.filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
+            const optionsCount = filtered.length;
+            if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+            if (e.key === 'ArrowDown') {
+              setItemDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
+            } else if (e.key === 'ArrowUp') {
+              setItemDropdownIndex(i => Math.max(i - 1, 0));
+            } else if (e.key === 'Enter') {
+              const idx = itemDropdownIndex;
+              const selected = filtered[idx];
+              if (selected) {
+                handleItemChange(item.id, 'item', selected.name);
+                const unitDisplay = getUnitDisplay(selected.unit);
+                handleItemChange(item.id, 'unit', unitDisplay);
+                handleItemChange(item.id, 'price', selected.salePrice || 0);
+                handleItemChange(item.id, 'qty', '');
+                setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+              }
+            } else if (e.key === 'Escape') {
+              setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+            }
+          }}
         />
         {showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
           <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-
-            {itemSuggestions.length > 0 ? (
-              itemSuggestions
-                .filter((i: any) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()))
-              .map((i: any) => (
+            {itemSuggestions
+              .filter((i: any) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()))
+              .map((i: any, idx: number) => (
                 <li
                   key={i._id}
-                    className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
-                  onMouseDown={() => {
+                  className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 ${itemDropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+                  onMouseDown={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     handleItemChange(item.id, 'item', i.name);
-                    // Set the unit to the item's base unit or secondary unit from backend
                     const unitDisplay = getUnitDisplay(i.unit);
                     handleItemChange(item.id, 'unit', unitDisplay);
                     handleItemChange(item.id, 'price', i.salePrice || 0);
-                    // Keep quantity empty when item is selected
                     handleItemChange(item.id, 'qty', '');
                     setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                   }}
+                  ref={el => { if (itemDropdownIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
+                  role="option"
+                  aria-selected={itemDropdownIndex === idx}
                 >
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium text-gray-800">{i.name}</span>
-                      <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.openingQuantity ?? (i.stock || 0)}</span>
-                    </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-gray-800">{i.name}</span>
+                    <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.openingQuantity ?? (i.stock || 0)}</span>
+                  </div>
                 </li>
-                ))
-            ) : (
-              <li className="px-4 py-3 text-center">
-                <div className="text-gray-500 text-sm">
-                  {itemSuggestions.length === 0 ? (
-                    <div>
-                      <div className="text-gray-400 mb-1">📦</div>
-                      <div>No items available</div>
-                      <div className="text-xs text-gray-400 mt-1">Add items in the Items section first</div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="text-gray-400 mb-1">🔍</div>
-                      <div>No matching items</div>
-                      <div className="text-xs text-gray-400 mt-1">Try a different search term</div>
-                    </div>
-                  )}
-                </div>
-              </li>
-            )}
+              ))}
           </ul>,
           document.body
         )}
@@ -329,13 +380,11 @@ function ItemRow({
           min={0}
           onChange={e => {
             handleItemChange(item.id, 'qty', e.target.value);
-            // If this is the last row and qty is not empty, add a new row
             if (
               index === newSale.items.length - 1 &&
               e.target.value &&
               !newSale.items.some((row: { qty?: string }, idx: number) => idx > index && !row.qty)
             ) {
-              // Add a new row
               addNewRow();
             }
           }}
@@ -345,61 +394,15 @@ function ItemRow({
       </td>
       <td className="py-2 px-2">
         <CustomDropdown
-          options={(() => {
-            const options: DropdownOption[] = [];
-            
-            // Add base and secondary units if they exist in the item data
-            if (item.item) {
-              const selectedItem = itemSuggestions.find(i => i.name === item.item);
-              if (selectedItem && selectedItem.unit) {
-                const unit = selectedItem.unit;
-                
-                // Handle object format with conversion factor
-                if (typeof unit === 'object' && unit.base) {
-                  // Add base unit
-                  if (unit.base && unit.base !== 'NONE') {
-                    options.push({ value: unit.base, label: unit.base });
-                  }
-                  // Add secondary unit if it exists and is different from base
-                  if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) {
-                    options.push({ value: unit.secondary, label: unit.secondary });
-                  }
-                }
-                // Handle string format like "Piece / Packet"
-                else if (typeof unit === 'string' && unit.includes(' / ')) {
-                  const parts = unit.split(' / ');
-                  // Add both parts as separate options
-                  if (parts[0] && parts[0] !== 'NONE') {
-                    options.push({ value: parts[0], label: parts[0] });
-                  }
-                  if (parts[1] && parts[1] !== 'None') {
-                    options.push({ value: parts[1], label: parts[1] });
-                  }
-                }
-                // Handle simple string unit
-                else if (typeof unit === 'string') {
-                  options.push({ value: unit, label: unit });
-                }
-              }
-            }
-            
-            // If no units found from item, add NONE
-            if (options.length === 0) {
-              options.push({ value: 'NONE', label: 'NONE' });
-            }
-            return options;
-          })()}
+          options={unitOptions}
           value={item.unit}
           onChange={val => {
-            // Get the selected item data for conversion
             const selectedItem = itemSuggestions.find(i => i.name === item.item);
             if (selectedItem) {
-              // Convert quantity based on unit change
               if (item.qty) {
                 const convertedQty = convertQuantity(item.qty, item.unit, val, selectedItem);
                 handleItemChange(item.id, 'qty', convertedQty);
               }
-              // Convert price based on unit change
               if (item.price) {
                 const convertedPrice = convertPrice(item.price, item.unit, val, selectedItem);
                 handleItemChange(item.id, 'price', convertedPrice);
@@ -407,6 +410,9 @@ function ItemRow({
             }
             handleItemChange(item.id, 'unit', val);
           }}
+          dropdownIndex={0}
+          setDropdownIndex={() => {}}
+          optionsCount={unitOptions.length}
         />
         {item.unit === 'Custom' && (
           <input
@@ -501,6 +507,8 @@ const AddSalePage = () => {
   const [partyBalance, setPartyBalance] = useState<number|null>(null);
   const [invoiceNo, setInvoiceNo] = useState<string | null>(null);
   const [nextInvoiceNo, setNextInvoiceNo] = useState<string | null>(null);
+  // Add state for customer dropdown highlight
+  const [customerDropdownIndex, setCustomerDropdownIndex] = useState(0);
 
   // Fetch items on component mount
   useEffect(() => {
@@ -1021,7 +1029,11 @@ const AddSalePage = () => {
                     type="text"
                     name="partyName"
                     value={newSale.partyName}
-                    onChange={handleInputChange}
+                    onChange={e => {
+                      handleInputChange(e);
+                      setShowCustomerSuggestions(true);
+                      setCustomerDropdownIndex(0); // reset highlight
+                    }}
                     onFocus={() => {
                       fetchCustomerSuggestions();
                       setShowCustomerSuggestions(true);
@@ -1030,19 +1042,65 @@ const AddSalePage = () => {
                     className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${formErrors.partyName ? 'border-red-300 bg-red-50' : 'border-blue-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-200 focus:outline-none`}
                     placeholder="Search or enter customer name"
                     autoComplete="off"
+                    onKeyDown={e => {
+                      if (!showCustomerSuggestions) return;
+                      const optionsCount = customerSuggestions.length + 1; // +1 for Add Customer
+                      if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }
+                      if (e.key === 'ArrowDown') {
+                        setCustomerDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
+                      } else if (e.key === 'ArrowUp') {
+                        setCustomerDropdownIndex(i => Math.max(i - 1, 0));
+                      } else if (e.key === 'Enter') {
+                        if (customerDropdownIndex === 0) {
+                          router.push('/dashboard/parties?addParty=1');
+                          setShowCustomerSuggestions(false);
+                        } else {
+                          const c = customerSuggestions[customerDropdownIndex - 1];
+                          if (c) {
+                            setNewSale(prev => ({ ...prev, partyName: c.name, phoneNo: c.phone }));
+                            setShowCustomerSuggestions(false);
+                          }
+                        }
+                      } else if (e.key === 'Escape') {
+                        setShowCustomerSuggestions(false);
+                      }
+                    }}
                   />
                   {showCustomerSuggestions && (
                     <div className="absolute left-0 right-0 mt-1 w-full z-50">
-                      {customerSuggestions.length > 0 ? (
+                      {(customerSuggestions.length > 0 || true) ? (
                         <ul className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                          {customerSuggestions.map((c) => (
+                          {/* Add Customer option at the top */}
+                          <li
+                            className={`px-4 py-2 cursor-pointer text-blue-600 font-semibold hover:bg-blue-50 rounded-t-lg ${customerDropdownIndex === 0 ? 'bg-blue-100 text-blue-700' : ''}`}
+                            onMouseDown={e => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              router.push('/dashboard/parties?addParty=1');
+                              setShowCustomerSuggestions(false);
+                            }}
+                            ref={el => { if (customerDropdownIndex === 0 && el) el.scrollIntoView({ block: 'nearest' }); }}
+                            role="option"
+                            aria-selected={customerDropdownIndex === 0}
+                          >
+                            + Add Customer
+                          </li>
+                          {customerSuggestions.map((c, idx) => (
                             <li
                               key={c._id}
-                              className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
-                              onMouseDown={() => {
+                              className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors ${customerDropdownIndex === idx + 1 ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+                              onMouseDown={e => {
+                                e.preventDefault();
+                                e.stopPropagation();
                                 setNewSale(prev => ({ ...prev, partyName: c.name, phoneNo: c.phone }));
                                 setShowCustomerSuggestions(false);
                               }}
+                              ref={el => { if (customerDropdownIndex === idx + 1 && el) el.scrollIntoView({ block: 'nearest' }); }}
+                              role="option"
+                              aria-selected={customerDropdownIndex === idx + 1}
                             >
                               {c.name} {c.phone && <span className="text-xs text-gray-400">({c.phone})</span>}
                             </li>
@@ -1213,6 +1271,9 @@ const AddSalePage = () => {
                         value={newSale.discountType}
                         onChange={val => setNewSale(prev => ({ ...prev, discountType: val }))}
                         className="w-28 min-w-[72px] mb-1 h-11"
+                        dropdownIndex={0}
+                        setDropdownIndex={() => {}}
+                        optionsCount={2}
                       />
                     </div>
                     <div className="text-xs text-gray-500 min-h-[24px] mt-1">
@@ -1250,6 +1311,9 @@ const AddSalePage = () => {
                     value={newSale.taxType || '%'}
                     onChange={val => setNewSale(prev => ({ ...prev, taxType: val }))}
                     className="w-28 min-w-[72px] mb-1 h-11"
+                    dropdownIndex={0}
+                    setDropdownIndex={() => {}}
+                    optionsCount={2}
                   />
                 </div>
                 <div className="text-xs text-gray-500 min-h-[24px] mt-1">
@@ -1276,6 +1340,9 @@ const AddSalePage = () => {
                     value={newSale.paymentType}
                     onChange={val => setNewSale(prev => ({ ...prev, paymentType: val }))}
                     className="mb-1"
+                    dropdownIndex={0}
+                    setDropdownIndex={() => {}}
+                    optionsCount={2}
                   />
                   <div className="text-xs text-gray-500 min-h-[24px] mt-1">
                     {/* Reserved for future info text, keeps alignment consistent */}

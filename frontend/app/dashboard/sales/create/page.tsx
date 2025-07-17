@@ -204,6 +204,21 @@ export default function CreateSalesOrderPage() {
     }
   }, []);
 
+  // Block ALL window/page scroll on arrow keys globally
+  useEffect(() => {
+    function blockAllArrowScroll(e: KeyboardEvent) {
+      // Only block if not focused on any input (let input's own onKeyDown handle it)
+      if (
+        ["ArrowDown", "ArrowUp"].includes(e.key) &&
+        !(e.target instanceof HTMLInputElement)
+      ) {
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("keydown", blockAllArrowScroll, { passive: false });
+    return () => window.removeEventListener("keydown", blockAllArrowScroll);
+  }, []);
+
   // Unit options
   const unitOptions = ['NONE', 'PCS', 'KG', 'METER', 'LITER', 'BOX', 'DOZEN']
   const taxOptions = ['NONE', 'GST 5%', 'GST 12%', 'GST 18%', 'GST 28%']
@@ -425,6 +440,9 @@ export default function CreateSalesOrderPage() {
   }) {
     const inputRef = React.useRef<HTMLInputElement>(null);
     const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+    // Add state for item and unit dropdown highlight
+    const [itemDropdownIndex, setItemDropdownIndex] = useState(0);
+    const [unitDropdownIndex, setUnitDropdownIndex] = useState(0);
 
     const updateDropdownPosition = () => {
       if (inputRef.current) {
@@ -436,7 +454,6 @@ export default function CreateSalesOrderPage() {
           width: rect.width,
           zIndex: 9999
         };
-        console.log('Dropdown position:', style);
         setDropdownStyle(style);
       }
     };
@@ -465,16 +482,44 @@ export default function CreateSalesOrderPage() {
     }, [showItemSuggestions[item.id]]);
 
     const handleFocus = () => {
-      console.log('Item input focused, fetching suggestions...');
-      console.log('Item ID:', item.id);
       fetchItemSuggestions();
-      setShowItemSuggestions((prev: any) => {
-        const newState = { ...prev, [item.id]: true };
-        console.log('Updated showItemSuggestions:', newState);
-        return newState;
-      });
+      setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: true }));
+      setItemDropdownIndex(0); // reset highlight
       updateDropdownPosition();
     };
+
+    // Prepare unit options
+    const unitOptions = (() => {
+      const options: DropdownOption[] = [];
+      if (item.item) {
+        const selectedItem = itemSuggestions.find(i => i.name === item.item);
+        if (selectedItem && selectedItem.unit) {
+          const unit = selectedItem.unit;
+          if (typeof unit === 'object' && unit.base) {
+            if (unit.base && unit.base !== 'NONE') {
+              options.push({ value: unit.base, label: unit.base });
+            }
+            if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) {
+              options.push({ value: unit.secondary, label: unit.secondary });
+            }
+          } else if (typeof unit === 'string' && unit.includes(' / ')) {
+            const parts = unit.split(' / ');
+            if (parts[0] && parts[0] !== 'NONE') {
+              options.push({ value: parts[0], label: parts[0] });
+            }
+            if (parts[1] && parts[1] !== 'None') {
+              options.push({ value: parts[1], label: parts[1] });
+            }
+          } else if (typeof unit === 'string') {
+            options.push({ value: unit, label: unit });
+          }
+        }
+      }
+      if (options.length === 0) {
+        options.push({ value: 'NONE', label: 'NONE' });
+      }
+      return options;
+    })();
 
     return (
       <tr className={`border-b border-gray-100 ${index % 2 === 0 ? 'bg-white' : 'bg-blue-50'} hover:bg-blue-100 transition-colors`}>
@@ -485,76 +530,78 @@ export default function CreateSalesOrderPage() {
             type="text"
             value={item.item}
             onChange={e => {
-              console.log('Item input changed:', e.target.value);
               handleItemChange(item.id, 'item', e.target.value);
+              setItemDropdownIndex(0); // reset highlight
             }}
             onFocus={handleFocus}
-            onBlur={() => {
-              console.log('Item input blurred');
-              setTimeout(() => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false })), 200);
-            }}
-            className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+            onBlur={() => setTimeout(() => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false })), 200)}
+            className="item-dropdown-input w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
             placeholder="Enter item name..."
             data-testid={`item-input-${item.id}`}
+            onKeyDown={e => {
+              console.log('KEY:', e.key, 'showItemSuggestions:', showItemSuggestions[item.id]);
+              if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+                e.preventDefault();
+                e.stopPropagation();
+              }
+              if (!showItemSuggestions[item.id]) return;
+              const filtered = itemSuggestions.filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
+              const optionsCount = filtered.length;
+              if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+                e.preventDefault();
+                e.stopPropagation();
+              }
+              if (e.key === 'ArrowDown') {
+                setItemDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
+              } else if (e.key === 'ArrowUp') {
+                setItemDropdownIndex(i => Math.max(i - 1, 0));
+              } else if (e.key === 'Enter') {
+                const idx = itemDropdownIndex;
+                const selected = filtered[idx];
+                if (selected) {
+                  handleItemChange(item.id, 'item', selected.name);
+                  const unitDisplay = getUnitDisplay(selected.unit);
+                  handleItemChange(item.id, 'unit', unitDisplay);
+                  handleItemChange(item.id, 'price', selected.salePrice || 0);
+                  handleItemChange(item.id, 'qty', '1');
+                  setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+                }
+              } else if (e.key === 'Escape') {
+                setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+              }
+            }}
           />
-          {showItemSuggestions[item.id] && typeof window !== 'undefined' && (() => {
-            console.log('Rendering item suggestions dropdown for item', item.id);
-            console.log('showItemSuggestions:', showItemSuggestions);
-            console.log('itemSuggestions length:', itemSuggestions.length);
-            console.log('itemSuggestions:', itemSuggestions);
-            console.log('Dropdown style:', dropdownStyle);
-            return ReactDOM.createPortal(
+          {showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
             <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-              {itemSuggestions.length > 0 ? (
-                (() => {
-                  const filteredItems = itemSuggestions.filter((i: any) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
-                  console.log('Filtered items for search term:', item.item, 'Result:', filteredItems);
-                  return filteredItems.map((i: any) => (
-                    <li
-                      key={i._id}
-                      className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
-                      onMouseDown={() => {
-                        console.log('Selected item:', i);
-                        handleItemChange(item.id, 'item', i.name);
-                        // Set the unit to the item's base unit or secondary unit from backend
-                        const unitDisplay = getUnitDisplay(i.unit);
-                        handleItemChange(item.id, 'unit', unitDisplay);
-                        handleItemChange(item.id, 'price', i.salePrice || 0);
-                                              // Set a default quantity of 1 when item is selected
+              {itemSuggestions
+                .filter((i: any) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()))
+                .map((i: any, idx: number) => (
+                  <li
+                    key={i._id}
+                    className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 ${itemDropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+                    onMouseDown={e => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleItemChange(item.id, 'item', i.name);
+                      const unitDisplay = getUnitDisplay(i.unit);
+                      handleItemChange(item.id, 'unit', unitDisplay);
+                      handleItemChange(item.id, 'price', i.salePrice || 0);
                       handleItemChange(item.id, 'qty', '1');
-                        setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
-                      }}
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium text-gray-800">{i.name}</span>
-                        <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.openingQuantity ?? (i.stock || 0)}</span>
-                      </div>
-                    </li>
-                  ));
-                })()
-              ) : (
-                <li className="px-4 py-3 text-center">
-                  <div className="text-gray-500 text-sm">
-                    {itemSuggestions.length === 0 ? (
-                      <div>
-                        <div className="text-gray-400 mb-1">📦</div>
-                        <div>No items available</div>
-                        <div className="text-xs text-gray-400 mt-1">Add items in the Items section first</div>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="text-gray-400 mb-1">🔍</div>
-                        <div>No matching items</div>
-                        <div className="text-xs text-gray-400 mt-1">Try a different search term</div>
-                      </div>
-                    )}
-                  </div>
-                </li>
-              )}
+                      setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+                    }}
+                    ref={el => { if (itemDropdownIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
+                    role="option"
+                    aria-selected={itemDropdownIndex === idx}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-gray-800">{i.name}</span>
+                      <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.openingQuantity ?? (i.stock || 0)}</span>
+                    </div>
+                  </li>
+                ))}
             </ul>,
             document.body
-          );
-          })()}
+          )}
         </td>
         <td className="py-2 px-2">
           <input
@@ -563,13 +610,11 @@ export default function CreateSalesOrderPage() {
             value={item.qty}
             onChange={e => {
               handleItemChange(item.id, 'qty', e.target.value);
-              // If this is the last row and qty is not empty, add a new row
               if (
                 index === formData.items.length - 1 &&
                 e.target.value &&
                 !formData.items.some((row: { qty?: number }, idx: number) => idx > index && !row.qty)
               ) {
-                // Add a new row
                 addRow();
               }
             }}
@@ -578,68 +623,25 @@ export default function CreateSalesOrderPage() {
         </td>
         <td className="py-2 px-2">
           <CustomDropdown
-            options={(() => {
-              const options: DropdownOption[] = [];
-              
-              // Add base and secondary units if they exist in the item data
-              if (item.item) {
-                const selectedItem = itemSuggestions.find(i => i.name === item.item);
-                if (selectedItem && selectedItem.unit) {
-                  const unit = selectedItem.unit;
-                  
-                  // Handle object format with conversion factor
-                  if (typeof unit === 'object' && unit.base) {
-                    // Add base unit
-                    if (unit.base && unit.base !== 'NONE') {
-                      options.push({ value: unit.base, label: unit.base });
-                    }
-                    // Add secondary unit if it exists and is different from base
-                    if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) {
-                      options.push({ value: unit.secondary, label: unit.secondary });
-                    }
-                  }
-                  // Handle string format like "Piece / Packet"
-                  else if (typeof unit === 'string' && unit.includes(' / ')) {
-                    const parts = unit.split(' / ');
-                    // Add both parts as separate options
-                    if (parts[0] && parts[0] !== 'NONE') {
-                      options.push({ value: parts[0], label: parts[0] });
-                    }
-                    if (parts[1] && parts[1] !== 'None') {
-                      options.push({ value: parts[1], label: parts[1] });
-                    }
-                  }
-                  // Handle simple string unit
-                  else if (typeof unit === 'string') {
-                    options.push({ value: unit, label: unit });
-                  }
-                }
-              }
-              
-              // If no units found from item, add NONE
-              if (options.length === 0) {
-                options.push({ value: 'NONE', label: 'NONE' });
-              }
-              return options;
-            })()}
+            options={unitOptions}
             value={item.unit}
             onChange={val => {
-              // Get the selected item data for conversion
               const selectedItem = itemSuggestions.find(i => i.name === item.item);
               if (selectedItem) {
-                // Convert quantity based on unit change
                 if (item.qty) {
-                  const convertedQty = convertQuantity(item.qty.toString(), item.unit, val, selectedItem);
-                  handleItemChange(item.id, 'qty', parseFloat(convertedQty) || 0);
+                  const convertedQty = convertQuantity(item.qty, item.unit, val, selectedItem);
+                  handleItemChange(item.id, 'qty', convertedQty);
                 }
-                // Convert price based on unit change
                 if (item.price) {
-                  const convertedPrice = convertPrice(item.price.toString(), item.unit, val, selectedItem);
-                  handleItemChange(item.id, 'price', parseFloat(convertedPrice) || 0);
+                  const convertedPrice = convertPrice(item.price, item.unit, val, selectedItem);
+                  handleItemChange(item.id, 'price', convertedPrice);
                 }
               }
               handleItemChange(item.id, 'unit', val);
             }}
+            dropdownIndex={0}
+            setDropdownIndex={() => {}}
+            optionsCount={unitOptions.length}
           />
           {item.unit === 'Custom' && (
             <input
@@ -648,6 +650,7 @@ export default function CreateSalesOrderPage() {
               onChange={e => handleItemChange(item.id, 'customUnit', e.target.value)}
               className="mt-2 w-full px-3 py-2 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
               placeholder="Enter custom unit"
+              autoComplete="off"
             />
           )}
         </td>
@@ -710,8 +713,11 @@ export default function CreateSalesOrderPage() {
     className?: string;
     placeholder?: string;
     disabled?: boolean;
+    dropdownIndex: number;
+    setDropdownIndex: React.Dispatch<React.SetStateAction<number>>;
+    optionsCount: number;
   }
-  function CustomDropdown({ options, value, onChange, className = '', placeholder = 'Select', disabled = false }: CustomDropdownProps) {
+  function CustomDropdown({ options, value, onChange, className = '', placeholder = 'Select', disabled = false, dropdownIndex, setDropdownIndex, optionsCount }: CustomDropdownProps) {
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
     const btnRef = useRef<HTMLButtonElement>(null);
@@ -752,6 +758,21 @@ export default function CreateSalesOrderPage() {
           onClick={() => setOpen((v) => !v)}
           disabled={disabled}
           tabIndex={0}
+          onKeyDown={(e: React.KeyboardEvent<HTMLButtonElement>) => {
+            if (e.key === 'ArrowDown') {
+              setDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
+            } else if (e.key === 'ArrowUp') {
+              setDropdownIndex(i => Math.max(i - 1, 0));
+            } else if (e.key === 'Enter') {
+              const selected = options[dropdownIndex];
+              if (selected) {
+                onChange(selected.value);
+                setOpen(false);
+              }
+            } else if (e.key === 'Escape') {
+              setOpen(false);
+            }
+          }}
         >
           <span className="truncate text-left">{options.find((o: DropdownOption) => o.value === value)?.label || placeholder}</span>
           <span className={`ml-2 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}>
@@ -764,14 +785,15 @@ export default function CreateSalesOrderPage() {
             className="bg-white border-2 border-blue-100 rounded-lg shadow-lg animate-fadeinup custom-dropdown-scrollbar"
             onMouseDown={e => e.preventDefault()}
           >
-            {options.map((opt: DropdownOption) => (
+            {options.map((opt: DropdownOption, idx: number) => (
               <li
                 key={opt.value}
-                className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'}`}
+                className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'} ${dropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
                 onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); }}
                 tabIndex={0}
                 onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { if (e.key === 'Enter') { onChange(opt.value); setOpen(false); }}}
                 aria-selected={value === opt.value}
+                ref={el => { if (dropdownIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
               >
                 {opt.label}
               </li>
@@ -782,6 +804,9 @@ export default function CreateSalesOrderPage() {
       </div>
     );
   }
+
+  // Add state for customer dropdown highlight
+  const [customerDropdownIndex, setCustomerDropdownIndex] = useState(0);
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -826,9 +851,10 @@ export default function CreateSalesOrderPage() {
                   <input
                     type="text"
                     value={formData.customer}
-                    onChange={(e) => {
-                      setFormData(prev => ({ ...prev, customer: e.target.value }))
-                      setSearchDropdownOpen(true)
+                    onChange={e => {
+                      setFormData(prev => ({ ...prev, customer: e.target.value }));
+                      setSearchDropdownOpen(true);
+                      setCustomerDropdownIndex(0); // reset highlight
                     }}
                     onFocus={() => {
                       setSearchDropdownOpen(true);
@@ -838,24 +864,74 @@ export default function CreateSalesOrderPage() {
                     className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 border-blue-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none`}
                     placeholder="Search or enter customer name"
                     autoComplete="off"
+                    onKeyDown={e => {
+                      if (!searchDropdownOpen) return;
+                      const filtered = customerSuggestions.filter((party: any) =>
+                        party.name.toLowerCase().includes(formData.customer.toLowerCase()) ||
+                        (party.phone && party.phone.includes(formData.customer))
+                      );
+                      const optionsCount = filtered.length + 1; // +1 for Add Customer
+                      if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }
+                      if (e.key === 'ArrowDown') {
+                        setCustomerDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
+                      } else if (e.key === 'ArrowUp') {
+                        setCustomerDropdownIndex(i => Math.max(i - 1, 0));
+                      } else if (e.key === 'Enter') {
+                        if (customerDropdownIndex === 0) {
+                          router.push('/dashboard/parties?addParty=1');
+                          setSearchDropdownOpen(false);
+                        } else {
+                          const party = filtered[customerDropdownIndex - 1];
+                          if (party) {
+                            setFormData(prev => ({ ...prev, customer: party.name, phone: party.phone || '' }));
+                            setSearchDropdownOpen(false);
+                          }
+                        }
+                      } else if (e.key === 'Escape') {
+                        setSearchDropdownOpen(false);
+                      }
+                    }}
                   />
                   {searchDropdownOpen && (
                     <div className="absolute left-0 right-0 mt-1 w-full z-50">
-                      {customerSuggestions.length > 0 ? (
+                      {(customerSuggestions.length > 0 || true) ? (
                         <ul className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                          {/* Add Customer option at the top */}
+                          <li
+                            className={`px-4 py-2 cursor-pointer text-blue-600 font-semibold hover:bg-blue-50 rounded-t-lg ${customerDropdownIndex === 0 ? 'bg-blue-100 text-blue-700' : ''}`}
+                            onMouseDown={e => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              router.push('/dashboard/parties?addParty=1');
+                              setSearchDropdownOpen(false);
+                            }}
+                            ref={el => { if (customerDropdownIndex === 0 && el) el.scrollIntoView({ block: 'nearest' }); }}
+                            role="option"
+                            aria-selected={customerDropdownIndex === 0}
+                          >
+                            + Add Customer
+                          </li>
                           {customerSuggestions
                             .filter((party: any) =>
                               party.name.toLowerCase().includes(formData.customer.toLowerCase()) ||
                               (party.phone && party.phone.includes(formData.customer))
                             )
-                            .map((party: any, index: number) => (
+                            .map((party: any, idx: number) => (
                               <li
-                                key={party._id || index}
-                                className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
-                                onMouseDown={() => {
+                                key={party._id || idx}
+                                className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors ${customerDropdownIndex === idx + 1 ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+                                onMouseDown={e => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
                                   setFormData(prev => ({ ...prev, customer: party.name, phone: party.phone || '' }));
                                   setSearchDropdownOpen(false);
                                 }}
+                                ref={el => { if (customerDropdownIndex === idx + 1 && el) el.scrollIntoView({ block: 'nearest' }); }}
+                                role="option"
+                                aria-selected={customerDropdownIndex === idx + 1}
                               >
                                 {party.name} {party.phone && <span className="text-xs text-gray-400">({party.phone})</span>}
                               </li>
@@ -1042,6 +1118,9 @@ export default function CreateSalesOrderPage() {
                         value={formData.discountType}
                         onChange={e => setFormData(prev => ({ ...prev, discountType: e }))}
                         className="w-28 min-w-[72px] mb-1 h-11 border-2 border-blue-100 rounded-lg"
+                        dropdownIndex={0}
+                        setDropdownIndex={() => {}}
+                        optionsCount={2}
                       />
                     </div>
                     <div className="text-xs text-gray-500 min-h-[24px] mt-1">
@@ -1078,6 +1157,9 @@ export default function CreateSalesOrderPage() {
                     value={formData.taxType}
                     onChange={e => setFormData(prev => ({ ...prev, taxType: e }))}
                     className="w-28 min-w-[72px] mb-1 h-11 border-2 border-blue-100 rounded-lg"
+                    dropdownIndex={0}
+                    setDropdownIndex={() => {}}
+                    optionsCount={2}
                   />
                 </div>
                 <div className="text-xs text-gray-500 min-h-[24px] mt-1">
@@ -1104,6 +1186,9 @@ export default function CreateSalesOrderPage() {
                     value={formData.paymentType}
                     onChange={e => setFormData(prev => ({ ...prev, paymentType: e }))}
                     className="mb-1 border-2 border-blue-100 rounded-lg h-11"
+                    dropdownIndex={0}
+                    setDropdownIndex={() => {}}
+                    optionsCount={2}
                   />
                   <div className="text-xs text-gray-500 min-h-[24px] mt-1"></div>
                 </div>

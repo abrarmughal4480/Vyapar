@@ -163,6 +163,28 @@ function AddItemPageInner() {
   const [showBaseUnitDropdown, setShowBaseUnitDropdown] = useState(false);
   const [showSecondaryUnitDropdown, setShowSecondaryUnitDropdown] = useState(false);
 
+  // 1. Add state for customCategory and showCustomCategoryInput
+  const [customCategory, setCustomCategory] = useState('');
+  const [showCustomCategoryInput, setShowCustomCategoryInput] = useState(false);
+
+  // 1. Add state for keyboard navigation
+  const [categoryDropdownIndex, setCategoryDropdownIndex] = useState(-1);
+  const categoryOptions = [...ITEM_CATEGORIES, '+ Add Custom'];
+  const categoryListRef = useRef<HTMLUListElement>(null);
+
+  // 2. Update dropdown <ul> to use ref and handle keyboard navigation
+  // 3. When opening dropdown, reset index to 0
+  useEffect(() => {
+    if (showCategoryDropdown) setCategoryDropdownIndex(0);
+  }, [showCategoryDropdown]);
+
+  // 1. When opening the dropdown, focus the <ul> so keyboard navigation works immediately
+  useEffect(() => {
+    if (showCategoryDropdown && categoryListRef.current) {
+      categoryListRef.current.focus();
+    }
+  }, [showCategoryDropdown]);
+
   useEffect(() => {
     const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
     let userId = '';
@@ -466,6 +488,7 @@ function AddItemPageInner() {
                   </button>
                   {showCategoryDropdown && (
                     <ul
+                      ref={categoryListRef}
                       className="absolute z-[9999] bg-white rounded-xl shadow-lg border border-gray-100 py-1 max-h-60 overflow-auto animate-fadeinup"
                       style={{
                         top: '100%',
@@ -473,21 +496,101 @@ function AddItemPageInner() {
                         width: '100%',
                         position: 'absolute',
                       }}
-                      tabIndex={-1}
+                      tabIndex={0}
                       role="listbox"
+                      onKeyDown={e => {
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setCategoryDropdownIndex(i => Math.min(i + 1, categoryOptions.length - 1));
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setCategoryDropdownIndex(i => Math.max(i - 1, 0));
+                        } else if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (categoryDropdownIndex >= 0 && categoryDropdownIndex < ITEM_CATEGORIES.length) {
+                            setNewItem(prev => ({ ...prev, category: ITEM_CATEGORIES[categoryDropdownIndex] }));
+                            setShowCategoryDropdown(false);
+                          } else if (categoryDropdownIndex === ITEM_CATEGORIES.length) {
+                            setShowCustomCategoryInput(true);
+                            setShowCategoryDropdown(false);
+                          }
+                        } else if (e.key === 'Escape') {
+                          setShowCategoryDropdown(false);
+                        }
+                      }}
                     >
-                      {ITEM_CATEGORIES.map((cat) => (
+                      {ITEM_CATEGORIES.map((cat, idx) => (
                         <li
                           key={cat}
-                          className={`px-4 py-2 cursor-pointer rounded-lg transition-all hover:bg-blue-50 ${newItem.category === cat ? 'font-semibold text-blue-600' : 'text-gray-700'}`}
+                          className={`px-4 py-2 cursor-pointer rounded-lg transition-all hover:bg-blue-50 ${newItem.category === cat ? 'font-semibold text-blue-600' : 'text-gray-700'} ${categoryDropdownIndex === idx ? 'bg-blue-100' : ''}`}
                           onClick={() => { setNewItem(prev => ({ ...prev, category: cat })); setShowCategoryDropdown(false); }}
                           role="option"
                           aria-selected={newItem.category === cat}
+                          onMouseEnter={() => setCategoryDropdownIndex(idx)}
+                          ref={el => {
+                            if (categoryDropdownIndex === idx && el) {
+                              el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                            }
+                          }}
                         >
                           {cat}
                         </li>
                       ))}
+                      <li
+                        className={`px-4 py-2 cursor-pointer hover:bg-blue-50 text-blue-600 ${categoryDropdownIndex === ITEM_CATEGORIES.length ? 'bg-blue-100' : ''}`}
+                        onClick={() => { setShowCustomCategoryInput(true); setShowCategoryDropdown(false); }}
+                        role="option"
+                        aria-selected={showCustomCategoryInput}
+                        onMouseEnter={() => setCategoryDropdownIndex(ITEM_CATEGORIES.length)}
+                        ref={el => {
+                          if (categoryDropdownIndex === ITEM_CATEGORIES.length && el) {
+                            el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                          }
+                        }}
+                      >
+                        + Add Custom
+                      </li>
                     </ul>
+                  )}
+                  {showCustomCategoryInput && (
+                    <div className="mt-2 flex gap-2 items-center bg-gray-50 p-3 rounded-2xl shadow border border-gray-200 w-full max-w-md">
+                      <input
+                        type="text"
+                        className="flex-1 px-4 py-2 border-2 border-blue-200 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-300 shadow-sm transition-all text-base"
+                        placeholder="Enter custom category"
+                        value={customCategory}
+                        onChange={e => setCustomCategory(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && customCategory.trim()) {
+                            setNewItem(prev => ({ ...prev, category: customCategory.trim() }));
+                            setShowCustomCategoryInput(false);
+                            setCustomCategory('');
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="w-10 h-10 flex items-center justify-center bg-green-500 text-white rounded-full shadow hover:bg-green-600 transition-colors text-lg"
+                        onClick={() => {
+                          if (customCategory.trim()) {
+                            setNewItem(prev => ({ ...prev, category: customCategory.trim() }));
+                            setShowCustomCategoryInput(false);
+                            setCustomCategory('');
+                          }
+                        }}
+                        title="Add"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                      </button>
+                      <button
+                        type="button"
+                        className="w-10 h-10 flex items-center justify-center bg-red-100 text-red-600 rounded-full shadow hover:bg-red-200 transition-colors text-lg"
+                        onClick={() => { setShowCustomCategoryInput(false); setCustomCategory(''); }}
+                        title="Cancel"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
                   )}
                 </div>
                 {formErrors.category && <p className="text-xs text-red-500 mt-1">{formErrors.category}</p>}
@@ -1033,44 +1136,6 @@ function AddItemPageInner() {
                     </div>
                   </div>
                 )}
-
-                {/* Stock Movement Tracking */}
-                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center">
-                    <span className="mr-2">📋</span>
-                    Quick Stock Actions
-                  </h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <button 
-                      type="button"
-                      className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
-                      onClick={() => setNewItem(prev => ({ ...prev, stock: (prev.stock ?? 0) + 1 }))}
-                    >
-                      +1 Stock
-                    </button>
-                    <button 
-                      type="button"
-                      className="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
-                      onClick={() => setNewItem(prev => ({ ...prev, stock: Math.max((prev.stock ?? 0) - 1, 0) }))}
-                    >
-                      -1 Stock
-                    </button>
-                    <button 
-                      type="button"
-                      className="px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
-                      onClick={() => setNewItem(prev => ({ ...prev, stock: prev.minStock ?? 0 }))}
-                    >
-                      Set to Min
-                    </button>
-                    <button 
-                      type="button"
-                      className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
-                      onClick={() => setNewItem(prev => ({ ...prev, stock: 0 }))}
-                    >
-                      Reset Stock
-                    </button>
-                  </div>
-                </div>
               </div>
             )}
           </div>
@@ -1116,16 +1181,6 @@ function AddItemPageInner() {
               <button onClick={() => setShowUnitModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
             </div>
             <div className="p-6 space-y-6">
-              {/* Unit Search */}
-              <div className="mb-2">
-                <input
-                  type="text"
-                  value={unitSearch}
-                  onChange={e => setUnitSearch(e.target.value)}
-                  placeholder="Search unit..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded mb-2"
-                />
-              </div>
               <div className="grid grid-cols-2 gap-4">
                 {/* Base Unit */}
                 <div>
@@ -1171,6 +1226,12 @@ function AddItemPageInner() {
                         onChange={e => setCustomBaseUnit(e.target.value)}
                         placeholder="Custom Unit"
                         className="w-full mt-2 px-2 py-1 border border-gray-300 rounded"
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && customBaseUnit.trim()) {
+                            setSelectedBaseUnit('custom');
+                            setShowBaseUnitDropdown(false);
+                          }
+                        }}
                       />
                     )}
                   </div>
@@ -1219,6 +1280,12 @@ function AddItemPageInner() {
                         onChange={e => setCustomSecondaryUnit(e.target.value)}
                         placeholder="Custom Unit"
                         className="w-full mt-2 px-2 py-1 border border-gray-300 rounded"
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && customSecondaryUnit.trim()) {
+                            setSelectedSecondaryUnit('custom');
+                            setShowSecondaryUnitDropdown(false);
+                          }
+                        }}
                       />
                     )}
                   </div>

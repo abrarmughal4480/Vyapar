@@ -467,6 +467,7 @@ const AddSalePage = () => {
     tax: '',
     taxType: '%',
     paymentType: 'Credit',
+    receivedAmount: '', // <-- Add this line
     editingId: null
   });
   const [sourceOrderId, setSourceOrderId] = useState<string | null>(null);
@@ -715,6 +716,7 @@ const AddSalePage = () => {
         description,
         imageUrl: uploadedImage,
         tax: newSale.tax === 'NONE' || newSale.tax === '' ? 0 : newSale.tax,
+        receivedAmount: newSale.paymentType === 'Cash' ? newSale.receivedAmount : undefined, // Only send if Cash
         sourceOrderId, // Include the original order ID
         sourceOrderNumber // Include the original order number
       };
@@ -893,6 +895,7 @@ const AddSalePage = () => {
             tax: parsedData.tax || '',
             taxType: parsedData.taxType || '%',
             paymentType: parsedData.paymentType || 'Credit',
+            receivedAmount: parsedData.receivedAmount || '',
             editingId: null
           });
           setDescription(parsedData.description || '');
@@ -992,6 +995,7 @@ const AddSalePage = () => {
               tax: saleData.tax || '',
               taxType: saleData.taxType || '%',
               paymentType: saleData.paymentType || 'Credit',
+              receivedAmount: saleData.receivedAmount || '', // Add this line
               editingId: saleData._id || saleData.id || null
             });
             setDescription(saleData.description || '');
@@ -1344,6 +1348,22 @@ const AddSalePage = () => {
                     setDropdownIndex={() => {}}
                     optionsCount={2}
                   />
+                  {newSale.paymentType === 'Cash' && (
+                    <div className="mt-2">
+                      <label className="block text-xs font-medium text-green-700 mb-1">Received Amount</label>
+                      <input
+                        type="number"
+                        name="receivedAmount"
+                        value={newSale.receivedAmount}
+                        min={0}
+                        max={grandTotal}
+                        onChange={e => setNewSale(prev => ({ ...prev, receivedAmount: e.target.value }))}
+                        className="w-full px-3 py-2 border-2 border-green-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-200"
+                        placeholder={`Enter amount received (max PKR ${grandTotal.toFixed(2)})`}
+                        autoComplete="off"
+                      />
+                    </div>
+                  )}
                   <div className="text-xs text-gray-500 min-h-[24px] mt-1">
                     {/* Reserved for future info text, keeps alignment consistent */}
                   </div>

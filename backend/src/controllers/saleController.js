@@ -63,6 +63,12 @@ export const createSale = async (req, res) => {
         invoiceNo = `INV${nextNum}`;
       }
     }
+    // Handle received amount for cash payments
+    let received = 0;
+    if (req.body.paymentType === 'Cash' && req.body.receivedAmount !== undefined && req.body.receivedAmount !== null) {
+      received = Number(req.body.receivedAmount) || 0;
+    }
+    const balance = grandTotal - received;
     const sale = new Sale({
       ...req.body,
       userId: userIdObj,
@@ -72,8 +78,8 @@ export const createSale = async (req, res) => {
       taxValue,
       grandTotal,
       invoiceNo,
-      balance: grandTotal,
-      received: 0
+      balance,
+      received
     });
     await sale.save();
     
@@ -102,12 +108,16 @@ export const createSale = async (req, res) => {
       }
     }
     
-    // Update party openingBalance in DB (directly add grandTotal)
+    // Update party openingBalance in DB (add only balance, not full grandTotal, if receivedAmount is provided)
     try {
       const Party = (await import('../models/parties.js')).default;
       const partyDoc = await Party.findOne({ name: sale.partyName, user: userId });
       if (partyDoc) {
-        partyDoc.openingBalance = (partyDoc.openingBalance || 0) + (sale.grandTotal || 0);
+        if (req.body.paymentType === 'Cash' && req.body.receivedAmount !== undefined && req.body.receivedAmount !== null) {
+          partyDoc.openingBalance = (partyDoc.openingBalance || 0) + balance;
+        } else {
+          partyDoc.openingBalance = (partyDoc.openingBalance || 0) + (sale.grandTotal || 0);
+        }
         await partyDoc.save();
       }
     } catch (err) {

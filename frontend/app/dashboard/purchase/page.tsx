@@ -1073,7 +1073,7 @@ export default function PurchaseBillsPage() {
     }
     setShowPaymentOut(false);
   }}
-  partyName={selectedPurchase?.supplierName || selectedPurchase?.partyName || selectedPurchase?.name || selectedPurchase?.phoneNo || ''}
+  partyName={selectedPurchase?.supplierName || selectedPurchase?.phoneNo || ''}
   total={typeof selectedPurchase?.grandTotal === 'number' ? selectedPurchase.grandTotal : 0}
   dueBalance={typeof selectedPurchase?.balance === 'number' ? selectedPurchase.balance : 0}
   purchaseId={selectedPurchase?._id || '0'}

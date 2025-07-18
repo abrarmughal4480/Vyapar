@@ -67,6 +67,12 @@ export const createPurchase = async (req, res) => {
       }
     }
     
+    // Handle paid amount for cash payments
+    let paid = 0;
+    if (req.body.paymentType === 'Cash' && req.body.paid !== undefined && req.body.paid !== null) {
+      paid = Number(req.body.paid) || 0;
+    }
+    const balance = grandTotal - paid;
     const purchase = new Purchase({
       ...req.body,
       userId,
@@ -76,8 +82,8 @@ export const createPurchase = async (req, res) => {
       taxValue,
       grandTotal,
       billNo,
-      balance: grandTotal, // Default balance equals grandTotal (unpaid amount)
-      paid: 0,
+      balance, // Default balance equals grandTotal (unpaid amount) or grandTotal - paid
+      paid,
       dueDate: req.body.dueDate ? new Date(req.body.dueDate) : null
     });
     
@@ -95,12 +101,16 @@ export const createPurchase = async (req, res) => {
     // Note: Purchase order status update is now handled in the frontend
     // to match the pattern used in sales conversion
     
-    // Update supplier openingBalance in DB (decrease balance for purchase)
+    // Update supplier openingBalance in DB (decrease only balance for purchase if paid is provided)
     try {
       const Party = (await import('../models/parties.js')).default;
       const supplierDoc = await Party.findOne({ name: purchase.supplierName, user: userId });
       if (supplierDoc) {
-        supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) - (purchase.grandTotal || 0);
+        if (req.body.paymentType === 'Cash' && req.body.paid !== undefined && req.body.paid !== null) {
+          supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) - balance;
+        } else {
+          supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) - (purchase.grandTotal || 0);
+        }
         await supplierDoc.save();
       }
     } catch (err) {

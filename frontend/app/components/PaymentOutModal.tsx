@@ -124,6 +124,11 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
     };
   }, [isOpen]);
 
+  // Sync partySearch with initialPartyName every time modal opens or initialPartyName changes
+  useEffect(() => {
+    if (isOpen) setPartySearch(initialPartyName || '');
+  }, [isOpen, initialPartyName]);
+
   // Fetch supplier parties for suggestions
   useEffect(() => {
     if (!isOpen) return;

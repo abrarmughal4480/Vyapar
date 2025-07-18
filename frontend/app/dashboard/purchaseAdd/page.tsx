@@ -348,6 +348,7 @@ export default function AddPurchasePage() {
     taxAmount: '',
     taxType: '%',
     paymentType: 'Cash',
+    paid: '',
     description: '',
     editingId: null
   });
@@ -728,6 +729,7 @@ export default function AddPurchasePage() {
         tax: newPurchase.tax || 0,
         taxType: newPurchase.taxType || '%',
         paymentType: newPurchase.paymentType || 'Credit',
+        paid: newPurchase.paymentType === 'Cash' ? Number(newPurchase.paid) || 0 : undefined, // Only send if Cash
         description: newPurchase.description || '',
         imageUrl: uploadedImage || '',
         orderDate: newPurchase.invoiceDate,
@@ -837,6 +839,10 @@ export default function AddPurchasePage() {
       }
     }
   }, []);
+
+  const [paymentTypeDropdownIndex, setPaymentTypeDropdownIndex] = useState(0);
+  const [discountTypeDropdownIndex, setDiscountTypeDropdownIndex] = useState(0);
+  const [taxTypeDropdownIndex, setTaxTypeDropdownIndex] = useState(0);
 
   return (
     <div className="relative min-h-screen">
@@ -1371,8 +1377,8 @@ export default function AddPurchasePage() {
                             value={newPurchase.discountType}
                             onChange={val => setNewPurchase({ ...newPurchase, discountType: val })}
                             className="w-28 min-w-[72px] mb-1 h-11"
-                            dropdownIndex={0}
-                            setDropdownIndex={()=>{}}
+                            dropdownIndex={discountTypeDropdownIndex}
+                            setDropdownIndex={setDiscountTypeDropdownIndex}
                             optionsCount={2}
                           />
                         </div>
@@ -1410,8 +1416,8 @@ export default function AddPurchasePage() {
                         value={newPurchase.taxType}
                         onChange={val => setNewPurchase({ ...newPurchase, taxType: val })}
                         className="w-28 min-w-[72px] mb-1 h-11"
-                        dropdownIndex={0}
-                        setDropdownIndex={()=>{}}
+                        dropdownIndex={taxTypeDropdownIndex}
+                        setDropdownIndex={setTaxTypeDropdownIndex}
                         optionsCount={2}
                       />
                     </div>
@@ -1434,17 +1440,34 @@ export default function AddPurchasePage() {
                       <CustomDropdown
                         options={[
                           { value: 'Cash', label: 'Cash' },
+                          { value: 'Credit', label: 'Credit' },
                           { value: 'Card', label: 'Card' },
                           { value: 'UPI', label: 'UPI' },
                           { value: 'Cheque', label: 'Cheque' }
                         ]}
                         value={newPurchase.paymentType}
-                        onChange={val => setNewPurchase({ ...newPurchase, paymentType: val })}
+                        onChange={val => setNewPurchase(prev => ({ ...prev, paymentType: val }))}
                         className="mb-1"
-                        dropdownIndex={0}
-                        setDropdownIndex={()=>{}}
-                        optionsCount={4}
+                        dropdownIndex={paymentTypeDropdownIndex}
+                        setDropdownIndex={setPaymentTypeDropdownIndex}
+                        optionsCount={5}
                       />
+                      {newPurchase.paymentType === 'Cash' && (
+                        <div className="mt-2">
+                          <label className="block text-xs font-medium text-green-700 mb-1">Paid Amount</label>
+                          <input
+                            type="number"
+                            name="paid"
+                            value={newPurchase.paid}
+                            min={0}
+                            max={grandTotal}
+                            onChange={e => setNewPurchase(prev => ({ ...prev, paid: e.target.value }))}
+                            className="w-full px-3 py-2 border-2 border-green-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-200"
+                            placeholder={`Enter amount paid (max PKR ${grandTotal.toFixed(2)})`}
+                            autoComplete="off"
+                          />
+                        </div>
+                      )}
                       <div className="text-xs text-gray-500 min-h-[24px] mt-1"></div>
                     </div>
                   </div>

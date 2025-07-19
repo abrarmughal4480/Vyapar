@@ -710,13 +710,33 @@ const AddSalePage = () => {
           !isNaN(Number(item.qty)) &&
           !isNaN(Number(item.price))
       );
+      const subTotal = calculateTotal();
+      let discountValue = 0;
+      if (newSale.discount && !isNaN(Number(newSale.discount))) {
+        if (newSale.discountType === '%') {
+          discountValue = subTotal * Number(newSale.discount) / 100;
+        } else {
+          discountValue = Number(newSale.discount);
+        }
+      }
+      // Tax calculation
+      let taxValue = 0;
+      if (newSale.tax && !isNaN(Number(newSale.tax))) {
+        if (newSale.taxType === '%') {
+          taxValue = (subTotal - discountValue) * Number(newSale.tax) / 100;
+        } else if (newSale.taxType === 'PKR') {
+          taxValue = Number(newSale.tax);
+        }
+      }
+      const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
+
       const saleData = {
         ...newSale,
         items: filteredItems,
         description,
         imageUrl: uploadedImage,
         tax: newSale.tax === 'NONE' || newSale.tax === '' ? 0 : newSale.tax,
-        receivedAmount: newSale.paymentType === 'Cash' ? newSale.receivedAmount : undefined, // Only send if Cash
+        receivedAmount: newSale.paymentType === 'Cash' ? grandTotal : newSale.receivedAmount,
         sourceOrderId, // Include the original order ID
         sourceOrderNumber // Include the original order number
       };
@@ -1142,6 +1162,7 @@ const AddSalePage = () => {
               <h2 className="text-lg font-semibold text-blue-800 flex items-center gap-2">
                 <span>🛒</span> Items
               </h2>
+              {/*
               <button
                 type="button"
                 onClick={addNewRow}
@@ -1149,6 +1170,7 @@ const AddSalePage = () => {
               >
                 <span className="text-xl">+</span> Add Row
               </button>
+              */}
             </div>
             <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100">
               <table className="w-full text-sm">
@@ -1348,7 +1370,7 @@ const AddSalePage = () => {
                     setDropdownIndex={() => {}}
                     optionsCount={2}
                   />
-                  {newSale.paymentType === 'Cash' && (
+                  {newSale.paymentType === 'Credit' && (
                     <div className="mt-2">
                       <label className="block text-xs font-medium text-green-700 mb-1">Received Amount</label>
                       <input

@@ -67,9 +67,9 @@ export const createPurchase = async (req, res) => {
       }
     }
     
-    // Handle paid amount for cash payments
+    // Handle paid amount for all payment types
     let paid = 0;
-    if (req.body.paymentType === 'Cash' && req.body.paid !== undefined && req.body.paid !== null) {
+    if (req.body.paid !== undefined && req.body.paid !== null) {
       paid = Number(req.body.paid) || 0;
     }
     const balance = grandTotal - paid;

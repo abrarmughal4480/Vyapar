@@ -152,6 +152,47 @@ function getUnitDisplay(item: Item) {
   return '';
 }
 
+// Category normalization map
+const CATEGORY_MAP: Record<string, string> = {
+  'mobile': 'Electronics',
+  'mobiles': 'Electronics',
+  'phone': 'Electronics',
+  'phones': 'Electronics',
+  'computer': 'Electronics',
+  'computers': 'Electronics',
+  'laptop': 'Electronics',
+  'laptops': 'Electronics',
+  'printer': 'Electronics',
+  'printers': 'Electronics',
+  'apparel': 'Clothing',
+  'clothes': 'Clothing',
+  'clothing': 'Clothing',
+  'men': 'Clothing',
+  'women': 'Clothing',
+  'kids': 'Clothing',
+  'grocery': 'Food',
+  'groceries': 'Food',
+  'snacks': 'Food',
+  'beverages': 'Food',
+  'food': 'Food',
+  'book': 'Books',
+  'books': 'Books',
+  'fiction': 'Books',
+  'non-fiction': 'Books',
+  'comics': 'Books',
+  'home': 'Home',
+  'furniture': 'Home',
+  'decor': 'Home',
+  'appliances': 'Home',
+};
+
+function normalizedCategory(cat: string | undefined | null): string {
+  if (!cat || cat.trim() === '') return 'Other';
+  const key = cat.toLowerCase().trim();
+  return CATEGORY_MAP[key] ||
+    (ITEM_CATEGORIES.map(c => c.toLowerCase()).includes(key) ? cat.trim() : 'Other');
+}
+
 export default function ItemsPage() {
   const router = useRouter()
   const [items, setItems] = useState<Item[]>([])
@@ -283,35 +324,24 @@ export default function ItemsPage() {
     return category?.icon || '📦'
   }
 
+  console.log('Fetched items:', items);
+  console.log('Selected category:', selectedCategory);
+
   const filteredItems = items.filter(item => {
     const matchesSearch = (item.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-                         (item.sku?.toLowerCase() || '').includes(searchTerm.toLowerCase())
-    
-    const matchesCategory = !selectedCategory || item.category === selectedCategory
-    
+                       (item.sku?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+    const matchesCategory = !selectedCategory || normalizedCategory(item.category) === selectedCategory;
     const stockValue = item.openingQuantity ?? item.stock ?? 0;
     const minStockValue = item.minStock ?? 0;
-    
     const matchesStatus = activeTab === 'all' || 
-                         (activeTab === 'low-stock' && stockValue <= minStockValue) ||
-                         (activeTab === 'out-of-stock' && stockValue === 0) ||
-                         (activeTab === 'active' && item.status === 'Active')
-
-    return matchesSearch && matchesCategory && matchesStatus
+                       (activeTab === 'low-stock' && stockValue <= minStockValue) ||
+                       (activeTab === 'out-of-stock' && stockValue === 0) ||
+                       (activeTab === 'active' && item.status === 'Active');
+    return matchesSearch && matchesCategory && matchesStatus;
   })
 
-  const exportItems = () => {
-    alert('Export functionality would be implemented here')
-  }
-
-  const importItems = () => {
-    router.push('/dashboard/bulk-imports/import-items')
-  }
-
-  const stats = calculateStats(items)
-
   // Calculate category stats dynamically from items
-  const categoryStats = ITEM_CATEGORIES.map((name, idx) => {
+  const categoryStats = [...ITEM_CATEGORIES.map((name, idx) => {
     let icon = '📦', subcategories: string[] = [];
     switch (name) {
       case 'Electronics': icon = '💻'; subcategories = ['Computers', 'Mobile Phones', 'Printers', 'Accessories']; break;
@@ -321,7 +351,7 @@ export default function ItemsPage() {
       case 'Home': icon = '🏠'; subcategories = ['Furniture', 'Decor', 'Appliances']; break;
       default: icon = '📦'; subcategories = [];
     }
-    const itemsInCategory = items.filter(item => item.category === name);
+    const itemsInCategory = items.filter(item => normalizedCategory(item.category) === name);
     const totalItems = itemsInCategory.length;
     const totalValue = itemsInCategory.reduce((sum, item) => {
       const stockValue = item.openingQuantity ?? item.stock ?? 0;
@@ -336,7 +366,8 @@ export default function ItemsPage() {
       totalItems,
       totalValue
     };
-  });
+  })];
+
 
   useEffect(() => {
     // Prevent background scrolling when modals are open
@@ -380,7 +411,11 @@ export default function ItemsPage() {
     }
   }, [showCategoryDropdown]);
 
+  const importItems = () => {
+    router.push('/dashboard/bulk-imports/import-items');
+  };
 
+  const stats = calculateStats(items);
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">

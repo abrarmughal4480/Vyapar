@@ -11,27 +11,22 @@ import { createCreditNote } from '../../../../http/credit-notes';
 // Utility functions for unit conversion
 const getUnitDisplay = (unit: any) => {
   if (!unit) return 'NONE';
-  
   // Handle object format with conversion factor
   if (typeof unit === 'object' && unit.base) {
     const base = unit.base || 'NONE';
     const secondary = unit.secondary && unit.secondary !== 'None' ? unit.secondary : null;
-    
     // Return secondary unit if available, otherwise return base unit
     return secondary || base;
   }
-  
   // Handle string format like "Piece / Packet"
   if (typeof unit === 'string' && unit.includes(' / ')) {
     const parts = unit.split(' / ');
     return parts[1] && parts[1] !== 'None' ? parts[1] : parts[0];
   }
-  
   // Fallback for simple string units
   if (typeof unit === 'string') {
     return unit || 'NONE';
   }
-  
   return 'NONE';
 };
 
@@ -39,18 +34,14 @@ const convertQuantity = (currentQty: string, fromUnit: string, toUnit: string, i
   if (!currentQty || !fromUnit || !toUnit || fromUnit === toUnit) {
     return currentQty;
   }
-
   const qty = parseFloat(currentQty);
   if (isNaN(qty)) return currentQty;
-
   const unit = itemData.unit;
   if (!unit) return currentQty;
-
   // Handle object format with conversion factor
   if (typeof unit === 'object' && unit.conversionFactor) {
     const factor = unit.conversionFactor;
     let convertedQty = qty;
-    
     // If converting from base to secondary, multiply by factor
     if (fromUnit === unit.base && toUnit === unit.secondary) {
       convertedQty = qty * factor;
@@ -59,11 +50,9 @@ const convertQuantity = (currentQty: string, fromUnit: string, toUnit: string, i
     else if (fromUnit === unit.secondary && toUnit === unit.base) {
       convertedQty = qty / factor;
     }
-    
     // Round to nearest whole number for quantity
     return Math.round(convertedQty).toString();
   }
-  
   // Handle string format like "Piece / Packet"
   if (typeof unit === 'string' && unit.includes(' / ')) {
     const parts = unit.split(' / ');
@@ -78,7 +67,6 @@ const convertQuantity = (currentQty: string, fromUnit: string, toUnit: string, i
       }
     }
   }
-  
   return currentQty;
 };
 
@@ -86,18 +74,14 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
   if (!currentPrice || !fromUnit || !toUnit || fromUnit === toUnit) {
     return currentPrice;
   }
-
   const price = parseFloat(currentPrice);
   if (isNaN(price)) return currentPrice;
-
   const unit = itemData.unit;
   if (!unit) return currentPrice;
-
   // Handle object format with conversion factor
   if (typeof unit === 'object' && unit.conversionFactor) {
     const factor = unit.conversionFactor;
     let convertedPrice = price;
-    
     // If converting from base to secondary, divide by factor (price per unit decreases)
     if (fromUnit === unit.base && toUnit === unit.secondary) {
       convertedPrice = price / factor;
@@ -106,11 +90,9 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
     else if (fromUnit === unit.secondary && toUnit === unit.base) {
       convertedPrice = price * factor;
     }
-    
     // Round to 2 decimal places for price
     return (Math.round(convertedPrice * 100) / 100).toFixed(2);
   }
-  
   // Handle string format like "Piece / Packet"
   if (typeof unit === 'string' && unit.includes(' / ')) {
     const parts = unit.split(' / ');
@@ -125,7 +107,6 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
       }
     }
   }
-  
   return currentPrice;
 };
 
@@ -155,6 +136,9 @@ function CustomDropdown({ options, value, onChange, className = '', placeholder 
   const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [searchTerm, setSearchTerm] = useState('');
+  const searchTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -182,6 +166,47 @@ function CustomDropdown({ options, value, onChange, className = '', placeholder 
     }
   }, [open]);
 
+  // Keyboard navigation
+  const handleButtonKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!open && (e.key.length === 1 || e.key === 'ArrowDown' || e.key === 'Enter')) {
+      setOpen(true);
+      setHighlightedIndex(0);
+      return;
+    }
+    if (!open) return;
+    if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (e.key === 'ArrowDown') {
+      setHighlightedIndex(i => Math.min(i + 1, options.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      setHighlightedIndex(i => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      const selected = options[highlightedIndex];
+      if (selected) {
+        onChange(selected.value);
+        setOpen(false);
+      }
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+    } else if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
+      // Type to search
+      const nextTerm = searchTerm + e.key.toLowerCase();
+      setSearchTerm(nextTerm);
+      if (searchTimeout.current) clearTimeout(searchTimeout.current);
+      searchTimeout.current = setTimeout(() => setSearchTerm(''), 500);
+      const foundIdx = options.findIndex(opt => opt.label.toLowerCase().startsWith(nextTerm));
+      if (foundIdx !== -1) setHighlightedIndex(foundIdx);
+    }
+  };
+
+  // Open dropdown on focus
+  const handleButtonFocus = () => {
+    setOpen(true);
+    setHighlightedIndex(options.findIndex(opt => opt.value === value) || 0);
+  };
+
   return (
     <div ref={ref} className={`relative ${disabled ? 'opacity-60 pointer-events-none' : ''} ${className}`}> 
       <button
@@ -191,6 +216,8 @@ function CustomDropdown({ options, value, onChange, className = '', placeholder 
         onClick={() => setOpen((v) => !v)}
         disabled={disabled}
         tabIndex={0}
+        onKeyDown={handleButtonKeyDown}
+        onFocus={handleButtonFocus}
       >
         <span className="truncate text-left">{options.find((o: DropdownOption) => o.value === value)?.label || placeholder}</span>
         <span className={`ml-2 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}>
@@ -203,14 +230,14 @@ function CustomDropdown({ options, value, onChange, className = '', placeholder 
           className="bg-white border-2 border-blue-100 rounded-lg shadow-lg animate-fadeinup custom-dropdown-scrollbar"
           onMouseDown={e => e.preventDefault()}
         >
-          {options.map((opt: DropdownOption) => (
+          {options.map((opt: DropdownOption, idx: number) => (
             <li
               key={opt.value}
-              className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'}`}
-              onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); }}
-              tabIndex={0}
-              onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { if (e.key === 'Enter') { onChange(opt.value); setOpen(false); }}}
+              className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'} ${highlightedIndex === idx ? 'bg-blue-200 text-blue-900' : ''}`}
+              onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); setHighlightedIndex(idx); }}
+              tabIndex={-1}
               aria-selected={value === opt.value}
+              ref={el => { if (highlightedIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
             >
               {opt.label}
             </li>
@@ -247,10 +274,12 @@ function ItemRow({
 }) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [dropdownStyle, setDropdownStyle] = React.useState<React.CSSProperties>({});
+  const [highlightedIndex, setHighlightedIndex] = React.useState(0);
 
   const handleFocus = () => {
     fetchItemSuggestions();
     setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: true }));
+    setHighlightedIndex(0);
     if (inputRef.current) {
       const rect = inputRef.current.getBoundingClientRect();
       const style: React.CSSProperties = {
@@ -280,6 +309,37 @@ function ItemRow({
           onChange={e => handleItemChange(item.id, 'item', e.target.value)}
           onFocus={handleFocus}
           onBlur={() => setTimeout(() => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false })), 200)}
+          onKeyDown={e => {
+            if (!showItemSuggestions[item.id]) return;
+            const filtered = itemSuggestions.filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
+            const optionsCount = filtered.length;
+            if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+            if (e.key === 'ArrowDown') {
+              setHighlightedIndex(i => Math.min(i + 1, optionsCount - 1));
+            } else if (e.key === 'ArrowUp') {
+              setHighlightedIndex(i => Math.max(i - 1, 0));
+            } else if (e.key === 'Enter') {
+              const selected = filtered[highlightedIndex] || filtered[0];
+              if (selected) {
+                handleItemChange(item.id, 'item', selected.name);
+                const unitDisplay = getUnitDisplay(selected.unit);
+                handleItemChange(item.id, 'unit', unitDisplay);
+                handleItemChange(item.id, 'price', selected.salePrice || 0);
+                handleItemChange(item.id, 'qty', '1');
+                setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+              }
+            } else if (e.key === 'Escape') {
+              setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+            } else if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
+              // Type to search
+              const nextTerm = (item.item + e.key).toLowerCase();
+              const foundIdx = filtered.findIndex(opt => opt.name.toLowerCase().startsWith(nextTerm));
+              if (foundIdx !== -1) setHighlightedIndex(foundIdx);
+            }
+          }}
           className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
           placeholder="Enter item name..."
           autoComplete="off"
@@ -289,21 +349,21 @@ function ItemRow({
             {itemSuggestions.length > 0 ? (
               itemSuggestions
                 .filter((i: any) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()))
-                .map((i: any) => (
+                .map((i: any, idx: number) => (
                   <li
                     key={i._id}
-                    className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
+                    className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 ${highlightedIndex === idx ? 'bg-blue-200 text-blue-900' : ''}`}
                     onMouseDown={() => {
-                      console.log('Selected item:', i);
                       handleItemChange(item.id, 'item', i.name);
-                      // Set the unit to the item's base unit or secondary unit from backend
                       const unitDisplay = getUnitDisplay(i.unit);
                       handleItemChange(item.id, 'unit', unitDisplay);
                       handleItemChange(item.id, 'price', i.salePrice || 0);
-                      // Set a default quantity of 1 when item is selected
                       handleItemChange(item.id, 'qty', '1');
                       setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                     }}
+                    ref={el => { if (highlightedIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
+                    tabIndex={-1}
+                    aria-selected={highlightedIndex === idx}
                   >
                     <div className="flex justify-between items-center">
                       <span className="font-medium text-gray-800">{i.name}</span>
@@ -487,6 +547,7 @@ const CreateCreditNotePage = () => {
   const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([]);
   const [itemSuggestions, setItemSuggestions] = useState<any[]>([]);
   const [partyBalance, setPartyBalance] = useState<number|null>(null);
+  const [customerHighlightedIndex, setCustomerHighlightedIndex] = useState(0);
 
   // Fetch items on component mount
   useEffect(() => {
@@ -585,10 +646,15 @@ const CreateCreditNotePage = () => {
       );
       const creditNoteData = {
         ...newCreditNote,
-        items: filteredItems,
+        items: filteredItems.map(item => ({
+          ...item,
+          qty: Number(item.qty),
+          price: Number(item.price)
+        })),
         description,
-        imageUrl: uploadedImage,
-        tax: newCreditNote.tax === 'NONE' || newCreditNote.tax === '' ? 0 : newCreditNote.tax,
+        imageUrl: uploadedImage || undefined,
+        tax: newCreditNote.tax === 'NONE' || newCreditNote.tax === '' ? 0 : Number(newCreditNote.tax),
+        discount: newCreditNote.discount === '' ? 0 : Number(newCreditNote.discount),
       };
       const result = await createCreditNote(creditNoteData, token);
       if (result && result.success) {
@@ -719,8 +785,35 @@ const CreateCreditNotePage = () => {
                     onFocus={() => {
                       fetchCustomerSuggestions();
                       setShowCustomerSuggestions(true);
+                      setCustomerHighlightedIndex(0);
                     }}
                     onBlur={() => setTimeout(() => setShowCustomerSuggestions(false), 200)}
+                    onKeyDown={e => {
+                      if (!showCustomerSuggestions) return;
+                      const optionsCount = customerSuggestions.length;
+                      if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }
+                      if (e.key === 'ArrowDown') {
+                        setCustomerHighlightedIndex(i => Math.min(i + 1, optionsCount - 1));
+                      } else if (e.key === 'ArrowUp') {
+                        setCustomerHighlightedIndex(i => Math.max(i - 1, 0));
+                      } else if (e.key === 'Enter') {
+                        const selected = customerSuggestions[customerHighlightedIndex];
+                        if (selected) {
+                          setNewCreditNote(prev => ({ ...prev, partyName: selected.name, phoneNo: selected.phone }));
+                          setShowCustomerSuggestions(false);
+                        }
+                      } else if (e.key === 'Escape') {
+                        setShowCustomerSuggestions(false);
+                      } else if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
+                        // Type to search
+                        const nextTerm = (newCreditNote.partyName + e.key).toLowerCase();
+                        const foundIdx = customerSuggestions.findIndex(opt => opt.name.toLowerCase().startsWith(nextTerm));
+                        if (foundIdx !== -1) setCustomerHighlightedIndex(foundIdx);
+                      }
+                    }}
                     className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${formErrors.partyName ? 'border-red-300 bg-red-50' : 'border-blue-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-200 focus:outline-none`}
                     placeholder="Search or enter customer name"
                     autoComplete="off"
@@ -729,14 +822,17 @@ const CreateCreditNotePage = () => {
                     <div className="absolute left-0 right-0 mt-1 w-full z-50">
                       {customerSuggestions.length > 0 ? (
                         <ul className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                          {customerSuggestions.map((c) => (
+                          {customerSuggestions.map((c, idx) => (
                             <li
                               key={c._id}
-                              className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
+                              className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors ${customerHighlightedIndex === idx ? 'bg-blue-200 text-blue-900' : ''}`}
                               onMouseDown={() => {
                                 setNewCreditNote(prev => ({ ...prev, partyName: c.name, phoneNo: c.phone }));
                                 setShowCustomerSuggestions(false);
                               }}
+                              ref={el => { if (customerHighlightedIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
+                              tabIndex={-1}
+                              aria-selected={customerHighlightedIndex === idx}
                             >
                               {c.name} {c.phone && <span className="text-xs text-gray-400">({c.phone})</span>}
                             </li>
@@ -774,6 +870,7 @@ const CreateCreditNotePage = () => {
               <h2 className="text-lg font-semibold text-blue-800 flex items-center gap-2">
                 <span>🛒</span> Items
               </h2>
+              {/*
               <button
                 type="button"
                 onClick={addNewRow}
@@ -781,6 +878,7 @@ const CreateCreditNotePage = () => {
               >
                 <span className="text-xl">+</span> Add Row
               </button>
+              */}
             </div>
             <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100">
               <table className="w-full text-sm">

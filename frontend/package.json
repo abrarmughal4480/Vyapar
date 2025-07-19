@@ -1,8 +1,46 @@
 {
   "name": "devease-digital",
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "Devease Digital Business Management Software",
+  "author": "Devease Digital",
   "private": true,
-  "description": "Devease Digital Business Manager",
+  "main": "main.js",
+  "build": {
+    "appId": "com.devease.digital",
+    "productName": "Devease Digital",
+    "copyright": "Copyright © 2025 Devease Digital",
+    "files": [
+      "main.js",
+      "package.json",
+      ".next/**/*",
+      "public/**/*",
+      "node_modules/**/*",
+      "app/**/*",
+      "components/**/*",
+      "http/**/*",
+      "lib/**/*",
+      "next.config.*"
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": false,
+      "verifyUpdateCodeSignature": false
+    },
+    "portable": {
+      "artifactName": "Devease-Digital-Portable.exe"
+    },
+    "forceCodeSigning": false
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,7 +48,12 @@
     "lint": "next lint",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "electron": "concurrently \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron-dev": "cross-env NODE_ENV=development electron .",
+    "build-electron": "npm run build && electron-builder",
+    "dist": "npm run build && electron-builder --publish=never",
+    "dist-portable": "npm run build && electron-builder --win portable"
   },
   "dependencies": {
     "@floating-ui/react-dom": "^2.1.4",
@@ -55,8 +98,13 @@
     "@types/react-dom": "^18.0.0",
     "@types/xlsx": "^0.0.35",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^29.3.0",
+    "electron-builder": "^26.0.12",
     "postcss": "^8.5.4",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "wait-on": "^7.0.1"
   }
 }

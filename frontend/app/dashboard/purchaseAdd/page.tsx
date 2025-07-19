@@ -704,6 +704,9 @@ export default function AddPurchasePage() {
         throw new Error('Authentication token not found');
       }
 
+      const paidValue = newPurchase.paymentType === 'Cash'
+        ? grandTotal
+        : (newPurchase.paid !== undefined && newPurchase.paid !== '' ? Number(newPurchase.paid) : undefined);
       // Prepare common data
       const commonData = {
         supplierName: newPurchase.partyName,
@@ -729,7 +732,7 @@ export default function AddPurchasePage() {
         tax: newPurchase.tax || 0,
         taxType: newPurchase.taxType || '%',
         paymentType: newPurchase.paymentType || 'Credit',
-        paid: newPurchase.paymentType === 'Cash' ? Number(newPurchase.paid) || 0 : undefined, // Only send if Cash
+        paid: paidValue,
         description: newPurchase.description || '',
         imageUrl: uploadedImage || '',
         orderDate: newPurchase.invoiceDate,
@@ -742,6 +745,8 @@ export default function AddPurchasePage() {
         convertedDueDate: newPurchase.dueDate ? new Date(newPurchase.dueDate).toISOString() : null,
         commonData: commonData
       });
+
+      console.log('Submitting purchase:', { paid: paidValue, paymentType: newPurchase.paymentType, newPurchase, commonData });
 
       let response;
       let successMessage;
@@ -1027,6 +1032,7 @@ export default function AddPurchasePage() {
                   <h2 className="text-lg font-semibold text-blue-800 flex items-center gap-2">
                     <span>🛒</span> Items
                   </h2>
+                  {/*
                   <button
                     type="button"
                     onClick={addNewRow}
@@ -1034,6 +1040,7 @@ export default function AddPurchasePage() {
                   >
                     <span className="text-xl">+</span> Add Row
                   </button>
+                  */}
                 </div>
                 <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100">
                   <table className="w-full text-sm">
@@ -1452,7 +1459,7 @@ export default function AddPurchasePage() {
                         setDropdownIndex={setPaymentTypeDropdownIndex}
                         optionsCount={5}
                       />
-                      {newPurchase.paymentType === 'Cash' && (
+                      {newPurchase.paymentType === 'Credit' && (
                         <div className="mt-2">
                           <label className="block text-xs font-medium text-green-700 mb-1">Paid Amount</label>
                           <input

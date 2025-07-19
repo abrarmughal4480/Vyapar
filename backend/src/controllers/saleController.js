@@ -63,9 +63,9 @@ export const createSale = async (req, res) => {
         invoiceNo = `INV${nextNum}`;
       }
     }
-    // Handle received amount for cash payments
+    // Handle received amount for all payment types
     let received = 0;
-    if (req.body.paymentType === 'Cash' && req.body.receivedAmount !== undefined && req.body.receivedAmount !== null) {
+    if (req.body.receivedAmount !== undefined && req.body.receivedAmount !== null) {
       received = Number(req.body.receivedAmount) || 0;
     }
     const balance = grandTotal - received;

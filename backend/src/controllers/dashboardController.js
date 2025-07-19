@@ -3,11 +3,15 @@ import Purchase from '../models/purchase.js';
 import Party from '../models/parties.js';
 import Item from '../models/items.js';
 import mongoose from 'mongoose';
+import CreditNote from '../models/creditNote.js';
 
 export const getDashboardStats = async (req, res) => {
   try {
     const userId = req.user && (req.user._id || req.user.id);
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+
+    // Convert userId to ObjectId for aggregation
+    const objectUserId = new mongoose.Types.ObjectId(userId);
 
     // Dates for current and previous month
     const now = new Date();
@@ -15,28 +19,37 @@ export const getDashboardStats = async (req, res) => {
     const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
 
-    const [sales, purchases, customers, items, revenueAgg, thisMonthAgg, lastMonthAgg, thisMonthOrders, lastMonthOrders, thisMonthProducts, lastMonthProducts, thisMonthCustomers, lastMonthCustomers, totalOrders] = await Promise.all([
-      Sale.aggregate([{ $match: { userId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
-      Purchase.aggregate([{ $match: { userId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
+    const [sales, purchases, customers, items, revenueAgg, thisMonthAgg, lastMonthAgg, thisMonthOrders, lastMonthOrders, thisMonthProducts, lastMonthProducts, thisMonthCustomers, lastMonthCustomers, totalOrders, totalReceivableAgg, totalPayableAgg, creditNotesAgg] = await Promise.all([
+      Sale.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
+      Purchase.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
       Party.countDocuments({ user: userId }),
       Item.countDocuments({ userId }),
-      Sale.aggregate([{ $match: { userId } }, { $group: { _id: null, totalRevenue: { $sum: '$grandTotal' } } }]),
+      Sale.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, totalRevenue: { $sum: '$grandTotal' } } }]),
       Sale.aggregate([
-        { $match: { userId, createdAt: { $gte: startOfThisMonth } } },
+        { $match: { userId: objectUserId, createdAt: { $gte: startOfThisMonth } } },
         { $group: { _id: null, total: { $sum: '$grandTotal' } } }
       ]),
       Sale.aggregate([
-        { $match: { userId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } } },
+        { $match: { userId: objectUserId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } } },
         { $group: { _id: null, total: { $sum: '$grandTotal' } } }
       ]),
-      Sale.countDocuments({ userId, createdAt: { $gte: startOfThisMonth } }),
-      Sale.countDocuments({ userId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }),
+      Sale.countDocuments({ userId: objectUserId, createdAt: { $gte: startOfThisMonth } }),
+      Sale.countDocuments({ userId: objectUserId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }),
       Item.countDocuments({ userId, createdAt: { $gte: startOfThisMonth } }),
       Item.countDocuments({ userId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }),
       Party.countDocuments({ user: userId, createdAt: { $gte: startOfThisMonth } }),
       Party.countDocuments({ user: userId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }),
-      Sale.countDocuments({ userId }), // <-- total orders
+      Sale.countDocuments({ userId: objectUserId }), // <-- total orders
+      // New: total receivable and payable
+      Sale.aggregate([{ $match: { userId: objectUserId, balance: { $gt: 0 } } }, { $group: { _id: null, total: { $sum: '$balance' } } }]),
+      Purchase.aggregate([{ $match: { userId: objectUserId, balance: { $gt: 0 } } }, { $group: { _id: null, total: { $sum: '$balance' } } }]),
+      // New: total credit notes
+      CreditNote.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
     ]);
+
+    const totalSales = sales[0]?.total || 0;
+    const totalCreditNotes = creditNotesAgg[0]?.total || 0;
+    const netRevenue = totalSales - totalCreditNotes;
 
     const thisMonthRevenue = thisMonthAgg[0]?.total || 0;
     const lastMonthRevenue = lastMonthAgg[0]?.total || 0;
@@ -74,16 +87,18 @@ export const getDashboardStats = async (req, res) => {
     res.json({
       success: true,
       data: {
-        totalSales: sales[0]?.total || 0,
+        totalSales: totalSales,
         totalPurchases: purchases[0]?.total || 0,
         totalCustomers: customers,
         itemsInStock: items,
-        totalRevenue: revenueAgg[0]?.totalRevenue || 0,
+        totalRevenue: netRevenue,
         revenueChange,
         totalOrdersChange,
         productsChange,
         customersChange,
         totalOrders: totalOrders || 0,
+        totalReceivable: totalReceivableAgg[0]?.total || 0,
+        totalPayable: totalPayableAgg[0]?.total || 0,
       }
     });
   } catch (err) {

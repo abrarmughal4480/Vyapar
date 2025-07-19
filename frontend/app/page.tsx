@@ -1099,15 +1099,27 @@ export default function Home() {
                       </div>
 
                       <div className="flex items-start mt-1">
-                        <input
-                          type="checkbox"
-                          id="terms"
-                          checked={agreedToTerms}
-                          onChange={() => setAgreedToTerms(!agreedToTerms)}
-                          className="w-5 h-5 text-indigo-600 border-2 border-gray-300 rounded focus:ring-indigo-500 mt-0.5"
-                        />
-                        <label htmlFor="terms" className="ml-3 text-sm text-gray-700 font-medium">
-                          I agree to the <a href="#" className="text-indigo-600 hover:text-indigo-700 font-bold">terms and conditions</a> and <a href="#" className="text-indigo-600 hover:text-indigo-700 font-bold">privacy policy</a>
+                        <label className="inline-flex items-center cursor-pointer">
+                          <span className="relative w-5 h-5 flex-shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={agreedToTerms}
+                              onChange={() => setAgreedToTerms(!agreedToTerms)}
+                              className="peer appearance-none w-5 h-5 border-2 border-gray-300 rounded transition-colors checked:bg-indigo-600 checked:border-indigo-600 checked:ring-2 checked:ring-indigo-400 focus:outline-none"
+                            />
+                            <svg
+                              className="pointer-events-none absolute inset-0 w-5 h-5 opacity-0 peer-checked:opacity-100 transition-opacity duration-200"
+                              viewBox="0 0 20 20"
+                              fill="none"
+                              stroke="white"
+                              strokeWidth="2.5"
+                            >
+                              <polyline points="5 11 9 15 15 7" />
+                            </svg>
+                          </span>
+                          <span className="ml-3 text-sm text-gray-700 font-medium">
+                            I agree to the <a href="#" className="text-indigo-600 hover:text-indigo-700 font-bold">terms and conditions</a> and <a href="#" className="text-indigo-600 hover:text-indigo-700 font-bold">privacy policy</a>
+                          </span>
                         </label>
                       </div>
                       {formErrors.terms && (

@@ -1,11 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: 'standalone', // Standalone build
   trailingSlash: true,
   images: {
     unoptimized: true
   },
-  // Disable server-side features for Tauri
   typescript: {
     ignoreBuildErrors: true,
   },

@@ -18,6 +18,7 @@ import {
   ShoppingCart,
   Sparkles,
   ArrowUpRight,
+  ArrowDownRight,
   Activity,
   Zap
 } from 'lucide-react';
@@ -47,6 +48,8 @@ type BusinessStats = {
   productsChange?: number;
   customersChange?: number;
   totalOrders?: number;
+  totalReceivable?: number;
+  totalPayable?: number;
 };
 
 const quickActions = [
@@ -275,6 +278,30 @@ export default function Dashboard() {
       bgLight: 'bg-orange-50',
       trend: businessStats.customersChange !== undefined ? (businessStats.customersChange >= 0 ? 'up' : 'down') : 'up'
     },
+    // New Stat: Total Receivable
+    {
+      title: 'Total Receivable',
+      value: `PKR ${(businessStats.totalReceivable ?? 0).toLocaleString()}`,
+      change: '',
+      icon: ArrowUpRight, // Up arrow for incoming money
+      color: 'text-green-600',
+      bgGradient: 'from-green-500 to-emerald-600',
+      bgLight: 'bg-green-50',
+      trend: 'up',
+      onClick: () => router.push('/dashboard/parties?filter=debtor'),
+    },
+    // New Stat: Total Payable
+    {
+      title: 'Total Payable',
+      value: `PKR ${(businessStats.totalPayable ?? 0).toLocaleString()}`,
+      change: '',
+      icon: ArrowDownRight, // Down arrow for outgoing money
+      color: 'text-red-600',
+      bgGradient: 'from-red-500 to-pink-600',
+      bgLight: 'bg-red-50',
+      trend: 'down',
+      onClick: () => router.push('/dashboard/parties?filter=creditor'),
+    },
   ];
 
   // Icon map for activity types
@@ -326,11 +353,6 @@ export default function Dashboard() {
           </div>
           
           <div className="flex items-center space-x-4">
-            <button className="relative p-3 text-gray-600 hover:text-indigo-600 transition-colors duration-200 hover:bg-indigo-50 rounded-xl">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-3 h-3 bg-gradient-to-r from-red-500 to-pink-500 rounded-full animate-ping"></span>
-              <span className="absolute top-1 right-1 w-3 h-3 bg-red-500 rounded-full"></span>
-            </button>
             <button className="p-3 text-gray-600 hover:text-indigo-600 transition-colors duration-200 hover:bg-indigo-50 rounded-xl">
               <Settings className="w-5 h-5" />
             </button>
@@ -348,10 +370,12 @@ export default function Dashboard() {
             </div>
             <button 
               onClick={() => {
+                localStorage.removeItem('isAuthenticated');
+                localStorage.removeItem('businessName');
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
-                localStorage.removeItem('vypar_auth_token');
-                localStorage.removeItem('vypar_user_session');
+                localStorage.removeItem('devease_auth_token');
+                localStorage.removeItem('devease_user_session');
                 localStorage.removeItem('businessId');
                 router.push('/');
               }}
@@ -380,9 +404,10 @@ export default function Dashboard() {
         {/* Enhanced Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8 md:mb-12 w-full">
           {dashboardStats.map((stat, index) => (
-            <div 
-              key={index} 
-              className="group relative bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-8 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300"
+            <div
+              key={index}
+              className={`group relative bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-8 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 ${stat.onClick ? 'cursor-pointer' : ''}`}
+              onClick={stat.onClick}
             >
               <div className="flex items-start justify-between">
                 <div className="space-y-3">
@@ -392,7 +417,7 @@ export default function Dashboard() {
                   </p>
                   <div className="flex items-center space-x-2">
                     <div className={`flex items-center space-x-1 px-2 py-1 rounded-full ${stat.bgLight}`}>
-                      <ArrowUpRight className={`w-3 h-3 ${stat.color}`} />
+                      <stat.icon className={`w-3 h-3 ${stat.color}`} />
                       <span className={`text-sm font-semibold ${stat.color}`}>{stat.change}</span>
                     </div>
                     <span className="text-xs text-gray-500">from last month</span>
@@ -578,6 +603,41 @@ export default function Dashboard() {
         </div>
         )}
       </main>
+
+      {/* Most Used Reports Section */}
+      <div className="mb-12 px-2 sm:px-4 md:px-6 lg:px-8">
+        <h2 className="text-2xl font-bold mb-4 text-gray-800">Most Used Reports</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <button
+            className="group bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-2xl p-6 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
+            onClick={() => router.push('/dashboard/reports/sale')}
+          >
+            <BarChart3 className="w-8 h-8 mb-2" />
+            <span className="font-semibold text-lg">Sale Report</span>
+          </button>
+          <button
+            className="group bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-2xl p-6 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
+            onClick={() => router.push('/dashboard/reports/all-transactions')}
+          >
+            <FileText className="w-8 h-8 mb-2" />
+            <span className="font-semibold text-lg">All Transactions</span>
+          </button>
+          <button
+            className="group bg-gradient-to-br from-purple-500 to-violet-600 text-white rounded-2xl p-6 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
+            onClick={() => router.push('/dashboard/reports/day-book')}
+          >
+            <Calendar className="w-8 h-8 mb-2" />
+            <span className="font-semibold text-lg">Daybook Report</span>
+          </button>
+          <button
+            className="group bg-gradient-to-br from-orange-500 to-red-500 text-white rounded-2xl p-6 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
+            onClick={() => router.push('/dashboard/reports/party-statement')}
+          >
+            <Users className="w-8 h-8 mb-2" />
+            <span className="font-semibold text-lg">Party Statement</span>
+          </button>
+        </div>
+      </div>
 
       {/* Enhanced Modal Styles */}
       <style jsx global>{`

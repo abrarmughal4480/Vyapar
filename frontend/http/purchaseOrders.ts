@@ -76,4 +76,16 @@ export const deletePurchaseOrderById = async (orderId: string, token: string) =>
     headers: { Authorization: `Bearer ${token}` }
   });
   return data;
+};
+
+export const getPurchaseOrderById = async (orderId: string, token: string) => {
+  try {
+    const res = await api.get(`/api/purchase-orders/${orderId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return { success: true, order: res.data.data || res.data };
+  } catch (error) {
+    console.error('Error fetching purchase order by id:', error);
+    return { success: false, error };
+  }
 }; 

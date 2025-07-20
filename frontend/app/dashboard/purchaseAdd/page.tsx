@@ -10,6 +10,8 @@ import { getUserItems } from '../../../http/items';
 import { createPurchase } from '../../../http/purchases';
 import { createPurchaseOrder, updatePurchaseOrder } from '../../../http/purchaseOrders';
 import { jwtDecode } from 'jwt-decode';
+import { useSearchParams } from 'next/navigation';
+import { getPurchaseById } from '../../../http/purchases';
 
 // Utility functions for unit conversion
 const getUnitDisplay = (unit: any) => {
@@ -157,6 +159,7 @@ interface FormData {
   images: ImageData[];
 }
 
+// Update Item interface to include 'category' and 'customUnit'
 interface Item {
   id: number;
   category: string;
@@ -164,6 +167,7 @@ interface Item {
   itemCode: string;
   qty: string;
   unit: string;
+  customUnit: string;
   price: string;
   amount: number;
 }
@@ -305,6 +309,8 @@ type PurchaseItem = {
 
 export default function AddPurchasePage() {
   const router = useRouter();
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const editId = searchParams ? searchParams.get('id') : null;
   const [pageTitle, setPageTitle] = useState('Add Purchase Bill');
   const [pageType, setPageType] = useState<'purchase-bill' | 'purchase-order'>('purchase-bill');
   const [originalOrderId, setOriginalOrderId] = useState<string | null>(null);
@@ -323,8 +329,8 @@ export default function AddPurchasePage() {
   });
 
   const [items, setItems] = useState<Item[]>([
-    { id: 1, category: 'ALL', item: '', itemCode: '', qty: '', unit: 'NONE', price: '', amount: 0 },
-    { id: 2, category: 'ALL', item: '', itemCode: '', qty: '', unit: 'NONE', price: '', amount: 0 }
+    { id: 1, category: 'ALL', item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 },
+    { id: 2, category: 'ALL', item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
   ]);
 
   const [showPartyDropdown, setShowPartyDropdown] = useState<boolean>(false);
@@ -350,7 +356,7 @@ export default function AddPurchasePage() {
     paymentType: 'Cash',
     paid: '',
     description: '',
-    editingId: null
+    editingId: editId || null
   });
 
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
@@ -425,13 +431,13 @@ export default function AddPurchasePage() {
         
         try {
           const orderData = JSON.parse(orderDataParam);
-          setOriginalOrderId(orderData.sourceOrderId);
+          setOriginalOrderId(orderData.sourceOrderId || orderData.sourceOrderId || orderData.id || null);
           setOriginalOrderDueDate(orderData.dueDate || null);
           setNewPurchase(prev => ({
             ...prev,
             partyName: orderData.supplierName || '',
             phoneNo: orderData.phoneNo || '',
-            items: orderData.items?.map((item: any, index: number) => ({
+            items: (orderData.items || []).map((item: any, index: number) => ({
               id: index + 1,
               item: item.item || '',
               itemCode: item.itemCode || '',
@@ -446,7 +452,10 @@ export default function AddPurchasePage() {
             tax: orderData.tax || '',
             taxType: orderData.taxType || '%',
             paymentType: orderData.paymentType || 'Credit',
-            description: orderData.description || ''
+            description: orderData.description || '',
+            dueDate: orderData.dueDate ? new Date(orderData.dueDate).toISOString().split('T')[0] : prev.dueDate,
+            invoiceDate: orderData.invoiceDate ? new Date(orderData.invoiceDate).toISOString().split('T')[0] : prev.invoiceDate,
+            editingId: null
           }));
         } catch (error) {
           console.error('Error parsing order data:', error);
@@ -458,6 +467,9 @@ export default function AddPurchasePage() {
     }
   }, []);
 
+  // Add edit mode state
+  const [isEditMode, setIsEditMode] = useState(false);
+
   // Fetch parties and items on component mount
   useEffect(() => {
     const initializeData = async () => {
@@ -468,6 +480,56 @@ export default function AddPurchasePage() {
     };
     initializeData();
   }, []);
+
+  useEffect(() => {
+    if (editId) {
+      setIsEditMode(true);
+      const fetchEditData = async () => {
+        try {
+          const token = getToken();
+          if (!token) return;
+          const result = await getPurchaseById(editId, token);
+          if (result && result.success && result.purchase) {
+            // Map API data to form fields
+            setNewPurchase(prev => ({
+              ...prev,
+              partyName: result.purchase.supplierName || '',
+              phoneNo: result.purchase.phoneNo || '',
+              billDate: result.purchase.createdAt ? new Date(result.purchase.createdAt).toISOString().split('T')[0] : '',
+              invoiceDate: result.purchase.createdAt ? new Date(result.purchase.createdAt).toISOString().split('T')[0] : '',
+              items: (result.purchase.items || []).map((item: any, idx: number) => ({
+                id: idx + 1,
+                category: item.category || 'ALL',
+                item: item.item || '',
+                itemCode: item.itemCode || '',
+                qty: item.qty?.toString() || '',
+                unit: item.unit || 'NONE',
+                customUnit: item.customUnit || '',
+                price: item.price?.toString() || '',
+                amount: item.amount || 0
+              })),
+              discount: result.purchase.discount?.toString() || '',
+              discountAmount: result.purchase.discountAmount?.toString() || '',
+              discountType: result.purchase.discountType || '%',
+              tax: result.purchase.tax?.toString() || '',
+              taxAmount: result.purchase.taxAmount?.toString() || '',
+              taxType: result.purchase.taxType || '%',
+              paymentType: result.purchase.paymentType || 'Cash',
+              paid: result.purchase.paid?.toString() || '',
+              description: result.purchase.description || '',
+              editingId: editId
+            }));
+            if (result.purchase.imageUrl) {
+              setUploadedImage(result.purchase.imageUrl);
+            }
+          }
+        } catch (err) {
+          setToast({ message: 'Failed to fetch purchase for edit', type: 'error' });
+        }
+      };
+      fetchEditData();
+    }
+  }, [editId]);
 
   // Clear party balance when party name changes
   useEffect(() => {
@@ -499,6 +561,7 @@ export default function AddPurchasePage() {
       itemCode: '',
       qty: '',
       unit: 'NONE',
+      customUnit: '',
       price: '',
       amount: 0
     };

@@ -7,6 +7,7 @@ const partiesController = {
       const {
         name,
         phone,
+        contactNumber,
         email,
         address,
         gstNumber,
@@ -23,9 +24,11 @@ const partiesController = {
       if (!name) {
         return res.status(400).json({ success: false, message: 'Party name is required' });
       }
+      const phoneValue = contactNumber || phone || '';
       const party = new Party({
         name,
-        phone,
+        phone: phoneValue,
+        contactNumber: phoneValue,
         email,
         address,
         gstNumber,
@@ -38,7 +41,7 @@ const partiesController = {
         tags,
         status,
         note,
-        user: req.user.id // user id from authMiddleware
+        user: req.user.id
       });
       await party.save();
       console.log(`Party created successfully: ${party.name} (ID: ${party._id}) by user ${req.user.id}`);
@@ -64,9 +67,11 @@ const partiesController = {
   updateParty: async (req, res) => {
     try {
       const partyId = req.params.id;
+      const phoneValue = req.body.contactNumber || req.body.phone || '';
       const updateFields = {
         name: req.body.name,
-        phone: req.body.phone,
+        phone: phoneValue,
+        contactNumber: phoneValue,
         email: req.body.email,
         address: req.body.address,
         gstNumber: req.body.gstNumber,
@@ -124,6 +129,39 @@ const partiesController = {
       return res.json({ success: true, balance: openingBalance });
     } catch (err) {
       return res.status(500).json({ success: false, message: 'Failed to fetch party balance', error: err.message });
+    }
+  },
+  bulkImport: async (req, res) => {
+    try {
+      const parties = req.body.parties;
+      if (!Array.isArray(parties) || parties.length === 0) {
+        return res.status(400).json({ success: false, message: 'No parties to import' });
+      }
+      const userId = req.user.id;
+      const docs = parties
+        .filter(p => p.name && String(p.name).trim())
+        .map(p => {
+          // Calculate openingBalance as receivableBalance - payableBalance
+          const receivable = typeof p.receivableBalance === 'number' ? p.receivableBalance : parseFloat(p.receivableBalance) || 0;
+          const payable = typeof p.payableBalance === 'number' ? p.payableBalance : parseFloat(p.payableBalance) || 0;
+          const openingBalance = receivable - payable;
+          return {
+            name: p.name,
+            phone: p.contactNumber || p.phone || '',
+            email: p.email || '',
+            address: p.address || '',
+            openingBalance,
+            user: userId
+          };
+        });
+      if (docs.length === 0) {
+        return res.status(400).json({ success: false, message: 'No valid parties with name to import' });
+      }
+      await Party.insertMany(docs);
+      return res.status(201).json({ success: true, message: `${docs.length} parties imported successfully` });
+    } catch (err) {
+      console.error('Bulk import error:', err);
+      return res.status(500).json({ success: false, message: 'Bulk import failed', error: err.message });
     }
   },
   // You can add more party-related methods here (list, update, delete, etc.)

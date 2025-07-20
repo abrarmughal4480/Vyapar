@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, MoreVertical, Search, Filter, Download, X, ChevronDown, Calendar, Share2, Save, Info, Camera, Settings } from 'lucide-react';
 import { getToken } from '../../lib/auth';
-import { getUserPurchaseOrders, updatePurchaseOrder, fixCompletedPurchaseOrders, deletePurchaseOrderById } from '../../../http/purchaseOrders';
-import { useRouter } from 'next/navigation';
+import { getUserPurchaseOrders, updatePurchaseOrder, fixCompletedPurchaseOrders, deletePurchaseOrderById, getPurchaseOrderById } from '../../../http/purchaseOrders';
+import { useRouter, useSearchParams } from 'next/navigation';
 import TableActionMenu from '../../components/TableActionMenu';
 import ConfirmDialog from '../../components/ConfirmDialog';
 
@@ -1078,6 +1078,8 @@ function PurchaseOrderFormPage({ onClose, onSave, type = 'purchase-order' }: { o
 
 export default function PurchaseOrderPage() {
   const router = useRouter();
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const editId = searchParams ? searchParams.get('id') : null;
   const [businessName, setBusinessName] = useState('Enter Business Name');
   const [orders, setOrders] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1128,6 +1130,24 @@ export default function PurchaseOrderPage() {
 
     fetchPurchaseOrders();
   }, []);
+
+  useEffect(() => {
+    if (!editId) return;
+    // Only run if editId is a valid string
+    const fetchOrder = async () => {
+      try {
+        const token = getToken();
+        if (!token) return;
+        const result = await getPurchaseOrderById(editId, token);
+        if (result && result.success && result.order) {
+          // No setFormData or setItems here; remove these lines
+        }
+      } catch (err) {
+        // Optionally show error
+      }
+    };
+    fetchOrder();
+  }, [editId]);
 
   const handleAddPurchaseOrder = () => {
     router.push('/dashboard/purchaseAdd?from=purchase-order');
@@ -1675,7 +1695,42 @@ export default function PurchaseOrderPage() {
                       </td>
                       <td className="px-4 py-4 text-center">
                         <TableActionMenu
-                          onEdit={() => router.push(`/dashboard/purchase-order/create?id=${order._id || order.id}`)}
+                          onEdit={async () => {
+                            const token = getToken();
+                            const id = order._id || order.id;
+                            if (!id) return;
+                            const result = await getPurchaseOrderById(id!, token);
+                            if (result && result.success && result.order) {
+                              // Prepare purchaseData as in handleConvertToPurchase
+                              const purchaseData = {
+                                supplierName: result.order.supplierName || '',
+                                phoneNo: result.order.supplierPhone || result.order.phoneNo || '',
+                                dueDate: result.order.dueDate || '',
+                                items: (result.order.items || []).map((item: any, index: number) => ({
+                                  id: index + 1,
+                                  item: item.item || '',
+                                  qty: item.qty?.toString() || '',
+                                  unit: item.unit || 'NONE',
+                                  customUnit: item.customUnit || '',
+                                  price: item.price?.toString() || '',
+                                  amount: item.amount || 0
+                                })),
+                                discount: result.order.discount?.toString() || '',
+                                discountType: result.order.discountType || '%',
+                                tax: result.order.tax?.toString() || '',
+                                taxType: result.order.taxType || '%',
+                                paymentType: result.order.paymentType || 'Credit',
+                                description: result.order.description || '',
+                                sourceOrderId: result.order._id,
+                                sourceOrderNumber: result.order.orderNumber
+                              };
+                              const queryParams = new URLSearchParams({
+                                convertFromOrder: 'true',
+                                orderData: JSON.stringify(purchaseData)
+                              });
+                              router.push(`/dashboard/purchaseAdd?${queryParams.toString()}`);
+                            }
+                          }}
                           onDelete={() => handleDeleteOrder(order)}
                           // onView={() => ...} // Optional: implement view modal if needed
                         />

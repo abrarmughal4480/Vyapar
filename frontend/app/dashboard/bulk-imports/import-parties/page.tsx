@@ -56,70 +56,69 @@ export default function BulkImportPartiesPage() {
   }
 
   const parseFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      let workbook;
+      if (file.name.endsWith('.csv')) {
+        workbook = XLSX.read(e.target?.result, { type: 'string' });
+      } else if (file.name.endsWith('.xlsx')) {
+        workbook = XLSX.read(e.target?.result, { type: 'array' });
+      }
+      if (workbook) {
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' }); // defval: '' for empty cells
+        parseJSONParties(jsonData);
+      }
+    };
     if (file.name.endsWith('.csv')) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const text = e.target?.result as string
-        parseCSV(text)
-      }
-      reader.readAsText(file)
+      reader.readAsText(file);
     } else if (file.name.endsWith('.xlsx')) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const arrayBuffer = e.target?.result as ArrayBuffer
-        parseExcel(arrayBuffer)
+      reader.readAsArrayBuffer(file);
+    }
+  };
+
+  const parseJSONParties = (jsonData: any[]) => {
+    const phoneKeys = ['Contact Number', 'Phone No.', 'Phone', 'Mobile', 'Phone Number'];
+    const parties: ImportParty[] = jsonData.map((row, i) => {
+      let phone = '';
+      for (const key of phoneKeys) {
+        if (row[key] && String(row[key]).trim()) {
+          phone = String(row[key]).trim();
+          break;
+        }
       }
-      reader.readAsArrayBuffer(file)
-    }
-  }
-
-  const parseExcel = (arrayBuffer: ArrayBuffer) => {
-    try {
-      const workbook = XLSX.read(arrayBuffer, { type: 'array' })
-      const sheetName = workbook.SheetNames[0]
-      const worksheet = workbook.Sheets[sheetName]
-      const csvData = XLSX.utils.sheet_to_csv(worksheet, {
-        FS: ',',
-        RS: '\n',
-        forceQuotes: false,
-        blankrows: false
-      })
-      parseCSV(csvData)
-    } catch (error) {
-      setToast({ message: 'Error parsing Excel file. Please check the file format.', type: 'error' })
-    }
-  }
-
-  const parseCSV = (csvText: string) => {
-    const lines = csvText.split('\n')
-    const headers = lines[0]?.split(',').map(h => h.trim()) || []
-    
-    const parsedParties: ImportParty[] = []
-    const errors: ValidationError[] = []
-
-    for (let i = 1; i < lines.length; i++) {
-      if (!lines[i].trim()) continue
-      
-      const values = lines[i].split(',').map(v => v.trim())
-      const party: ImportParty = {
-        name: values[0] || '',
-        contactNumber: values[1] || '',
-        email: values[2] || '',
-        address: values[3] || '',
-        openingBalance: parseFloat(values[4]) || 0,
-        openingDate: values[5] || '',
+      // Parse opening balance as number
+      let openingBalance = 0;
+      if (row['Opening Balance'] !== undefined && row['Opening Balance'] !== '') {
+        const val = parseFloat(String(row['Opening Balance']).replace(/,/g, ''));
+        openingBalance = isNaN(val) ? 0 : val;
       }
+      return {
+        name: row['Name'] || '',
+        contactNumber: phone,
+        email: row['Email ID'] || row['Email'] || '',
+        address: row['Address'] || '',
+        tin: row['TIN'] || '',
+        receivableBalance: row['Receivable Balance'] !== undefined && row['Receivable Balance'] !== '' ? row['Receivable Balance'] : 0,
+        payableBalance: row['Payable Balance'] !== undefined && row['Payable Balance'] !== '' ? row['Payable Balance'] : 0,
+        openingBalance,
+        openingDate: row['Opening Date'] || '',
+      };
+    });
+    setParties(parties);
 
-      // Validate party data
-      const rowErrors = validateParty(party, i + 1)
-      errors.push(...rowErrors)
-      parsedParties.push(party)
-    }
-
-    setParties(parsedParties)
-    setValidationErrors(errors)
-    setShowPreview(true)
-  }
+    // Validation (remove phone number digit validation)
+    const errors: ValidationError[] = [];
+    parties.forEach((party, idx) => {
+      // Only email validation
+      if (party.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(party.email)) {
+        errors.push({ row: idx + 1, field: 'email', message: 'Invalid email format' });
+      }
+    });
+    setValidationErrors(errors);
+    setShowPreview(true);
+  };
 
   const validateParty = (party: ImportParty, row: number): ValidationError[] => {
     const errors: ValidationError[] = []
@@ -158,6 +157,8 @@ export default function BulkImportPartiesPage() {
     window.URL.revokeObjectURL(url)
   }
 
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
   const handleImport = async () => {
     if (validationErrors.length > 0) {
       setToast({ message: 'Please fix validation errors before importing', type: 'error' })
@@ -169,50 +170,33 @@ export default function BulkImportPartiesPage() {
 
     try {
       const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || ''
-      let successCount = 0
-      let errorCount = 0
-
-      for (let i = 0; i < parties.length; i++) {
-        try {
-          const party = parties[i]
-          const result = await createParty({
-            name: party.name,
-            partyType: 'Customer',
-            phone: party.contactNumber,
-            email: party.email,
-            address: party.address,
-            openingBalance: party.openingBalance,
-            openingDate: party.openingDate || undefined,
-          }, token)
-
-          if (result && result.success) {
-            successCount++
-          } else {
-            errorCount++
-          }
-        } catch (error) {
-          errorCount++
-        }
-
-        setImportProgress(((i + 1) / parties.length) * 100)
-      }
-
-      setToast({ 
-        message: `Import completed! ${successCount} parties imported successfully, ${errorCount} failed.`, 
-        type: successCount > 0 ? 'success' : 'error' 
-      })
-
-      if (successCount > 0) {
+      // Bulk import: send all parties in one request
+      const response = await fetch(`${API_BASE_URL}/parties/bulk-import`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ parties })
+      });
+      const result = await response.json();
+      if (result && result.success) {
+        setToast({ message: result.message || 'Import completed!', type: 'success' })
+        setImportProgress(100)
         setTimeout(() => {
           router.push('/dashboard/parties')
         }, 2000)
+      } else {
+        setToast({ message: result.message || 'Import failed. Please try again.', type: 'error' })
+        setImportProgress(0)
       }
     } catch (error) {
       setToast({ message: 'Import failed. Please try again.', type: 'error' })
+      setImportProgress(0)
     } finally {
       setIsImporting(false)
     }
-  }
+  };
 
   const resetImport = () => {
     setUploadedFile(null)
@@ -246,7 +230,7 @@ export default function BulkImportPartiesPage() {
         .map(line => line.replace(/\t/g, ','))
         .join('\n')
     }
-    parseCSV(processedData)
+    parseJSONParties(XLSX.utils.sheet_to_json(XLSX.read(processedData, { type: 'string' }).Sheets[XLSX.read(processedData, { type: 'string' }).SheetNames[0]], { defval: '' }));
     setShowPasteModal(false)
     setPastedData('')
   }
@@ -546,11 +530,13 @@ export default function BulkImportPartiesPage() {
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Row</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact Number</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email ID</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone No.</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">TIN</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Receivable Balance</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payable Balance</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Opening Balance</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Opening Date</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -558,31 +544,39 @@ export default function BulkImportPartiesPage() {
                       <tr key={index} className={getErrorCount(index + 1) > 0 ? 'bg-red-50' : ''}>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">{index + 1}</td>
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">{party.name}</div>
+                          <div className="text-sm font-medium text-gray-900">{party.name || ''}</div>
                           {getFieldError(index + 1, 'name') && (
                             <div className="text-xs text-red-600 mt-1">{getFieldError(index + 1, 'name')?.message}</div>
                           )}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{party.contactNumber}</div>
-                          {getFieldError(index + 1, 'contactNumber') && (
-                            <div className="text-xs text-red-600 mt-1">{getFieldError(index + 1, 'contactNumber')?.message}</div>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{party.email}</div>
+                          <div className="text-sm text-gray-900">{party.email || ''}</div>
                           {getFieldError(index + 1, 'email') && (
                             <div className="text-xs text-red-600 mt-1">{getFieldError(index + 1, 'email')?.message}</div>
                           )}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{party.address}</div>
+                          <div className="text-sm text-gray-900">{party.contactNumber || ''}</div>
+                          {getFieldError(index + 1, 'contactNumber') && (
+                            <div className="text-xs text-red-600 mt-1">{getFieldError(index + 1, 'contactNumber')?.message}</div>
+                          )}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{party.openingBalance}</div>
+                          <div className="text-sm text-gray-900">{party.address || ''}</div>
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{party.openingDate || '-'}</div>
+                          <div className="text-sm text-gray-900">{party.tin || ''}</div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm text-green-700 font-semibold">{party.receivableBalance !== undefined && party.receivableBalance !== null && party.receivableBalance !== '' ? party.receivableBalance : 0}</div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm text-red-700 font-semibold">{party.payableBalance !== undefined && party.payableBalance !== null && party.payableBalance !== '' ? party.payableBalance : 0}</div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm text-blue-700 font-semibold">
+                            {Number(party.receivableBalance || 0) - Number(party.payableBalance || 0)}
+                          </div>
                         </td>
                       </tr>
                     ))}

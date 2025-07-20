@@ -1027,6 +1027,29 @@ const AddSalePage = () => {
     }
   }, []);
 
+  // Fetch all customers once on mount
+  useEffect(() => {
+    const fetchAllCustomers = async () => {
+      const token =
+        (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+      const customers = await getCustomerParties(token);
+      setCustomers(customers);
+    };
+    fetchAllCustomers();
+  }, []);
+
+  // Filtered suggestions update as user types
+  useEffect(() => {
+    if (!newSale.partyName) {
+      setCustomerSuggestions(customers);
+      return;
+    }
+    const filtered = customers.filter(c =>
+      c.name && c.name.toLowerCase().includes(newSale.partyName.toLowerCase())
+    );
+    setCustomerSuggestions(filtered);
+  }, [newSale.partyName, customers]);
+
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-2 sm:px-4 md:px-8">
       <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-6">
@@ -1059,7 +1082,6 @@ const AddSalePage = () => {
                       setCustomerDropdownIndex(0); // reset highlight
                     }}
                     onFocus={() => {
-                      fetchCustomerSuggestions();
                       setShowCustomerSuggestions(true);
                     }}
                     onBlur={() => setTimeout(() => setShowCustomerSuggestions(false), 200)}

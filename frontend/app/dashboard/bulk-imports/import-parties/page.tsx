@@ -180,7 +180,7 @@ export default function BulkImportPartiesPage() {
         body: JSON.stringify({ parties })
       });
       const result = await response.json();
-      if (result && result.success) {
+          if (result && result.success) {
         setToast({ message: result.message || 'Import completed!', type: 'success' })
         setImportProgress(100)
         setTimeout(() => {

@@ -56,6 +56,18 @@ export default function ProfilePage() {
       });
   }, []);
 
+  useEffect(() => {
+    if (!editMode) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editMode, editProfile, imageFile]);
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100"><div className="text-lg font-semibold text-gray-600">Loading profile...</div></div>;
   }
@@ -103,6 +115,10 @@ export default function ProfilePage() {
       setImagePreview(res.user.profileImage || null);
       setImageFile(null);
       setEditMode(false);
+      // yahan localStorage me bhi user ka data update karo
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('user', JSON.stringify(res.user));
+      }
     } catch (e) {
       setError("Failed to update profile");
     } finally {

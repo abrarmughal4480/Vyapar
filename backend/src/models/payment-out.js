@@ -7,6 +7,8 @@ const PaymentOutSchema = new mongoose.Schema({
   supplierName: { type: String, required: true },
   phoneNo: { type: String },
   amount: { type: Number, required: true },
+  total: { type: Number, required: true },
+  balance: { type: Number, default: 0 },
   paymentType: { type: String, enum: ['Cash', 'Cheque', 'Card', 'UPI'], default: 'Cash' },
   paymentDate: { type: Date, default: Date.now },
   description: { type: String },

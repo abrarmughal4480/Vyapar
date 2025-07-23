@@ -5,6 +5,7 @@ import BottomNavigation from '../components/BottomNavigation'
 import { useState, useEffect } from 'react'
 import { SidebarContext } from '../contexts/SidebarContext'
 import { useRouter } from 'next/navigation'
+import sessionManager from '../../lib/sessionManager'
 
 export default function DashboardLayout({
   children,
@@ -13,11 +14,21 @@ export default function DashboardLayout({
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const router = useRouter();
+  
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (!token) {
       router.replace('/');
+      return;
     }
+    
+    // Start session monitoring when dashboard loads
+    sessionManager.startMonitoring();
+    
+    // Cleanup on unmount
+    return () => {
+      sessionManager.stopMonitoring();
+    };
   }, [router]);
   return (
     <SidebarContext.Provider value={{ isCollapsed, setIsCollapsed }}>

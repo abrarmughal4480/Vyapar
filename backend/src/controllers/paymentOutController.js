@@ -69,12 +69,14 @@ export const createPaymentOut = async (req, res) => {
       supplierName: purchase.supplierName,
       phoneNo: purchase.phoneNo,
       amount,
+      total: purchase.grandTotal || 0,
+      balance: Math.max(0, currentBalance - amount), // Updated balance after payment
       paymentType,
       paymentDate: new Date(),
       description,
       imageUrl,
-      category: 'Purchase Payment Out',
-      status: purchase.balance === 0 ? 'Paid' : 'Partial'
+      category: 'Payment Out',
+      status: (currentBalance - amount) === 0 ? 'Paid' : 'Partial'
     });
     
     await paymentOut.save();
@@ -114,7 +116,7 @@ export const getPaymentOutStatsByUser = async (req, res) => {
     
     let objectUserId;
     try {
-      objectUserId = mongoose.Types.ObjectId(userId);
+      objectUserId = new mongoose.Types.ObjectId(userId);
     } catch (e) {
       return res.json({ success: true, stats: { totalAmount: 0, totalPayments: 0 } });
     }
@@ -250,7 +252,7 @@ export const getPaymentOutOverview = async (req, res) => {
     
     let objectUserId;
     try {
-      objectUserId = mongoose.Types.ObjectId(userId);
+      objectUserId = new mongoose.Types.ObjectId(userId);
     } catch (e) {
       return res.json({ success: true, overview: [] });
     }
@@ -274,6 +276,126 @@ export const getPaymentOutOverview = async (req, res) => {
     res.json({ success: true, overview });
   } catch (err) {
     console.error('Get payment out overview error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// NEW FUNCTION: Make bulk payment to party (distribute across all due purchases)
+export const makeBulkPaymentToParty = async (req, res) => {
+  try {
+    const { supplierName, amount, paymentType = 'Cash', description = '', imageUrl = '' } = req.body;
+    
+    if (!supplierName || typeof amount !== 'number') {
+      return res.status(400).json({ success: false, message: 'Missing supplierName or amount' });
+    }
+    
+    const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+    
+    // Validate payment amount
+    if (amount <= 0) {
+      return res.status(400).json({ success: false, message: 'Payment amount must be greater than 0' });
+    }
+    
+    // Find all purchases for this supplier with outstanding balance
+    const purchases = await Purchase.find({ 
+      userId, 
+      supplierName: { $regex: new RegExp(`^${supplierName}$`, 'i') },
+      balance: { $gt: 0 }
+    }).sort({ createdAt: 1 }); // Pay older purchases first
+    
+    if (purchases.length === 0) {
+      return res.status(404).json({ success: false, message: 'No outstanding purchases found for this supplier' });
+    }
+    
+    // Calculate total due balance
+    const totalDueBalance = purchases.reduce((sum, purchase) => sum + (purchase.balance || 0), 0);
+    
+    if (amount > totalDueBalance) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Payment amount (${amount}) cannot exceed total due balance (${totalDueBalance})` 
+      });
+    }
+    
+    let remainingAmount = amount;
+    const updatedPurchases = [];
+    const paymentOutRecords = [];
+    
+    // Distribute payment across purchases (FIFO - First In, First Out)
+    for (const purchase of purchases) {
+      if (remainingAmount <= 0) break;
+      
+      const currentBalance = purchase.balance || 0;
+      const currentPaid = purchase.paid || 0;
+      const paymentForThisPurchase = Math.min(remainingAmount, currentBalance);
+      
+      if (paymentForThisPurchase > 0) {
+        // Update purchase
+        purchase.paid = currentPaid + paymentForThisPurchase;
+        purchase.balance = Math.max(0, currentBalance - paymentForThisPurchase);
+        await purchase.save();
+        
+        // Create payment out record for this purchase
+        const paymentOut = new PaymentOut({
+          userId,
+          purchaseId: purchase._id,
+          billNo: purchase.billNo,
+          supplierName: purchase.supplierName,
+          phoneNo: purchase.phoneNo,
+          amount: paymentForThisPurchase,
+          total: purchase.grandTotal || 0,
+          balance: purchase.balance,
+          paymentType,
+          paymentDate: new Date(),
+          description: description || `Bulk payment for ${supplierName}`,
+          imageUrl,
+          category: 'Payment Out',
+          status: purchase.balance === 0 ? 'Paid' : 'Partial'
+        });
+        
+        await paymentOut.save();
+        
+        updatedPurchases.push({
+          purchaseId: purchase._id,
+          billNo: purchase.billNo,
+          paidAmount: paymentForThisPurchase,
+          newPaidTotal: purchase.paid,
+          newBalance: purchase.balance,
+          status: purchase.balance === 0 ? 'Paid' : 'Partial'
+        });
+        
+        paymentOutRecords.push(paymentOut);
+        remainingAmount -= paymentForThisPurchase;
+      }
+    }
+    
+    // Update supplier openingBalance (add total payment amount)
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      const supplierDoc = await Party.findOne({ name: supplierName, user: userId });
+      if (supplierDoc) {
+        supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + amount;
+        await supplierDoc.save();
+      }
+    } catch (err) {
+      console.error('Failed to update supplier openingBalance on bulk payment:', err);
+    }
+    
+    console.log(`Bulk payment processed for supplier ${supplierName}: Total Amount=${amount}, Purchases Updated=${updatedPurchases.length}`);
+    
+    res.status(201).json({ 
+      success: true, 
+      totalAmount: amount,
+      supplierName,
+      updatedPurchases,
+      paymentOutRecords,
+      message: `Payment of PKR ${amount} distributed across ${updatedPurchases.length} purchase(s)`
+    });
+  } catch (err) {
+    console.error('Bulk payment creation error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 }; 

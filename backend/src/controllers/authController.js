@@ -48,14 +48,25 @@ const authController = {
         return res.status(401).json({ success: false, message: 'Invalid credentials' });
       }
       const token = generateToken(user);
+      
+      // Update user's current token for single device login
+      await User.findByIdAndUpdate(user._id, { currentToken: token });
+      
       return res.json({ success: true, data: { user }, token });
     } catch (err) {
       return res.status(500).json({ success: false, message: 'Login failed', error: err.message });
     }
   },
-  logout: (req, res) => {
-    // For stateless JWT/localStorage auth, just respond with success
-    return res.json({ success: true, message: 'Logged out successfully' });
+  logout: async (req, res) => {
+    try {
+      // Clear the current token from user document
+      if (req.user && req.user.id) {
+        await User.findByIdAndUpdate(req.user.id, { currentToken: null });
+      }
+      return res.json({ success: true, message: 'Logged out successfully' });
+    } catch (err) {
+      return res.status(500).json({ success: false, message: 'Logout failed', error: err.message });
+    }
   }
 };
 

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { performLogout } from '../../lib/logout';
 
 export default function Header() {
   const [businessName, setBusinessName] = useState('My Business');
@@ -12,15 +13,8 @@ export default function Header() {
     if (name) setBusinessName(name);
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('isAuthenticated');
-    localStorage.removeItem('businessName');
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('devease_auth_token');
-    localStorage.removeItem('devease_user_session');
-    localStorage.removeItem('businessId');
-    router.push('/');
+  const handleLogout = async () => {
+    await performLogout();
   };
 
   return (

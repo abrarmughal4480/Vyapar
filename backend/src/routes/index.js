@@ -14,11 +14,13 @@ import paymentOutRoutes from './paymentOut.js';
 import profitAndLossController from '../controllers/profitAndLossController.js';
 import creditNoteRoutes from './creditNote.js';
 import * as dashboardController from '../controllers/dashboardController.js';
-import { getDashboardStats, getSalesOverview, getRecentActivity } from '../controllers/dashboardController.js';
+import { getDashboardStats, getSalesOverview, getRecentActivity, getProfile, updateProfile } from '../controllers/dashboardController.js';
+import sessionCheckRoutes from './sessionCheck.js';
 
 const router = express.Router();
 
 router.use('/auth', authRoutes);
+router.use('/api', sessionCheckRoutes); // Add session check routes
 router.use('/parties', authMiddleware, partiesRoutes);
 router.use('/api/sales', saleRoutes);
 router.use('/api/purchases', purchaseRoutes);
@@ -37,6 +39,10 @@ router.get('/api/dashboard/sales-overview/:userId', authMiddleware, getSalesOver
 
 // Add the new route for recent activity
 router.get('/dashboard/recent-activity/:userId', getRecentActivity);
+
+// Profile routes
+router.get('/profile', authMiddleware, getProfile);
+router.put('/profile', authMiddleware, updateProfile);
 
 // Parties count route
 router.get('/parties/count', authMiddleware, (req, res) => {

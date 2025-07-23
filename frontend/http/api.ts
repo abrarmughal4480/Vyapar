@@ -8,6 +8,50 @@ const api = axios.create({
   },
 });
 
+// Add request interceptor to include token
+api.interceptors.request.use(
+  (config) => {
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Add response interceptor to handle session expiration
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 && error.response?.data?.code === 'SESSION_EXPIRED') {
+      // Clear local storage and redirect to home page (which has login)
+      if (typeof window !== 'undefined') {
+        // Clear data in a way that triggers storage events for other tabs
+        const keysToRemove = ['token', 'user', 'isAuthenticated', 'businessName', 'devease_auth_token', 'devease_user_session', 'businessId'];
+        
+        keysToRemove.forEach(key => {
+          localStorage.removeItem(key);
+        });
+        
+        // Trigger storage event manually for same tab
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: 'token',
+          oldValue: 'expired',
+          newValue: '',
+          url: window.location.href
+        }));
+        
+        // Force page reload to go to home/login page
+        window.location.href = '/';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;
 
 export const fetchDashboardStats = async (token?: string) => {

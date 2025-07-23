@@ -19,4 +19,7 @@ router.delete('/:id', partiesController.deleteParty);
 // Bulk import route
 router.post('/bulk-import', authMiddleware, partiesController.bulkImport);
 
+// GET /parties/:partyId/balance - Get party balance
+router.get('/:partyId/balance', authMiddleware, partiesController.getPartyBalance);
+
 export default router; 

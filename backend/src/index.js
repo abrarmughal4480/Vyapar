@@ -22,11 +22,12 @@ async function dbConnect() {
 // Create express app before using it
 const app = express();
 
-// Allow all origins, methods, and headers
+// CORS configuration to allow all origins
 app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: true, // Allow all origins
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  credentials: true, // Allow credentials
 }));
 
 // Increase payload limit for bulk imports

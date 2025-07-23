@@ -1173,21 +1173,32 @@ Your Business Name`;
         isOpen={showPaymentIn}
         onClose={() => {
           setShowPaymentIn(false);
-          loadStats();
         }}
         onSave={async (data) => {
-          // Fetch updated sale from API
+          // Refresh both sales data and stats after successful payment
           try {
             const token = (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
-            const saleId = selectedTransaction?._id || selectedTransaction?.id;
-            if (!saleId) return;
-            const result = await getSaleById(saleId, token);
-            if (result && result.success && result.sale) {
-              setTransactions((prev) => prev.map((t) => (t._id === saleId || t.id === saleId) ? { ...t, ...result.sale } : t));
+            if (!token) {
+              setShowPaymentIn(false);
+              setToast({ message: 'Payment received successfully!', type: 'success' });
+              return;
             }
+            const decoded: any = jwtDecode(token);
+            const userId = decoded._id || decoded.id;
+            if (!userId) {
+              setShowPaymentIn(false);
+              setToast({ message: 'Payment received successfully!', type: 'success' });
+              return;
+            }
+            // Refresh sales data
+            const result = await getSalesByUser(userId, token);
+            if (result && result.success && Array.isArray(result.sales)) {
+              setTransactions(result.sales);
+            }
+            // Refresh stats
+            await loadStats();
           } catch (err) {
-            // fallback: just reload all
-            loadStats();
+            console.error('Error refreshing sales data:', err);
           }
           setShowPaymentIn(false);
           setToast({ message: 'Payment received successfully!', type: 'success' });

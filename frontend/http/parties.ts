@@ -68,9 +68,9 @@ export const getCustomerParties = async (token: string) => {
   return res.data.data;
 };
 
-export const getPartyBalance = async (partyName: string, token: string) => {
-  const res = await api.get(`/parties/balance?name=${encodeURIComponent(partyName)}`, {
+export const getPartyBalance = async (partyId: string, token: string) => {
+  const res = await api.get(`/parties/${partyId}/balance`, {
     headers: { Authorization: `Bearer ${token}` }
   });
-  return res.data.balance;
+  return res.data;
 }; 

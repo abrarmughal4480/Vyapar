@@ -9,7 +9,9 @@ const userSchema = new mongoose.Schema({
   businessType: { type: String, required: true },
   address: { type: String },
   gstNumber: { type: String },
-  website: { type: String }
+  website: { type: String },
+  profileImage: { type: String },
+  currentToken: { type: String } // For single device login
 }, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);

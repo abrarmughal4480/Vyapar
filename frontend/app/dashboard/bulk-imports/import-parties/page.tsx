@@ -14,6 +14,9 @@ interface ImportParty {
   address: string
   openingBalance: number
   openingDate?: string
+  tin?: string
+  receivableBalance?: number
+  payableBalance?: number
 }
 
 interface ValidationError {
@@ -99,11 +102,11 @@ export default function BulkImportPartiesPage() {
         contactNumber: phone,
         email: row['Email ID'] || row['Email'] || '',
         address: row['Address'] || '',
-        tin: row['TIN'] || '',
-        receivableBalance: row['Receivable Balance'] !== undefined && row['Receivable Balance'] !== '' ? row['Receivable Balance'] : 0,
-        payableBalance: row['Payable Balance'] !== undefined && row['Payable Balance'] !== '' ? row['Payable Balance'] : 0,
         openingBalance,
         openingDate: row['Opening Date'] || '',
+        tin: row['TIN'] || '',
+        receivableBalance: row['Receivable Balance'] !== undefined && row['Receivable Balance'] !== '' ? Number(row['Receivable Balance']) : 0,
+        payableBalance: row['Payable Balance'] !== undefined && row['Payable Balance'] !== '' ? Number(row['Payable Balance']) : 0,
       };
     });
     setParties(parties);
@@ -568,15 +571,13 @@ export default function BulkImportPartiesPage() {
                           <div className="text-sm text-gray-900">{party.tin || ''}</div>
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="text-sm text-green-700 font-semibold">{party.receivableBalance !== undefined && party.receivableBalance !== null && party.receivableBalance !== '' ? party.receivableBalance : 0}</div>
+                          <div className="text-sm text-green-700 font-semibold">{party.receivableBalance ?? 0}</div>
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="text-sm text-red-700 font-semibold">{party.payableBalance !== undefined && party.payableBalance !== null && party.payableBalance !== '' ? party.payableBalance : 0}</div>
+                          <div className="text-sm text-red-700 font-semibold">{party.payableBalance ?? 0}</div>
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="text-sm text-blue-700 font-semibold">
-                            {Number(party.receivableBalance || 0) - Number(party.payableBalance || 0)}
-                          </div>
+                          <div className="text-sm text-blue-700 font-semibold">{(party.receivableBalance ?? 0) - (party.payableBalance ?? 0)}</div>
                         </td>
                       </tr>
                     ))}

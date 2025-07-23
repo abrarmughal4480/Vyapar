@@ -542,6 +542,10 @@ export default function Home() {
         if (typeof window !== 'undefined') {
           localStorage.setItem('isAuthenticated', 'true');
           localStorage.setItem('user', JSON.stringify(result.user || result.data?.user));
+          
+          // Start session monitoring immediately after login
+          const { default: sessionManager } = await import('../lib/sessionManager');
+          sessionManager.startMonitoring();
         }
         setShowSuccess(true);
         setTimeout(() => {

@@ -76,4 +76,14 @@ export const getPaymentOutsByUser = async (userId: string, token: string) => {
     },
   });
   return data;
+};
+
+export const makeBulkPaymentToParty = async (paymentData: any, token: string) => {
+  console.log('makeBulkPaymentToParty called with:', { paymentData, token: token ? 'Present' : 'Missing' });
+  const res = await api.post('/api/payment-out/bulk-payment', paymentData, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  return res.data;
 }; 

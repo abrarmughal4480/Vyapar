@@ -110,8 +110,8 @@ const PaymentOutPage = () => {
   // Stats
   const filteredStats = {
     totalPaid: filteredTransactions.reduce((sum: number, t: any) => sum + (typeof t.amount === 'number' ? t.amount : 0), 0),
-    totalGrandTotal: filteredTransactions.reduce((sum: number, t: any) => sum + (typeof t.billTotal === 'number' ? t.billTotal : 0), 0),
-    totalBalance: filteredTransactions.reduce((sum: number, t: any) => sum + (typeof t.remainingBalance === 'number' ? t.remainingBalance : 0), 0),
+    totalGrandTotal: filteredTransactions.reduce((sum: number, t: any) => sum + (typeof t.total === 'number' ? t.total : 0), 0),
+    totalBalance: filteredTransactions.reduce((sum: number, t: any) => sum + (typeof t.balance === 'number' ? t.balance : 0), 0),
   };
 
   // Date dropdown outside click
@@ -204,7 +204,7 @@ const PaymentOutPage = () => {
             className="px-6 py-2 rounded-full bg-blue-600 text-white font-semibold shadow hover:bg-blue-700 transition-all text-sm"
             onClick={() => { setSelectedTransaction(null); setShowPaymentOut(true); }}
           >
-            + Add Payment Out
+            + Add Party Payment
           </button>
         </div>
       </div>
@@ -412,13 +412,13 @@ const PaymentOutPage = () => {
                       <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap text-center">{transaction.category || 'Purchase'}</td>
                       <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap text-center">{transaction.paymentType || '-'}</td>
                       <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">
-                        PKR {typeof transaction.billTotal === 'number' ? transaction.billTotal.toLocaleString() : '0'}
+                        PKR {typeof transaction.total === 'number' ? transaction.total.toLocaleString() : '0'}
                       </td>
                       <td className="px-6 py-4 text-sm font-semibold text-red-700 whitespace-nowrap text-center">
                         PKR {typeof transaction.amount === 'number' ? transaction.amount.toLocaleString() : '0'}
                       </td>
                       <td className="px-6 py-4 text-sm font-semibold text-orange-600 whitespace-nowrap text-center">
-                        PKR {typeof transaction.remainingBalance === 'number' ? transaction.remainingBalance.toLocaleString() : '0'}
+                        PKR {typeof transaction.balance === 'number' ? transaction.balance.toLocaleString() : '0'}
                       </td>
                       <td className="px-6 py-4 text-sm font-semibold text-center">
                         <PaymentStatusBadge status={transaction.status || 'Partial'} />
@@ -468,20 +468,37 @@ const PaymentOutPage = () => {
           // Refresh payments list after successful payment
           try {
             const token = (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
-            const result = await getPayments(token);
-            if (result && result.success && Array.isArray(result.payments)) {
-              setTransactions(result.payments);
+            if (!token) return;
+            
+            let userId = "";
+            try {
+              const decoded: any = jwtDecode(token);
+              userId = decoded.userId || decoded._id || decoded.id || "";
+            } catch (e) {
+              console.error('JWT decode error:', e);
+            }
+            
+            if (userId) {
+              const result = await getPaymentOutsByUser(userId, token);
+              if (result && result.success && Array.isArray(result.paymentOuts)) {
+                setTransactions(result.paymentOuts);
+              }
             }
           } catch (err) {
-            console.error('Error refreshing payments:', err);
+            console.error('Error refreshing payment outs:', err);
           }
           setShowPaymentOut(false);
-          setToast({ message: 'Payment made successfully!', type: 'success' });
+          
+          if (data.bulkPayment) {
+            setToast({ message: `Bulk payment successful! Updated ${data.updatedPurchases?.length || 0} purchase(s)`, type: 'success' });
+          } else {
+            setToast({ message: 'Payment made successfully!', type: 'success' });
+          }
         }}
         partyName={selectedTransaction?.supplierName || ''}
-        total={typeof selectedTransaction?.billTotal === 'number' ? selectedTransaction.billTotal : 0}
-        dueBalance={typeof selectedTransaction?.remainingBalance === 'number' ? selectedTransaction.remainingBalance : 0}
-        purchaseId={selectedTransaction?.purchaseId || ''}
+        total={typeof selectedTransaction?.total === 'number' ? selectedTransaction.total : 0}
+        dueBalance={typeof selectedTransaction?.balance === 'number' ? selectedTransaction.balance : 0}
+        purchaseId={selectedTransaction?.purchaseId}
       />
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />

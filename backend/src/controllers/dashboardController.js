@@ -4,6 +4,10 @@ import Party from '../models/parties.js';
 import Item from '../models/items.js';
 import mongoose from 'mongoose';
 import CreditNote from '../models/creditNote.js';
+import User from '../models/user.js';
+import { uploadProfileImage } from '../services/cloudinaryService.js';
+import formidable from 'formidable';
+import fs from 'fs';
 
 export const getDashboardStats = async (req, res) => {
   try {
@@ -269,6 +273,57 @@ export const getRecentActivity = async (req, res) => {
       .slice(0, 3);
 
     res.json({ success: true, activities: sorted });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// GET /api/profile
+export const getProfile = async (req, res) => {
+  try {
+    const userId = req.user && (req.user._id || req.user.id);
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const user = await User.findById(userId).select('-password');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// PUT /api/profile
+export const updateProfile = async (req, res) => {
+  try {
+    const userId = req.user && (req.user._id || req.user.id);
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+
+    // Use formidable for file upload
+    const form = formidable({ multiples: false });
+    form.parse(req, async (err, fields, files) => {
+      if (err) return res.status(400).json({ success: false, message: 'Form parse error' });
+      
+      // Convert array fields to strings (formidable can return arrays)
+      const updateData = {};
+      Object.keys(fields).forEach(key => {
+        let value = fields[key];
+        if (Array.isArray(value)) {
+          value = value[0]; // Take the first element if it's an array
+        }
+        updateData[key] = value;
+      });
+      
+      // Handle image upload
+      if (files.profileImage) {
+        const file = files.profileImage;
+        const fileBuffer = await fs.promises.readFile(file.filepath);
+        const imageUrl = await uploadProfileImage(fileBuffer, `${userId}_profile`);
+        updateData.profileImage = imageUrl;
+      }
+      // Remove fields that shouldn't be updated
+      delete updateData.password;
+      const user = await User.findByIdAndUpdate(userId, updateData, { new: true, runValidators: true }).select('-password');
+      res.json({ success: true, user });
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

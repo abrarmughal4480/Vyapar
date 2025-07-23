@@ -353,19 +353,17 @@ export default function Dashboard() {
           </div>
           
           <div className="flex items-center space-x-4">
-            <button className="p-3 text-gray-600 hover:text-indigo-600 transition-colors duration-200 hover:bg-indigo-50 rounded-xl">
-              <Settings className="w-5 h-5" />
-            </button>
             <div className="flex items-center space-x-3 bg-white/50 backdrop-blur-sm rounded-2xl px-4 py-2 border border-white/20">
               <div className="relative">
-                <div className="w-10 h-10 bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg">
+                <div className="w-10 h-10 bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg cursor-pointer"
+                  onClick={() => router.push('/dashboard/profile')}>
                   <span className="text-white font-semibold text-sm">{user ? user.name[0] : 'U'}</span>
                 </div>
                 <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
               </div>
               <div className="hidden sm:block">
                 <p className="text-sm font-semibold text-gray-900">{user ? user.businessName : 'Business'}</p>
-                <p className="text-xs text-gray-500">{user ? user.email : 'user@email.com'}</p>
+                <p className="text-xs text-gray-500 cursor-pointer" onClick={() => router.push('/dashboard/profile')}>{user ? user.email : 'user@email.com'}</p>
               </div>
             </div>
             <button 

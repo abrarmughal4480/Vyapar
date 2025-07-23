@@ -212,7 +212,7 @@ export const getPurchaseStatsByUser = async (req, res) => {
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
     let objectUserId;
     try {
-      objectUserId = mongoose.Types.ObjectId(userId);
+      objectUserId = new mongoose.Types.ObjectId(userId);
     } catch (e) {
       return res.json({ success: true, stats: { totalGrandTotal: 0, totalBalance: 0, totalPaid: 0 } });
     }
@@ -288,7 +288,7 @@ export const getPaymentsByUser = async (req, res) => {
     // Convert userId to ObjectId safely
     let objectUserId;
     try {
-      objectUserId = mongoose.Types.ObjectId(userId);
+      objectUserId = new mongoose.Types.ObjectId(userId);
     } catch (e) {
       console.error('Invalid userId format:', userId);
       return res.json({ success: true, payments: [] });

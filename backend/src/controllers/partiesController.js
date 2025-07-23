@@ -1,5 +1,6 @@
 import Party from '../models/parties.js';
 import Sale from '../models/sale.js';
+import mongoose from 'mongoose';
 
 const partiesController = {
   createParty: async (req, res) => {
@@ -68,8 +69,15 @@ const partiesController = {
     try {
       const partyId = req.params.id;
       const phoneValue = req.body.contactNumber || req.body.phone || '';
+      
+      // Ensure name is a string (handle array case)
+      let name = req.body.name;
+      if (Array.isArray(name)) {
+        name = name[0]; // Take the first element if it's an array
+      }
+      
       const updateFields = {
-        name: req.body.name,
+        name: name,
         phone: phoneValue,
         contactNumber: phoneValue,
         email: req.body.email,
@@ -162,6 +170,50 @@ const partiesController = {
     } catch (err) {
       console.error('Bulk import error:', err);
       return res.status(500).json({ success: false, message: 'Bulk import failed', error: err.message });
+    }
+  },
+  getPartyBalance: async (req, res) => {
+    try {
+      const partyId = req.params.partyId;
+      const userId = req.user.id;
+      
+      // Get party info
+      const party = await Party.findOne({ _id: partyId, user: userId });
+      if (!party) {
+        return res.status(404).json({ success: false, message: 'Party not found' });
+      }
+      
+      // Calculate total due balance from all sales for this party (sum of balance field)
+      const salesAgg = await Sale.aggregate([
+        { $match: { partyName: party.name, userId: new mongoose.Types.ObjectId(userId) } },
+        { $group: { 
+            _id: null, 
+            totalBalance: { $sum: "$balance" },
+            totalReceived: { $sum: "$received" },
+            totalGrandTotal: { $sum: "$grandTotal" }
+          } 
+        }
+      ]);
+      
+      const salesData = salesAgg[0] || { totalBalance: 0, totalReceived: 0, totalGrandTotal: 0 };
+      const partyOpeningBalance = party.openingBalance || 0;
+      
+      // Total due = party's opening balance + sum of all sales balances
+      const totalDue = partyOpeningBalance + salesData.totalBalance;
+      
+      return res.json({ 
+        success: true, 
+        data: { 
+          partyName: party.name,
+          openingBalance: partyOpeningBalance,
+          salesBalance: salesData.totalBalance, // This is the sum of balance field from all sales
+          salesReceived: salesData.totalReceived,
+          salesGrandTotal: salesData.totalGrandTotal,
+          totalDue: totalDue
+        } 
+      });
+    } catch (err) {
+      return res.status(500).json({ success: false, message: 'Failed to get party balance', error: err.message });
     }
   },
   // You can add more party-related methods here (list, update, delete, etc.)

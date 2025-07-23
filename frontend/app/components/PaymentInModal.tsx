@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { receivePayment } from '@/http/sales';
+import { receivePayment, receivePartyPayment } from '@/http/sales';
 import Toast from './Toast';
-import { fetchPartiesByUserId } from '@/http/parties';
+import { fetchPartiesByUserId, getPartyBalance } from '@/http/parties';
 
 interface PaymentInModalProps {
   isOpen: boolean;
@@ -96,7 +96,10 @@ function PaymentTypeDropdown({ value, onChange }: { value: string; onChange: (va
 
 const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyName, total, dueBalance, saleId, onSave }) => {
   const [paymentType, setPaymentType] = useState('Cash');
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().slice(0, 10);
+  });
   const [receivedAmount, setReceivedAmount] = useState('');
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -106,6 +109,8 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
   const [partySuggestions, setPartySuggestions] = useState<any[]>([]);
   const [showPartyDropdown, setShowPartyDropdown] = useState(false);
   const [selectedParty, setSelectedParty] = useState<any>(null);
+  const [partyTotalDue, setPartyTotalDue] = useState<number>(0);
+  const [partyGrandTotal, setPartyGrandTotal] = useState<number>(0);
   const partyInputRef = React.useRef<HTMLInputElement>(null);
   const [dropdownPos, setDropdownPos] = useState<{top: number, left: number, width: number}>({top: 0, left: 0, width: 0});
   const [partyDropdownIndex, setPartyDropdownIndex] = useState(-1);
@@ -176,6 +181,37 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
     }
   }, [showPartyDropdown]);
 
+  // Fetch party balance when party is selected
+  const fetchPartyBalance = async (party: any) => {
+    if (!party || !party._id) return;
+    const token = (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+    if (!token) return;
+    
+    try {
+      const balanceData = await getPartyBalance(party._id, token);
+      if (balanceData && balanceData.success) {
+        // Set party's total grand total and total balance from all sales
+        setPartyGrandTotal(balanceData.data.salesGrandTotal || 0);
+        setPartyTotalDue(balanceData.data.salesBalance || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching party balance:', error);
+      setPartyGrandTotal(0);
+      setPartyTotalDue(0);
+    }
+  };
+
+  // Reset party balance when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setPartyGrandTotal(total); // Default to passed total
+      setPartyTotalDue(dueBalance); // Default to passed dueBalance
+      // Reset date to today when modal opens
+      const today = new Date();
+      setDate(today.toISOString().slice(0, 10));
+    }
+  }, [isOpen, total, dueBalance]);
+
   if (!isOpen) return null;
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -197,11 +233,38 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
 
   const handleSave = async () => {
     const amount = parseFloat(receivedAmount) || 0;
+    const token = (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+    
     try {
-      const result = await receivePayment(saleId, amount);
+      let result;
+      
+      if (selectedParty) {
+        // If party is selected, use party payment (updates multiple sales)
+        result = await receivePartyPayment(selectedParty.name, amount, token);
+      } else {
+        // If no party selected, use individual sale payment
+        result = await receivePayment(saleId, amount);
+      }
+      
       if (result && result.success) {
-        if (onSave) onSave({ partyName: selectedParty?.name || partySearch, paymentType, date, total, dueBalance, receivedAmount: amount, image });
+        if (onSave) onSave({ 
+          partyName: selectedParty?.name || partySearch, 
+          paymentType, 
+          date, 
+          total, 
+          dueBalance, 
+          receivedAmount: amount, 
+          image 
+        });
         onClose();
+        
+        // Show success message with details
+        if (selectedParty && result.updatedSales) {
+          setToast({ 
+            message: `Payment received! Updated ${result.updatedSales} sale(s)`, 
+            type: 'success' 
+          });
+        }
       } else {
         setToast({ message: result?.message || 'Failed to receive payment', type: 'error' });
       }
@@ -260,9 +323,11 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
                     setPartyDropdownIndex(i => Math.max(i - 1, 0));
                   } else if (e.key === 'Enter') {
                     if (filteredPartySuggestions[partyDropdownIndex]) {
-                      setSelectedParty(filteredPartySuggestions[partyDropdownIndex]);
-                      setPartySearch(filteredPartySuggestions[partyDropdownIndex].name);
+                      const party = filteredPartySuggestions[partyDropdownIndex];
+                      setSelectedParty(party);
+                      setPartySearch(party.name);
                       setShowPartyDropdown(false);
+                      fetchPartyBalance(party);
                     }
                   } else if (e.key === 'Escape') {
                     setShowPartyDropdown(false);
@@ -292,6 +357,7 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
                       setSelectedParty(party);
                       setPartySearch(party.name);
                       setShowPartyDropdown(false);
+                      fetchPartyBalance(party);
                     }}
                     role="option"
                     aria-selected={partyDropdownIndex === idx}
@@ -354,10 +420,18 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
           {/* Right Side */}
           <div style={{ flex: 1, minWidth: 240, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div style={{ background: '#f8fafc', borderRadius: 14, padding: 28, marginBottom: 22, border: '1.5px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.01)' }}>
-              <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>Total</div>
-              <div style={{ fontSize: 28, fontWeight: 800, color: '#2563eb', marginBottom: 18 }}>PKR {total.toLocaleString()}</div>
-              <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>Due Balance</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#ea580c' }}>PKR {dueBalance.toLocaleString()}</div>
+              <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>
+                {selectedParty ? `${selectedParty.name} - Total Sales` : 'This Sale Total'}
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: '#2563eb', marginBottom: 18 }}>
+                PKR {(selectedParty ? partyGrandTotal : total).toLocaleString()}
+              </div>
+              <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>
+                {selectedParty ? `${selectedParty.name} - Outstanding Balance` : 'Outstanding Balance'}
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#ea580c' }}>
+                PKR {(selectedParty ? partyTotalDue : dueBalance).toLocaleString()}
+              </div>
             </div>
             <div>
               <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Received Amount</label>

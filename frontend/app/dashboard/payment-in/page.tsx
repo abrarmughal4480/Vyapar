@@ -469,18 +469,27 @@ const PaymentInPage = () => {
         isOpen={showPaymentIn}
         onClose={() => setShowPaymentIn(false)}
         onSave={async (data) => {
-          // Fetch updated sale from API
+          // Refresh the entire payment data after successful payment
           try {
             const token = (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
-            const saleId = selectedTransaction?._id || selectedTransaction?.id;
-            if (!saleId) return;
-            const result = await getSaleById(saleId, token);
-            if (result && result.success && result.sale) {
-              setTransactions((prev) => prev.map((t) => (t._id === saleId || t.id === saleId) ? { ...t, ...result.sale } : t));
+            if (!token) {
+              setShowPaymentIn(false);
+              setToast({ message: 'Payment received successfully!', type: 'success' });
+              return;
+            }
+            const decoded: any = jwtDecode(token);
+            const userId = decoded._id || decoded.id;
+            if (!userId) {
+              setShowPaymentIn(false);
+              setToast({ message: 'Payment received successfully!', type: 'success' });
+              return;
+            }
+            const result = await getSalesByUser(userId, token);
+            if (result && result.success && Array.isArray(result.sales)) {
+              setTransactions(result.sales.filter((sale: any) => sale.received && sale.received > 0));
             }
           } catch (err) {
-            // fallback: just reload all
-            setShowPaymentIn(false);
+            console.error('Error refreshing payment data:', err);
           }
           setShowPaymentIn(false);
           setToast({ message: 'Payment received successfully!', type: 'success' });

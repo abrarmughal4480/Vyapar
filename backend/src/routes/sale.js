@@ -1,5 +1,5 @@
 import express from 'express';
-import { createSale, getSalesByUser, receivePayment, getSalesStatsByUser, deleteSale, updateSale, getBillWiseProfit, getItemPurchasePrices } from '../controllers/saleController.js';
+import { createSale, getSalesByUser, receivePayment, receivePartyPayment, getSalesStatsByUser, deleteSale, updateSale, getBillWiseProfit, getItemPurchasePrices } from '../controllers/saleController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import Sale from '../models/sale.js';
 
@@ -42,6 +42,10 @@ router.get('/by-id/:saleId', authMiddleware, async (req, res) => {
 });
 
 router.post('/payment-in', receivePayment);
+
+router.post('/receive-payment', authMiddleware, receivePayment);
+
+router.post('/receive-party-payment', authMiddleware, receivePartyPayment);
 
 router.get('/stats/:userId', authMiddleware, getSalesStatsByUser);
 

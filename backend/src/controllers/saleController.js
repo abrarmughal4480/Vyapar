@@ -186,6 +186,68 @@ export const receivePayment = async (req, res) => {
   }
 };
 
+// Receive payment for party (updates multiple sales starting from oldest)
+export const receivePartyPayment = async (req, res) => {
+  try {
+    const { partyName, amount } = req.body;
+    const userId = req.user && (req.user._id || req.user.id);
+    
+    if (!partyName || typeof amount !== 'number' || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'Missing partyName or invalid amount' });
+    }
+
+    // Get all sales for this party with balance > 0, sorted by creation date (oldest first)
+    const sales = await Sale.find({ 
+      partyName: partyName, 
+      userId: new mongoose.Types.ObjectId(userId),
+      balance: { $gt: 0 } 
+    }).sort({ createdAt: 1 });
+
+    if (sales.length === 0) {
+      return res.status(404).json({ success: false, message: 'No outstanding sales found for this party' });
+    }
+
+    let remainingAmount = amount;
+    const updatedSales = [];
+
+    // Update sales starting from oldest
+    for (const sale of sales) {
+      if (remainingAmount <= 0) break;
+
+      const saleBalance = sale.balance || 0;
+      const paymentForThisSale = Math.min(remainingAmount, saleBalance);
+
+      sale.received = (sale.received || 0) + paymentForThisSale;
+      sale.balance = saleBalance - paymentForThisSale;
+      
+      await sale.save();
+      updatedSales.push(sale);
+      remainingAmount -= paymentForThisSale;
+    }
+
+    // Update party openingBalance (subtract payment amount)
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      const partyDoc = await Party.findOne({ name: partyName, user: userId });
+      if (partyDoc) {
+        partyDoc.openingBalance = (partyDoc.openingBalance || 0) - amount;
+        await partyDoc.save();
+      }
+    } catch (err) {
+      console.error('Failed to update party openingBalance on payment:', err);
+    }
+
+    res.json({ 
+      success: true, 
+      message: `Payment of PKR ${amount} processed successfully`,
+      updatedSales: updatedSales.length,
+      remainingAmount: remainingAmount > 0 ? remainingAmount : 0
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // Get sales stats (sum of grandTotal, balance, received) for a user
 export const getSalesStatsByUser = async (req, res) => {
   try {

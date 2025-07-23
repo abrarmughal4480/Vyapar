@@ -10,6 +10,9 @@ router.use(authMiddleware);
 // Create a new payment out
 router.post('/', paymentOutController.createPaymentOut);
 
+// NEW ROUTE: Make bulk payment to party
+router.post('/bulk-payment', paymentOutController.makeBulkPaymentToParty);
+
 // Get all payment outs for a user
 router.get('/user/:userId', paymentOutController.getPaymentOutsByUser);
 

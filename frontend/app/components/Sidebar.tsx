@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { SidebarContext } from '../contexts/SidebarContext'
 import { FiChevronRight } from 'react-icons/fi'
+import { performLogout } from '../../lib/logout'
 
 // Define types for nav items
 interface NavSubItem {
@@ -117,15 +118,8 @@ export default function Sidebar() {
     if (name) setBusinessName(name)
   }, [])
 
-  const handleLogout = () => {
-    localStorage.removeItem('isAuthenticated');
-    localStorage.removeItem('businessName');
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('devease_auth_token');
-    localStorage.removeItem('devease_user_session');
-    localStorage.removeItem('businessId');
-    router.push('/');
+  const handleLogout = async () => {
+    await performLogout();
   }
 
   const toggleDropdown = (itemId: string) => {

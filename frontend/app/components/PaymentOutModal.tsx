@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { makePayment } from '@/http/purchases';
+import { makePayment, getPurchasesByUser, makeBulkPaymentToParty } from '@/http/purchases';
 import Toast from './Toast';
 import { fetchPartiesByUserId } from '@/http/parties';
 import { Settings } from 'lucide-react';
+import { jwtDecode } from 'jwt-decode';
 
 interface PaymentOutModalProps {
   isOpen: boolean;
@@ -13,7 +14,7 @@ interface PaymentOutModalProps {
   partyName: string;
   total: number;
   dueBalance: number;
-  purchaseId: string;
+  purchaseId?: string; // Made optional for party payments
   onSave?: (data: any) => void;
 }
 
@@ -111,6 +112,59 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
   const [dropdownPos, setDropdownPos] = useState<{top: number, left: number, width: number}>({top: 0, left: 0, width: 0});
   const [partyDropdownIndex, setPartyDropdownIndex] = useState(-1);
   const [showSettings, setShowSettings] = useState(false);
+  const [partyTotal, setPartyTotal] = useState(0);
+  const [partyDueBalance, setPartyDueBalance] = useState(0);
+
+  // Function to fetch and calculate party totals
+  const fetchPartyTotals = async (partyName: string) => {
+    if (!partyName) {
+      setPartyTotal(0);
+      setPartyDueBalance(0);
+      return;
+    }
+
+    try {
+      const token = (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+      if (!token) return;
+
+      // Get userId from token
+      let userId = '';
+      try {
+        const decoded: any = jwtDecode(token);
+        userId = decoded.userId || decoded._id || decoded.id || '';
+      } catch (e) {
+        console.error('JWT decode error:', e);
+        return;
+      }
+
+      if (!userId) return;
+
+      // Fetch all purchases for this user
+      const result = await getPurchasesByUser(userId, token);
+      if (result && result.success && Array.isArray(result.purchases)) {
+        // Filter purchases for the selected party
+        const partyPurchases = result.purchases.filter((purchase: any) => 
+          purchase.supplierName?.toLowerCase() === partyName.toLowerCase()
+        );
+
+        // Calculate totals
+        const totalGrandTotal = partyPurchases.reduce((sum: number, purchase: any) => 
+          sum + (typeof purchase.grandTotal === 'number' ? purchase.grandTotal : 0), 0
+        );
+        
+        const totalDueBalance = partyPurchases.reduce((sum: number, purchase: any) => 
+          sum + (typeof purchase.balance === 'number' ? purchase.balance : 0), 0
+        );
+
+        setPartyTotal(totalGrandTotal);
+        setPartyDueBalance(totalDueBalance);
+      }
+    } catch (err) {
+      console.error('Error fetching party totals:', err);
+      setPartyTotal(0);
+      setPartyDueBalance(0);
+    }
+  };
 
   // Prevent background scrolling when modal is open
   useEffect(() => {
@@ -126,7 +180,13 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
 
   // Sync partySearch with initialPartyName every time modal opens or initialPartyName changes
   useEffect(() => {
-    if (isOpen) setPartySearch(initialPartyName || '');
+    if (isOpen) {
+      setPartySearch(initialPartyName || '');
+      // Also fetch totals for initial party if provided
+      if (initialPartyName) {
+        fetchPartyTotals(initialPartyName);
+      }
+    }
   }, [isOpen, initialPartyName]);
 
   // Fetch supplier parties for suggestions
@@ -172,6 +232,16 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
     if (showPartyDropdown) setPartyDropdownIndex(0);
   }, [showPartyDropdown, partySearch]);
 
+  // Fetch party totals when selectedParty changes
+  useEffect(() => {
+    if (selectedParty?.name) {
+      fetchPartyTotals(selectedParty.name);
+    } else {
+      setPartyTotal(0);
+      setPartyDueBalance(0);
+    }
+  }, [selectedParty]);
+
   if (!isOpen) return null;
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -193,24 +263,71 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
 
   const handleSave = async () => {
     const amount = parseFloat(paidAmount) || 0;
+    
+    if (amount <= 0) {
+      setToast({ message: 'Please enter a valid payment amount', type: 'error' });
+      return;
+    }
+    
+    // Validate against party due balance for party payments
+    if (selectedParty && !purchaseId && amount > partyDueBalance) {
+      setToast({ message: `Payment amount cannot exceed party due balance of PKR ${partyDueBalance.toLocaleString()}`, type: 'error' });
+      return;
+    }
+    
     try {
       const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
       
-      // Prepare payment data
-      const paymentData = {
-        purchaseId,
-        amount,
-        paymentType,
-        description: `Payment for ${selectedParty?.name || ''}`,
-        imageUrl: imagePreview || ''
-      };
-      
-      const result = await makePayment(paymentData, token);
-      if (result && result.success) {
-        if (onSave) onSave({ partyName: selectedParty?.name || '', paymentType, date, total, dueBalance, paidAmount: amount, image });
-        onClose();
+      // Check if we're making a bulk payment to party or individual purchase payment
+      if (selectedParty && selectedParty.name && !purchaseId) {
+        // NEW: Bulk payment to party
+        const paymentData = {
+          supplierName: selectedParty.name,
+          amount,
+          paymentType,
+          description: `Bulk payment for ${selectedParty.name}`,
+          imageUrl: imagePreview || ''
+        };
+        
+        const result = await makeBulkPaymentToParty(paymentData, token);
+        if (result && result.success) {
+          setToast({ message: result.message || 'Bulk payment successful!', type: 'success' });
+          // Refresh party totals after payment
+          await fetchPartyTotals(selectedParty.name);
+          if (onSave) onSave({ 
+            partyName: selectedParty.name, 
+            paymentType, 
+            date, 
+            total: partyTotal, 
+            dueBalance: partyDueBalance, 
+            paidAmount: amount, 
+            image,
+            bulkPayment: true,
+            updatedPurchases: result.updatedPurchases
+          });
+          onClose();
+        } else {
+          setToast({ message: result?.message || 'Failed to make bulk payment', type: 'error' });
+        }
+      } else if (purchaseId) {
+        // OLD: Individual purchase payment
+        const paymentData = {
+          purchaseId,
+          amount,
+          paymentType,
+          description: `Payment for ${selectedParty?.name || ''}`,
+          imageUrl: imagePreview || ''
+        };
+        
+        const result = await makePayment(paymentData, token);
+        if (result && result.success) {
+          if (onSave) onSave({ partyName: selectedParty?.name || '', paymentType, date, total, dueBalance, paidAmount: amount, image });
+          onClose();
+        } else {
+          setToast({ message: result?.message || 'Failed to make payment', type: 'error' });
+        }
       } else {
-        setToast({ message: result?.message || 'Failed to make payment', type: 'error' });
+        setToast({ message: 'Please select a party to make payment', type: 'error' });
       }
     } catch (err: any) {
       console.error('Payment error:', err);
@@ -243,7 +360,14 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
       }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '32px 40px 0 40px' }}>
-            <h2 style={{ fontSize: 26, fontWeight: 700, color: '#1e293b', letterSpacing: '-0.5px' }}>Make Payment</h2>
+            <div>
+              <h2 style={{ fontSize: 26, fontWeight: 700, color: '#1e293b', letterSpacing: '-0.5px' }}>
+                {purchaseId ? 'Make Payment' : 'Make Party Payment'}
+              </h2>
+              <p style={{ fontSize: 14, color: '#64748b', marginTop: 4 }}>
+                {purchaseId ? 'Payment for specific purchase' : 'Payment will be distributed across all due purchases'}
+              </p>
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <button onClick={() => setShowSettings(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 26, marginRight: 8 }} title="Settings">
                 <Settings size={26} />
@@ -275,9 +399,11 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
                       setPartyDropdownIndex(i => Math.max(i - 1, 0));
                     } else if (e.key === 'Enter') {
                       if (filteredPartySuggestions[partyDropdownIndex]) {
-                        setSelectedParty(filteredPartySuggestions[partyDropdownIndex]);
-                        setPartySearch(filteredPartySuggestions[partyDropdownIndex].name);
+                        const selectedPartyFromList = filteredPartySuggestions[partyDropdownIndex];
+                        setSelectedParty(selectedPartyFromList);
+                        setPartySearch(selectedPartyFromList.name);
                         setShowPartyDropdown(false);
+                        fetchPartyTotals(selectedPartyFromList.name);
                       }
                     } else if (e.key === 'Escape') {
                       setShowPartyDropdown(false);
@@ -307,6 +433,7 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
                         setSelectedParty(party);
                         setPartySearch(party.name);
                         setShowPartyDropdown(false);
+                        fetchPartyTotals(party.name);
                       }}
                       role="option"
                       aria-selected={partyDropdownIndex === idx}
@@ -369,10 +496,10 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
             {/* Right Side */}
             <div style={{ flex: 1, minWidth: 240, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div style={{ background: '#f8fafc', borderRadius: 14, padding: 28, marginBottom: 22, border: '1.5px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.01)' }}>
-                <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>Total</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: '#2563eb', marginBottom: 18 }}>PKR {total.toLocaleString()}</div>
-                <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>Due Balance</div>
-                <div style={{ fontSize: 22, fontWeight: 700, color: '#ea580c' }}>PKR {dueBalance.toLocaleString()}</div>
+                <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>Party Total</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: '#2563eb', marginBottom: 18 }}>PKR {(selectedParty ? partyTotal : total).toLocaleString()}</div>
+                <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>Party Due Balance</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#ea580c' }}>PKR {(selectedParty ? partyDueBalance : dueBalance).toLocaleString()}</div>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Paid Amount</label>

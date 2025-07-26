@@ -2,6 +2,7 @@ import Purchase from '../models/purchase.js';
 import Item from '../models/items.js';
 import Payment from '../models/payment.js';
 import mongoose from 'mongoose';
+import { clearAllCacheForUser } from './dashboardController.js';
 
 export const createPurchase = async (req, res) => {
   try {
@@ -119,6 +120,7 @@ export const createPurchase = async (req, res) => {
     
     console.log(`Successfully created purchase bill for user: ${purchase.userId} with bill number: ${purchase.billNo} and total: ${purchase.grandTotal}`);
     res.status(201).json({ success: true, purchase });
+    clearAllCacheForUser(userId);
   } catch (err) {
     console.error('Purchase creation error:', err);
     console.error('Request body:', req.body);
@@ -199,6 +201,7 @@ export const makePayment = async (req, res) => {
     console.log('Payment record saved:', payment.toObject());
     
     res.json({ success: true, purchase, payment });
+    clearAllCacheForUser(userId);
   } catch (err) {
     console.error('Payment error:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -244,6 +247,7 @@ export const deletePurchase = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Purchase not found or not authorized' });
     }
     res.json({ success: true, message: 'Purchase deleted successfully' });
+    clearAllCacheForUser(userId);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -262,6 +266,7 @@ export const updatePurchase = async (req, res) => {
     );
     if (!purchase) return res.status(404).json({ success: false, message: 'Purchase not found' });
     res.json({ success: true, data: purchase });
+    clearAllCacheForUser(userId);
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }

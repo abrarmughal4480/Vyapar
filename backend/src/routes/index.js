@@ -2,10 +2,9 @@ import express from 'express';
 import authRoutes from './auth.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import partiesRoutes from './parties.js';
-import * as itemsController from '../controllers/itemsController.js';
+import { addItem, bulkImportItems, getItems, getItemsByLoggedInUser, deleteItem, updateItem, getItemsPerformanceStats } from '../controllers/itemsController.js';
 import saleRoutes from './sale.js';
 import purchaseRoutes from './purchase.js';
-import partiesController from '../controllers/partiesController.js';
 import saleOrderRoutes from './saleOrder.js';
 import purchaseOrderRoutes from './purchaseOrder.js';
 import quotationRoutes from './quotation.js';
@@ -13,10 +12,9 @@ import deliveryChallanRoutes from './deliveryChallan.js';
 import paymentOutRoutes from './paymentOut.js';
 import profitAndLossController from '../controllers/profitAndLossController.js';
 import creditNoteRoutes from './creditNote.js';
-import * as dashboardController from '../controllers/dashboardController.js';
-import { getDashboardStats, getSalesOverview, getRecentActivity, getProfile, updateProfile } from '../controllers/dashboardController.js';
+import { getDashboardStats, getSalesOverview, getRecentActivity, getProfile, updateProfile, getReceivablesList, getPayablesList, getDashboardPerformanceStats } from '../controllers/dashboardController.js';
 import sessionCheckRoutes from './sessionCheck.js';
-import { sendUserInvite, getUserInvites, getInvitesForMe, respondToInvite } from '../controllers/userInviteController.js';
+// import { sendUserInvite, getUserInvites, getInvitesForMe, respondToInvite } from '../controllers/userInviteController.js';
 
 const router = express.Router();
 
@@ -33,11 +31,11 @@ router.use('/api/credit-notes', creditNoteRoutes);
 router.use('/quotations', authMiddleware, quotationRoutes);
 
 // Dashboard stats route
-router.get('/dashboard/stats', authMiddleware, dashboardController.getDashboardStats);
+router.get('/dashboard/stats', authMiddleware, getDashboardStats);
 
 // Add the new route for receivables and payables
-router.get('/api/dashboard/receivables', authMiddleware, dashboardController.getReceivablesList);
-router.get('/api/dashboard/payables', authMiddleware, dashboardController.getPayablesList);
+router.get('/api/dashboard/receivables', authMiddleware, getReceivablesList);
+router.get('/api/dashboard/payables', authMiddleware, getPayablesList);
 
 // Add the new route for sales overview
 router.get('/api/dashboard/sales-overview/:userId', authMiddleware, getSalesOverview);
@@ -60,34 +58,32 @@ router.get('/items/count', authMiddleware, (req, res) => {
 });
 
 // Items routes
-router.get('/items', authMiddleware, itemsController.getItemsByLoggedInUser);
-router.post('/items/:userId', itemsController.addItem);
-router.post('/items/:userId/bulk-import', itemsController.bulkImportItems);
-router.get('/items/:userId', itemsController.getItems);
-router.delete('/items/:userId/:itemId', itemsController.deleteItem);
-router.put('/items/:userId/:itemId', itemsController.updateItem);
+router.get('/items', authMiddleware, getItemsByLoggedInUser);
+router.post('/items/:userId', authMiddleware, addItem);
+router.post('/items/:userId/bulk-import', authMiddleware, bulkImportItems);
+router.get('/items/:userId', authMiddleware, getItems);
+router.delete('/items/:userId/:itemId', authMiddleware, deleteItem);
+router.put('/items/:userId/:itemId', authMiddleware, updateItem);
 
 // Items performance monitoring route
-router.get('/items/stats/performance', authMiddleware, itemsController.getItemsPerformanceStats);
+router.get('/items/stats/performance', authMiddleware, getItemsPerformanceStats);
 
 // Dashboard performance monitoring route
-router.get('/dashboard/stats/performance', authMiddleware, dashboardController.getDashboardPerformanceStats);
-
-router.get('/parties/balance', authMiddleware, partiesController.getPartyBalance);
+router.get('/dashboard/stats/performance', authMiddleware, getDashboardPerformanceStats);
 
 // Profit and Loss report route
 router.get('/api/reports/profit-and-loss', authMiddleware, profitAndLossController.getProfitAndLoss);
 
 // User invite route
-router.post('/api/user-invite', authMiddleware, sendUserInvite);
+// router.post('/api/user-invite', authMiddleware, sendUserInvite);
 
 // Get all invites sent by the logged-in user
-router.get('/api/user-invites', authMiddleware, getUserInvites);
+// router.get('/api/user-invites', authMiddleware, getUserInvites);
 
 // Get invites for the logged-in user's email
-router.get('/api/invites/for-me', authMiddleware, getInvitesForMe);
+// router.get('/api/invites/for-me', authMiddleware, getInvitesForMe);
 // Accept or reject an invite
-router.post('/api/invites/respond', authMiddleware, respondToInvite);
+// router.post('/api/invites/respond', authMiddleware, respondToInvite);
 
 router.get('/', (req, res) => {
   res.send('Hello from Express backend!');

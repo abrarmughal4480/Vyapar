@@ -119,7 +119,6 @@ class SessionManager {
         return;
       }
 
-      console.log('Checking session validity...');
       
       // Make a simple API call to verify session
       const response = await fetch(`${API_BASE_URL}/api/session-check`, {
@@ -130,7 +129,6 @@ class SessionManager {
         }
       });
 
-      console.log('Session check response status:', response.status);
 
       if (!response.ok) {
         if (response.status === 401) {
@@ -149,7 +147,7 @@ class SessionManager {
           }
         }
       } else {
-        console.log('Session is valid');
+        console.log();
       }
     } catch (error) {
       console.error('Session check failed:', error);

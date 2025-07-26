@@ -1,6 +1,7 @@
 import PaymentOut from '../models/payment-out.js';
 import Purchase from '../models/purchase.js';
 import mongoose from 'mongoose';
+import { clearAllCacheForUser } from './dashboardController.js';
 
 // Create a new payment out record
 export const createPaymentOut = async (req, res) => {
@@ -85,6 +86,7 @@ export const createPaymentOut = async (req, res) => {
     console.log('Payment out record saved:', paymentOut.toObject());
     
     res.status(201).json({ success: true, paymentOut, purchase });
+    clearAllCacheForUser(userId);
   } catch (err) {
     console.error('Payment out creation error:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -197,6 +199,7 @@ export const updatePaymentOut = async (req, res) => {
     await paymentOut.save();
     
     res.json({ success: true, paymentOut });
+    clearAllCacheForUser(userId);
   } catch (err) {
     console.error('Update payment out error:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -238,6 +241,7 @@ export const deletePaymentOut = async (req, res) => {
     await PaymentOut.findByIdAndDelete(paymentOutId);
     
     res.json({ success: true, message: 'Payment out deleted successfully' });
+    clearAllCacheForUser(userId);
   } catch (err) {
     console.error('Delete payment out error:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -394,6 +398,7 @@ export const makeBulkPaymentToParty = async (req, res) => {
       paymentOutRecords,
       message: `Payment of PKR ${amount} distributed across ${updatedPurchases.length} purchase(s)`
     });
+    clearAllCacheForUser(userId);
   } catch (err) {
     console.error('Bulk payment creation error:', err);
     res.status(500).json({ success: false, message: err.message });

@@ -290,7 +290,8 @@ export default function ItemsPage() {
 
   const fetchItems = async () => {
     try {
-      const result = await getItems(businessId)
+      const token = localStorage.getItem('token') || '';
+      const result = await getItems(businessId, token);
       if (result.success) {
         setItems(result.data)
       } else {

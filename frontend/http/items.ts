@@ -4,15 +4,27 @@ import api from './api';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
-export async function getItems(userId: string) {
-  const res = await fetch(`${API_BASE_URL}/items/${userId}`);
+export async function getItems(userId: string, token: string) {
+  const res = await fetch(`${API_BASE_URL}/items/${userId}`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
   return res.json();
 }
 
-export async function addItem(userId: string, item: any) {
+export async function getItemsByLoggedInUser(token: string) {
+  const res = await fetch(`${API_BASE_URL}/items`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  return res.json();
+}
+
+export async function addItem(userId: string, item: any, token: string) {
   const res = await fetch(`${API_BASE_URL}/items/${userId}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
     body: JSON.stringify(item),
   });
   return res.json();
@@ -55,10 +67,13 @@ export async function deleteItem(userId: string, itemId: string) {
   return res.json();
 }
 
-export async function updateItem(userId: string, itemId: string, data: any) {
+export async function updateItem(userId: string, itemId: string, data: any, token: string) {
   const res = await fetch(`${API_BASE_URL}/items/${userId}/${itemId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
     body: JSON.stringify(data),
   });
   return res.json();

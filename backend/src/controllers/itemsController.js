@@ -1,12 +1,8 @@
 import Item from '../models/items.js';
-import { invalidateDashboardCache } from './dashboardController.js';
 
-// Simple in-memory cache for items (global scope for logout access)
-if (!global.itemsCache) {
-  global.itemsCache = new Map();
-}
-const itemsCache = global.itemsCache;
-// No TTL - cache persists until logout
+// Simple in-memory cache for items
+const itemsCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Add this helper at the top after imports
 function getUnitDisplay(unit) {
@@ -17,16 +13,6 @@ function getUnitDisplay(unit) {
     : '';
   return secondary ? `${base} / ${secondary}` : base;
 }
-
-// Cache management functions
-const _clearUserCache = (userId) => {
-  const cacheKeys = Array.from(itemsCache.keys()).filter(key => key.startsWith(`user_${userId}`));
-  cacheKeys.forEach(key => itemsCache.delete(key));
-};
-
-const _getCacheKey = (userId, search, category, status, type) => {
-  return `user_${userId}_search_${search || ''}_category_${category || ''}_status_${status || ''}_type_${type || ''}`;
-};
 
 // Helper function to process bulk import data
 function processBulkImportData(data) {
@@ -127,11 +113,6 @@ export const addItem = async (req, res) => {
     itemObj.unit = typeof itemObj.unit === 'object' ? getUnitDisplay(itemObj.unit) : itemObj.unit;
     // Log what was actually saved
     console.log('SAVED openingQuantity:', itemObj.openingQuantity, 'minStock:', itemObj.minStock, 'location:', itemObj.location);
-    
-    // Clear cache for this user
-    _clearUserCache(userId);
-    invalidateDashboardCache(userId); // Invalidate dashboard cache
-    
     res.status(201).json({ success: true, data: itemObj });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -221,10 +202,6 @@ export const bulkImportItems = async (req, res) => {
 
     console.log(`Bulk import completed. Success: ${successCount}, Errors: ${errorCount}`);
 
-    // Clear cache for this user after bulk import
-    _clearUserCache(userId);
-    invalidateDashboardCache(userId); // Invalidate dashboard cache
-
     res.status(200).json({
       success: true,
       message: `Bulk import completed. ${successCount} items processed successfully, ${errorCount} failed.`,
@@ -248,67 +225,14 @@ export const bulkImportItems = async (req, res) => {
 export const getItems = async (req, res) => {
   try {
     const userId = req.params.userId;
-    const { search, category, status, type } = req.query;
-    
-    // Check cache first
-    const cacheKey = _getCacheKey(userId, search, category, status, type);
-    const cachedResult = itemsCache.get(cacheKey);
-    
-    if (cachedResult) {
-      console.log('Returning cached items for user:', userId);
-      return res.json(cachedResult.data);
-    }
-    
-    // Build query efficiently
-    const query = { userId };
-    
-    // Add search filter if provided
-    if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { hsn: { $regex: search, $options: 'i' } },
-        { sku: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
-      ];
-    }
-    
-    // Add category filter
-    if (category) {
-      query.category = category;
-    }
-    
-    // Add status filter
-    if (status) {
-      query.status = status;
-    }
-    
-    // Add type filter
-    if (type) {
-      query.type = type;
-    }
-    
-    // Use lean() for better performance
-    const items = await Item.find(query)
-      .select('name category subcategory hsn salePrice purchasePrice wholesalePrice stock minStock openingQuantity location taxRate status type sku description supplier imageUrl unit createdAt')
-      .sort({ name: 1 })
-      .lean();
-    
-    // Process unit display
-    const itemsWithUnitString = items.map(item => ({
-      ...item,
-      unit: typeof item.unit === 'object' ? getUnitDisplay(item.unit) : item.unit
-    }));
-    
-    const result = { success: true, data: itemsWithUnitString };
-    
-    // Cache the result
-    itemsCache.set(cacheKey, {
-      data: result
+    const items = await Item.find({ userId });
+    const itemsWithUnitString = items.map(item => {
+      const itemObj = item.toObject();
+      itemObj.unit = typeof itemObj.unit === 'object' ? getUnitDisplay(itemObj.unit) : itemObj.unit;
+      return itemObj;
     });
-    
-    res.json(result);
+    res.json({ success: true, data: itemsWithUnitString });
   } catch (err) {
-    console.error('Error fetching items:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -317,88 +241,21 @@ export const getItems = async (req, res) => {
 export const getItemsByLoggedInUser = async (req, res) => {
   try {
     const userId = req.user && (req.user._id || req.user.id);
-    const { search, category, status, type } = req.query;
-    
-    console.log('Fetching items for userId:', userId);
+    console.log('Fetching items for userId:', userId); // Debug log
+    console.log('Request headers:', req.headers);
+    console.log('User object:', req.user);
     if (!userId) return res.status(401).json({ success: false, message: 'User not authenticated' });
-    
-    // Check cache first
-    const cacheKey = _getCacheKey(userId, search, category, status, type);
-    const cachedResult = itemsCache.get(cacheKey);
-    
-    if (cachedResult) {
-      console.log('Returning cached items for logged-in user:', userId);
-      return res.json(cachedResult.data);
-    }
-    
-    // Build query efficiently
-    const query = { userId };
-    
-    // Add search filter if provided
-    if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { hsn: { $regex: search, $options: 'i' } },
-        { sku: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
-      ];
-    }
-    
-    // Add category filter
-    if (category) {
-      query.category = category;
-    }
-    
-    // Add status filter
-    if (status) {
-      query.status = status;
-    }
-    
-    // Add type filter
-    if (type) {
-      query.type = type;
-    }
-    
-    // Use lean() for better performance
-    const items = await Item.find(query)
-      .select('name category subcategory hsn salePrice purchasePrice wholesalePrice stock minStock openingQuantity location taxRate status type sku description supplier imageUrl unit createdAt')
-      .sort({ name: 1 })
-      .lean();
-    
-    // Process unit display
-    const itemsWithUnitString = items.map(item => ({
-      ...item,
-      unit: typeof item.unit === 'object' ? getUnitDisplay(item.unit) : item.unit
-    }));
-    
-    const result = { success: true, data: itemsWithUnitString };
-    
-    // Cache the result
-    itemsCache.set(cacheKey, {
-      data: result
+    const items = await Item.find({ userId });
+    const itemsWithUnitString = items.map(item => {
+      const itemObj = item.toObject();
+      itemObj.unit = typeof itemObj.unit === 'object' ? getUnitDisplay(itemObj.unit) : itemObj.unit;
+      return itemObj;
     });
-    
-    console.log('Found items:', items.length);
-    res.json(result);
+    console.log('Found items:', items);
+    res.json({ success: true, data: itemsWithUnitString });
   } catch (err) {
     console.error('Error in getItemsByLoggedInUser:', err);
     res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-// Performance monitoring function for items
-export const getItemsPerformanceStats = async (req, res) => {
-  try {
-    const stats = {
-      cacheSize: itemsCache.size,
-      cacheKeys: Array.from(itemsCache.keys()),
-      cacheHitRate: 0, // This would need to be calculated over time
-      timestamp: new Date().toISOString()
-    };
-    
-    return res.json({ success: true, data: stats });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to get performance stats', error: err.message });
   }
 };
 
@@ -406,11 +263,6 @@ export const deleteItem = async (req, res) => {
   try {
     const { userId, itemId } = req.params;
     await Item.deleteOne({ userId, itemId });
-    
-    // Clear cache for this user
-    _clearUserCache(userId);
-    invalidateDashboardCache(userId); // Invalidate dashboard cache
-    
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -443,15 +295,17 @@ export const updateItem = async (req, res) => {
     updatedObj.unit = typeof updatedObj.unit === 'object' ? getUnitDisplay(updatedObj.unit) : updatedObj.unit;
     // Log what was actually updated
     console.log('UPDATED openingQuantity:', updatedObj.openingQuantity, 'minStock:', updatedObj.minStock, 'location:', updatedObj.location);
-    
-    // Clear cache for this user
-    _clearUserCache(userId);
-    invalidateDashboardCache(userId); // Invalidate dashboard cache
-    
     res.json({ success: true, data: updatedObj });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }
-};
+}; 
 
-export default { addItem, bulkImportItems, getItems, deleteItem, updateItem }; 
+export const getItemsPerformanceStats = async (req, res) => {
+  try {
+    // Example: return cache stats or any performance info you want
+    res.json({ success: true, data: { message: 'Items performance stats endpoint working!' } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}; 

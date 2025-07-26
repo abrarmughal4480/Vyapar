@@ -1,6 +1,7 @@
 import Sale from '../models/sale.js';
 import Item from '../models/items.js';
 import mongoose from 'mongoose';
+import { clearAllCacheForUser } from './dashboardController.js';
 
 function getUnitDisplay(unit) {
   if (!unit) return '';
@@ -124,6 +125,7 @@ export const createSale = async (req, res) => {
       console.error('Failed to update party openingBalance:', err);
     }
     console.log(`Successfully created sale invoice for user: ${sale.userId}`);
+    clearAllCacheForUser(userId); // Invalidate all related caches
     res.status(201).json({ success: true, sale: saleObj });
   } catch (err) {
     console.error('Sale creation error:', err);
@@ -184,6 +186,7 @@ export const receivePayment = async (req, res) => {
     }
 
     res.json({ success: true, sale });
+    clearAllCacheForUser(sale.userId);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -246,6 +249,7 @@ export const receivePartyPayment = async (req, res) => {
       updatedSales: updatedSales.length,
       remainingAmount: remainingAmount > 0 ? remainingAmount : 0
     });
+    clearAllCacheForUser(userId);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -297,6 +301,7 @@ export const deleteSale = async (req, res) => {
     }
     await Sale.deleteOne({ _id: saleId });
     res.json({ success: true, message: 'Sale deleted successfully' });
+    clearAllCacheForUser(userId); // Invalidate all related caches
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -368,6 +373,7 @@ export const updateSale = async (req, res) => {
       { new: true }
     );
     if (!sale) return res.status(404).json({ success: false, message: 'Sale not found' });
+    clearAllCacheForUser(userId); // Invalidate all related caches
     res.json({ success: true, data: sale });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });

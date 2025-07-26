@@ -201,7 +201,18 @@ function AddItemPageInner() {
     if (editMode) {
       const itemData = localStorage.getItem('editItem')
       if (itemData) {
-        setNewItem(JSON.parse(itemData))
+        let parsed = JSON.parse(itemData);
+        // Ensure itemId is present, generate if missing
+        if (!parsed.itemId) {
+          if (parsed._id) {
+            parsed.itemId = parsed._id;
+          } else if (parsed.name) {
+            parsed.itemId = `${parsed.name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10)}_${Date.now()}`;
+          } else {
+            parsed.itemId = `item_${Date.now()}`;
+          }
+        }
+        setNewItem(parsed);
       }
     }
   }, [editMode])
@@ -376,23 +387,54 @@ function AddItemPageInner() {
     setIsLoading(true);
 
     try {
+      // Get token from localStorage
+      const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
+      if (!token) {
+        setToast({ message: 'Authentication token not found. Please login again.', type: 'error' });
+        return;
+      }
+
       let result;
       const id = (newItem as any).itemId || (newItem as any)._id || '';
       if (editMode && id) {
-        result = await updateItem(businessId, id, newItem);
+        result = await updateItem(businessId, id, newItem, token);
       } else {
-        result = await addItem(businessId, newItem);
+        result = await addItem(businessId, newItem, token);
       }
+      
       if (result.success) {
         setToast({ message: editMode ? 'Item updated successfully!' : 'Item created successfully!', type: 'success' });
         setTimeout(() => {
           router.push('/dashboard/items');
         }, 1200);
       } else {
-        setToast({ message: result.message || (editMode ? 'Failed to update item' : 'Failed to create item'), type: 'error' });
+        // Handle specific error cases
+        if (result.message?.includes('token') || result.message?.includes('unauthorized') || result.message?.includes('expired')) {
+          setToast({ message: 'Session expired. Please login again.', type: 'error' });
+          // Redirect to login after a delay
+          setTimeout(() => {
+            localStorage.removeItem('token');
+            localStorage.removeItem('vypar_auth_token');
+            router.push('/login');
+          }, 2000);
+        } else {
+          setToast({ message: result.message || (editMode ? 'Failed to update item' : 'Failed to create item'), type: 'error' });
+        }
       }
     } catch (err: any) {
-      setToast({ message: err.message || (editMode ? 'An error occurred while updating the item' : 'An error occurred while creating the item'), type: 'error' });
+      console.error('Error in handleSubmit:', err);
+      
+      // Handle network or authentication errors
+      if (err.message?.includes('token') || err.message?.includes('unauthorized') || err.message?.includes('expired')) {
+        setToast({ message: 'Session expired. Please login again.', type: 'error' });
+        setTimeout(() => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('vypar_auth_token');
+          router.push('/login');
+        }, 2000);
+      } else {
+        setToast({ message: err.message || (editMode ? 'An error occurred while updating the item' : 'An error occurred while creating the item'), type: 'error' });
+      }
     } finally {
       setIsLoading(false);
     }

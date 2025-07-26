@@ -38,8 +38,10 @@ interface PartyCategory {
   totalBalance: number
 }
 
-export default function PartiesPage() {
+function PartiesPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [showAddPartyModal, setShowAddPartyModal] = useState(false);
   // Remove direct useSearchParams usage from here
   // The following state will be controlled by the Suspense-wrapped client component if needed
   const [activeTab, setActiveTab] = useState('all');
@@ -212,6 +214,18 @@ export default function PartiesPage() {
     // }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const addPartyParam = searchParams.get('addParty');
+    if (addPartyParam === '1') {
+      setShowAddPartyModal(true);
+      setIsModalOpen(true); // Open the actual modal
+      // Remove the parameter from URL without page reload
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('addParty');
+      window.history.replaceState({}, '', newUrl.toString());
+    }
+  }, [searchParams]);
 
   const calculateStats = () => {
     const totalParties = parties.length
@@ -1445,5 +1459,13 @@ export default function PartiesPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+export default function PartiesPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <PartiesPageContent />
+    </Suspense>
   );
 }

@@ -1,10 +1,10 @@
 "use client";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import { getPurchasesByUser, getPurchaseById, getPayments, getPaymentOutsByUser } from "@/http/purchases";
 import { jwtDecode } from "jwt-decode";
 import Toast from "../../components/Toast";
 import PaymentOutModal from "../../components/PaymentOutModal";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import TableActionMenu from "../../components/TableActionMenu";
 
 const dateRanges = [
@@ -26,7 +26,7 @@ function PaymentStatusBadge({ status }: { status: string }) {
   return <span className={`px-3 py-1 text-xs font-semibold rounded-full ${color}`}>{status}</span>;
 }
 
-const PaymentOutPage = () => {
+const PaymentOutPageContent = () => {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -41,6 +41,7 @@ const PaymentOutPage = () => {
   const dateDropdownRef = useRef<HTMLDivElement>(null);
   const dateDropdownButtonRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     const fetchPaymentOuts = async () => {
@@ -78,6 +79,18 @@ const PaymentOutPage = () => {
     };
     fetchPaymentOuts();
   }, []);
+
+  // Check URL parameters for auto-opening payment modal
+  useEffect(() => {
+    const openPaymentModal = searchParams.get('openPaymentModal');
+    if (openPaymentModal === 'true') {
+      setShowPaymentOut(true);
+      // Remove the parameter from URL without page reload
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('openPaymentModal');
+      window.history.replaceState({}, '', newUrl.toString());
+    }
+  }, [searchParams]);
 
   // Filtering logic
   const filteredTransactions = transactions.filter((transaction: any) => {
@@ -504,6 +517,14 @@ const PaymentOutPage = () => {
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
     </div>
+  );
+};
+
+const PaymentOutPage = () => {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <PaymentOutPageContent />
+    </Suspense>
   );
 };
 

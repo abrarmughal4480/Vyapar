@@ -46,4 +46,11 @@ const itemSchema = new mongoose.Schema({
 
 itemSchema.index({ userId: 1, itemId: 1 }, { unique: true });
 
+// Add additional indexes for better performance
+itemSchema.index({ userId: 1, name: 1 }); // For name-based searches
+itemSchema.index({ userId: 1, category: 1 }); // For category filtering
+itemSchema.index({ userId: 1, status: 1 }); // For status filtering
+itemSchema.index({ userId: 1, type: 1 }); // For type filtering
+itemSchema.index({ userId: 1, hsn: 1 }); // For HSN code searches
+
 export default mongoose.model('Item', itemSchema);

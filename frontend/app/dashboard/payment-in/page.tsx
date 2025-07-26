@@ -1,10 +1,10 @@
 "use client";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import { getSalesByUser, getSaleById } from "@/http/sales";
 import { jwtDecode } from "jwt-decode";
 import Toast from "../../components/Toast";
 import PaymentInModal from "../../components/PaymentInModal";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import TableActionMenu from "../../components/TableActionMenu";
 
 const dateRanges = [
@@ -26,7 +26,7 @@ function PaymentStatusBadge({ status }: { status: string }) {
   return <span className={`px-3 py-1 text-xs font-semibold rounded-full ${color}`}>{status}</span>;
 }
 
-const PaymentInPage = () => {
+const PaymentInPageContent = () => {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -41,6 +41,7 @@ const PaymentInPage = () => {
   const dateDropdownRef = useRef<HTMLDivElement>(null);
   const dateDropdownButtonRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     const fetchPayments = async () => {
@@ -72,6 +73,18 @@ const PaymentInPage = () => {
     };
     fetchPayments();
   }, []);
+
+  // Check URL parameters for auto-opening payment modal
+  useEffect(() => {
+    const openPaymentModal = searchParams.get('openPaymentModal');
+    if (openPaymentModal === 'true') {
+      setShowPaymentIn(true);
+      // Remove the parameter from URL without page reload
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('openPaymentModal');
+      window.history.replaceState({}, '', newUrl.toString());
+    }
+  }, [searchParams]);
 
   // Filtering logic
   const filteredTransactions = transactions.filter((transaction: any) => {
@@ -503,6 +516,14 @@ const PaymentInPage = () => {
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
     </div>
+  );
+};
+
+const PaymentInPage = () => {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <PaymentInPageContent />
+    </Suspense>
   );
 };
 

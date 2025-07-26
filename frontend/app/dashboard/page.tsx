@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { fetchDashboardStats, fetchSalesOverview, fetchRecentActivity } from '@/http/api';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import EnhancedModal from '../../components/EnhancedModal';
+import { getReceivables, getPayables } from '@/http/parties';
 
 // Define your types here
 type User = {
@@ -81,7 +83,7 @@ const quickActions = [
     textColor: 'text-purple-600',
     bgColor: 'bg-purple-50',
     modalKey: 'addItem',
-    path: '/dashboard/items'
+    path: '/dashboard/items/add-item' // updated path
   },
   {
     title: 'Add Party',
@@ -91,7 +93,7 @@ const quickActions = [
     textColor: 'text-orange-600',
     bgColor: 'bg-orange-50',
     modalKey: 'addParty',
-    path: '/dashboard/parties'
+    path: '/dashboard/parties?addParty=1'
   },
   {
     title: 'Payment In',
@@ -101,7 +103,7 @@ const quickActions = [
     textColor: 'text-rose-600',
     bgColor: 'bg-rose-50',
     modalKey: 'paymentIn',
-    path: '/dashboard/payment-in'
+    path: '/dashboard/payment-in?openPaymentModal=true'
   },
   {
     title: 'Payment Out',
@@ -111,7 +113,7 @@ const quickActions = [
     textColor: 'text-amber-600',
     bgColor: 'bg-amber-50',
     modalKey: 'paymentOut',
-    path: '/dashboard/payment-out'
+    path: '/dashboard/payment-out?openPaymentModal=true'
   },
 ];
 
@@ -130,6 +132,12 @@ export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [salesOverview, setSalesOverview] = useState<any[]>([]);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [showReceivableModal, setShowReceivableModal] = useState(false);
+  const [showPayableModal, setShowPayableModal] = useState(false);
+  const [receivables, setReceivables] = useState<any[]>([]);
+  const [payables, setPayables] = useState<any[]>([]);
+  const [loadingReceivables, setLoadingReceivables] = useState(false);
+  const [loadingPayables, setLoadingPayables] = useState(false);
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -236,6 +244,39 @@ export default function Dashboard() {
     }
   };
 
+  const openReceivableModal = async () => {
+    setShowReceivableModal(true);
+    setLoadingReceivables(true);
+    try {
+      let token: string | undefined = undefined;
+      if (typeof window !== 'undefined') {
+        const t = localStorage.getItem('token');
+        token = t !== null ? t : undefined;
+      }
+      const data = await getReceivables(token || '');
+      setReceivables(data || []);
+    } catch (e) {
+      setReceivables([]);
+    }
+    setLoadingReceivables(false);
+  };
+  const openPayableModal = async () => {
+    setShowPayableModal(true);
+    setLoadingPayables(true);
+    try {
+      let token: string | undefined = undefined;
+      if (typeof window !== 'undefined') {
+        const t = localStorage.getItem('token');
+        token = t !== null ? t : undefined;
+      }
+      const data = await getPayables(token || '');
+      setPayables(data || []);
+    } catch (e) {
+      setPayables([]);
+    }
+    setLoadingPayables(false);
+  };
+
   // Enhanced stats array with modern styling
   const dashboardStats = [
     { 
@@ -288,7 +329,7 @@ export default function Dashboard() {
       bgGradient: 'from-green-500 to-emerald-600',
       bgLight: 'bg-green-50',
       trend: 'up',
-      onClick: () => router.push('/dashboard/parties?filter=debtor'),
+      onClick: openReceivableModal,
     },
     // New Stat: Total Payable
     {
@@ -300,7 +341,7 @@ export default function Dashboard() {
       bgGradient: 'from-red-500 to-pink-600',
       bgLight: 'bg-red-50',
       trend: 'down',
-      onClick: () => router.push('/dashboard/parties?filter=creditor'),
+      onClick: openPayableModal,
     },
   ];
 
@@ -387,30 +428,30 @@ export default function Dashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="relative w-full px-2 sm:px-4 md:px-6 lg:px-8 py-6 md:py-8">
+      <main className="relative w-full px-2 sm:px-4 md:px-6 lg:px-8 py-4 md:py-6">
         {/* Enhanced Welcome Section */}
-        <div className="mb-12">
-          <div className="flex items-center space-x-3 mb-4">
-            <Sparkles className="w-8 h-8 text-yellow-500 animate-pulse" />
-            <h2 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-purple-800 bg-clip-text text-transparent">
+        <div className="mb-8">
+          <div className="flex items-center space-x-3 mb-3">
+            <Sparkles className="w-7 h-7 text-yellow-500 animate-pulse" />
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-purple-800 bg-clip-text text-transparent">
               Welcome back, {user ? user.businessName : 'Business'}!
             </h2>
           </div>
-          <p className="text-xl text-gray-600 ml-11">Here's what's happening with your business today.</p>
+          <p className="text-lg text-gray-600 ml-10">Here's what's happening with your business today.</p>
         </div>
 
         {/* Enhanced Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8 md:mb-12 w-full">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5 mb-6 md:mb-10 w-full">
           {dashboardStats.map((stat, index) => (
             <div
               key={index}
-              className={`group relative bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-8 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 ${stat.onClick ? 'cursor-pointer' : ''}`}
+              className={`group relative bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-6 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 ${stat.onClick ? 'cursor-pointer' : ''}`}
               onClick={stat.onClick}
             >
               <div className="flex items-start justify-between">
                 <div className="space-y-3">
                   <p className="text-sm font-medium text-gray-600 uppercase tracking-wide">{stat.title}</p>
-                  <p className="text-3xl font-bold text-gray-900 group-hover:scale-105 transition-transform duration-200">
+                  <p className="text-2xl font-bold text-gray-900 group-hover:scale-105 transition-transform duration-200">
                     {stat.value}
                   </p>
                   <div className="flex items-center space-x-2">
@@ -422,8 +463,8 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="relative">
-                  <div className={`w-16 h-16 bg-gradient-to-br ${stat.bgGradient} rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300`}>
-                    <stat.icon className="w-8 h-8 text-white" />
+                  <div className={`w-14 h-14 bg-gradient-to-br ${stat.bgGradient} rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300`}>
+                    <stat.icon className="w-7 h-7 text-white" />
                   </div>
                   <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent rounded-2xl"></div>
                 </div>
@@ -436,27 +477,27 @@ export default function Dashboard() {
         </div>
 
         {/* Enhanced Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
           {/* Enhanced Quick Actions Card */}
-          <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-8">
-            <div className="flex items-center space-x-3 mb-6">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-                <Zap className="w-5 h-5 text-white" />
+          <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-6">
+            <div className="flex items-center space-x-3 mb-5">
+              <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+                <Zap className="w-4 h-4 text-white" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900">Quick Actions</h3>
+              <h3 className="text-lg font-bold text-gray-900">Quick Actions</h3>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               {quickActions.map((action, index) => (
                 <button
                   key={index}
-                  className={`group relative overflow-hidden bg-gradient-to-br ${action.color} p-4 rounded-2xl text-white shadow-lg hover:shadow-xl transform hover:scale-105 ${action.hoverColor} transition-all duration-300`}
+                  className={`group relative overflow-hidden bg-gradient-to-br ${action.color} p-3 rounded-2xl text-white shadow-lg hover:shadow-xl transform hover:scale-105 ${action.hoverColor} transition-all duration-300`}
                   onClick={() => router.push(action.path)}
                 >
                   <div className="relative z-10">
-                    <div className="text-2xl mb-2 group-hover:scale-110 transition-transform duration-200">
+                    <div className="text-xl mb-1 group-hover:scale-110 transition-transform duration-200">
                       {action.icon}
                     </div>
-                    <span className="text-sm font-semibold block leading-tight">
+                    <span className="text-xs font-semibold block leading-tight">
                       {action.title}
                     </span>
                   </div>
@@ -470,14 +511,14 @@ export default function Dashboard() {
           </div>
 
           {/* Enhanced Recent Activity (dynamic) */}
-          <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-8">
-            <div className="flex items-center space-x-3 mb-6">
-              <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
-                <Activity className="w-5 h-5 text-white" />
+          <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-6">
+            <div className="flex items-center space-x-3 mb-5">
+              <div className="w-9 h-9 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
+                <Activity className="w-4 h-4 text-white" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900">Recent Activity</h3>
+              <h3 className="text-lg font-bold text-gray-900">Recent Activity</h3>
             </div>
-            <div className="space-y-6">
+            <div className="space-y-4">
               {recentActivity.length === 0 && (
                 <div className="text-gray-500 text-sm">No recent activity</div>
               )}
@@ -498,9 +539,9 @@ export default function Dashboard() {
                   subLabel = act.party ? act.party : '';
                 }
                 return (
-                  <div key={idx} className={`flex items-start space-x-4 group hover:bg-emerald-50 p-3 rounded-2xl transition-colors duration-200`}>
-                    <div className={`w-12 h-12 bg-gradient-to-br ${bgColor} rounded-2xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-200`}>
-                      <Icon className="w-5 h-5 text-white" />
+                  <div key={idx} className={`flex items-start space-x-3 group hover:bg-emerald-50 p-2 rounded-2xl transition-colors duration-200`}>
+                    <div className={`w-10 h-10 bg-gradient-to-br ${bgColor} rounded-2xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-200`}>
+                      <Icon className="w-4 h-4 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900 truncate">{mainLabel}</p>
@@ -521,16 +562,16 @@ export default function Dashboard() {
           </div>
 
           {/* Enhanced Chart placeholder (replace this with real area chart) */}
-          <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-8 flex flex-col justify-between">
-            <div className="flex items-center space-x-3 mb-6">
-              <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
-                <BarChart3 className="w-5 h-5 text-white" />
+          <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-6 flex flex-col justify-between">
+            <div className="flex items-center space-x-3 mb-5">
+              <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                <BarChart3 className="w-4 h-4 text-white" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900">Sales Overview (Last 30 Days)</h3>
+              <h3 className="text-lg font-bold text-gray-900">Sales Overview (Last 30 Days)</h3>
             </div>
             <div className="flex-1 flex items-center justify-center">
-              <div className="relative h-48 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-2xl flex items-center justify-center overflow-hidden">
-                <ResponsiveContainer width="100%" height={180}>
+              <div className="relative h-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-2xl flex items-center justify-center overflow-hidden">
+                <ResponsiveContainer width="100%" height={150}>
                   <AreaChart data={salesOverview} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
@@ -603,37 +644,37 @@ export default function Dashboard() {
       </main>
 
       {/* Most Used Reports Section */}
-      <div className="mb-12 px-2 sm:px-4 md:px-6 lg:px-8">
-        <h2 className="text-2xl font-bold mb-4 text-gray-800">Most Used Reports</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <button
-            className="group bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-2xl p-6 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
-            onClick={() => router.push('/dashboard/reports/sale')}
-          >
-            <BarChart3 className="w-8 h-8 mb-2" />
-            <span className="font-semibold text-lg">Sale Report</span>
-          </button>
-          <button
-            className="group bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-2xl p-6 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
-            onClick={() => router.push('/dashboard/reports/all-transactions')}
-          >
-            <FileText className="w-8 h-8 mb-2" />
-            <span className="font-semibold text-lg">All Transactions</span>
-          </button>
-          <button
-            className="group bg-gradient-to-br from-purple-500 to-violet-600 text-white rounded-2xl p-6 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
-            onClick={() => router.push('/dashboard/reports/day-book')}
-          >
-            <Calendar className="w-8 h-8 mb-2" />
-            <span className="font-semibold text-lg">Daybook Report</span>
-          </button>
-          <button
-            className="group bg-gradient-to-br from-orange-500 to-red-500 text-white rounded-2xl p-6 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
-            onClick={() => router.push('/dashboard/reports/party-statement')}
-          >
-            <Users className="w-8 h-8 mb-2" />
-            <span className="font-semibold text-lg">Party Statement</span>
-          </button>
+      <div className="mb-10 px-2 sm:px-4 md:px-6 lg:px-8">
+        <h2 className="text-xl font-bold mb-3 text-gray-800">Most Used Reports</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      <button
+              className="group bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-2xl p-5 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
+              onClick={() => router.push('/dashboard/reports/sale')}
+            >
+              <BarChart3 className="w-7 h-7 mb-1" />
+              <span className="font-semibold text-base">Sale Report</span>
+            </button>
+            <button
+              className="group bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-2xl p-5 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
+              onClick={() => router.push('/dashboard/reports/all-transactions')}
+            >
+              <FileText className="w-7 h-7 mb-1" />
+              <span className="font-semibold text-base">All Transactions</span>
+            </button>
+            <button
+              className="group bg-gradient-to-br from-purple-500 to-violet-600 text-white rounded-2xl p-5 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
+              onClick={() => router.push('/dashboard/reports/day-book')}
+            >
+              <Calendar className="w-7 h-7 mb-1" />
+              <span className="font-semibold text-base">Daybook Report</span>
+            </button>
+            <button
+              className="group bg-gradient-to-br from-orange-500 to-red-500 text-white rounded-2xl p-5 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
+              onClick={() => router.push('/dashboard/reports/party-statement')}
+            >
+              <Users className="w-7 h-7 mb-1" />
+              <span className="font-semibold text-base">Party Statement</span>
+            </button>
         </div>
       </div>
 
@@ -670,6 +711,69 @@ export default function Dashboard() {
         }
       `}</style>
 
+      {/* Modals for Receivables/Payables */}
+      <EnhancedModal
+        isOpen={showReceivableModal}
+        onClose={() => setShowReceivableModal(false)}
+        title="Total Receivable List"
+      >
+        {loadingReceivables ? (
+          <div className="text-center py-4">Loading...</div>
+        ) : (
+          <div>
+            {receivables.length === 0 ? (
+              <div className="text-gray-500 text-sm">No receivables found.</div>
+            ) : (
+              <ul className="divide-y divide-gray-200">
+                {receivables.map((party) => (
+                  <li
+                    key={party._id}
+                    className="py-2 flex justify-between items-center cursor-pointer hover:bg-emerald-50 px-2 rounded"
+                    onClick={() => {
+                      setShowReceivableModal(false);
+                      router.push(`/dashboard/parties?search=${encodeURIComponent(party.name)}`);
+                    }}
+                  >
+                    <span className="font-medium text-gray-900">{party.name}</span>
+                    <span className="text-green-600 font-semibold">PKR {party.amount.toLocaleString()}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </EnhancedModal>
+      <EnhancedModal
+        isOpen={showPayableModal}
+        onClose={() => setShowPayableModal(false)}
+        title="Total Payable List"
+      >
+        {loadingPayables ? (
+          <div className="text-center py-4">Loading...</div>
+        ) : (
+          <div>
+            {payables.length === 0 ? (
+              <div className="text-gray-500 text-sm">No payables found.</div>
+            ) : (
+              <ul className="divide-y divide-gray-200">
+                {payables.map((party) => (
+                  <li
+                    key={party._id}
+                    className="py-2 flex justify-between items-center cursor-pointer hover:bg-red-50 px-2 rounded"
+                    onClick={() => {
+                      setShowPayableModal(false);
+                      router.push(`/dashboard/parties?search=${encodeURIComponent(party.name)}`);
+                    }}
+                  >
+                    <span className="font-medium text-gray-900">{party.name}</span>
+                    <span className="text-red-600 font-semibold">PKR {party.amount.toLocaleString()}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </EnhancedModal>
     </div>
   );
 }

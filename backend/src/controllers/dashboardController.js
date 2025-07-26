@@ -9,10 +9,36 @@ import { uploadProfileImage } from '../services/cloudinaryService.js';
 import formidable from 'formidable';
 import fs from 'fs';
 
+// Simple in-memory cache for dashboard data (global scope for logout access)
+if (!global.dashboardCache) {
+  global.dashboardCache = new Map();
+}
+const dashboardCache = global.dashboardCache;
+// No TTL - cache persists until logout
+
+// Cache management functions
+const _clearUserDashboardCache = (userId) => {
+  const cacheKeys = Array.from(dashboardCache.keys()).filter(key => key.startsWith(`dashboard_${userId}`));
+  cacheKeys.forEach(key => dashboardCache.delete(key));
+};
+
+const _getDashboardCacheKey = (userId, type) => {
+  return `dashboard_${userId}_${type}`;
+};
+
 export const getDashboardStats = async (req, res) => {
   try {
     const userId = req.user && (req.user._id || req.user.id);
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+
+    // Check cache first
+    const cacheKey = _getDashboardCacheKey(userId, 'stats');
+    const cachedResult = dashboardCache.get(cacheKey);
+    
+    if (cachedResult) {
+      console.log('Returning cached dashboard stats for user:', userId);
+      return res.json(cachedResult.data);
+    }
 
     // Convert userId to ObjectId for aggregation
     const objectUserId = new mongoose.Types.ObjectId(userId);
@@ -23,11 +49,12 @@ export const getDashboardStats = async (req, res) => {
     const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
 
+    // Optimize queries by using lean() and specific field selection
     const [sales, purchases, customers, items, revenueAgg, thisMonthAgg, lastMonthAgg, thisMonthOrders, lastMonthOrders, thisMonthProducts, lastMonthProducts, thisMonthCustomers, lastMonthCustomers, totalOrders, totalReceivableAgg, totalPayableAgg, creditNotesAgg] = await Promise.all([
       Sale.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
       Purchase.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
-      Party.countDocuments({ user: userId }),
-      Item.countDocuments({ userId }),
+      Party.countDocuments({ user: userId }).lean(),
+      Item.countDocuments({ userId }).lean(),
       Sale.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, totalRevenue: { $sum: '$grandTotal' } } }]),
       Sale.aggregate([
         { $match: { userId: objectUserId, createdAt: { $gte: startOfThisMonth } } },
@@ -37,13 +64,13 @@ export const getDashboardStats = async (req, res) => {
         { $match: { userId: objectUserId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } } },
         { $group: { _id: null, total: { $sum: '$grandTotal' } } }
       ]),
-      Sale.countDocuments({ userId: objectUserId, createdAt: { $gte: startOfThisMonth } }),
-      Sale.countDocuments({ userId: objectUserId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }),
-      Item.countDocuments({ userId, createdAt: { $gte: startOfThisMonth } }),
-      Item.countDocuments({ userId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }),
-      Party.countDocuments({ user: userId, createdAt: { $gte: startOfThisMonth } }),
-      Party.countDocuments({ user: userId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }),
-      Sale.countDocuments({ userId: objectUserId }), // <-- total orders
+      Sale.countDocuments({ userId: objectUserId, createdAt: { $gte: startOfThisMonth } }).lean(),
+      Sale.countDocuments({ userId: objectUserId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }).lean(),
+      Item.countDocuments({ userId, createdAt: { $gte: startOfThisMonth } }).lean(),
+      Item.countDocuments({ userId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }).lean(),
+      Party.countDocuments({ user: userId, createdAt: { $gte: startOfThisMonth } }).lean(),
+      Party.countDocuments({ user: userId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }).lean(),
+      Sale.countDocuments({ userId: objectUserId }).lean(), // <-- total orders
       // New: total receivable and payable
       Sale.aggregate([{ $match: { userId: objectUserId, balance: { $gt: 0 } } }, { $group: { _id: null, total: { $sum: '$balance' } } }]),
       Purchase.aggregate([{ $match: { userId: objectUserId, balance: { $gt: 0 } } }, { $group: { _id: null, total: { $sum: '$balance' } } }]),
@@ -88,7 +115,7 @@ export const getDashboardStats = async (req, res) => {
       customersChange = 100;
     }
 
-    res.json({
+    const result = {
       success: true,
       data: {
         totalSales: totalSales,
@@ -104,8 +131,16 @@ export const getDashboardStats = async (req, res) => {
         totalReceivable: totalReceivableAgg[0]?.total || 0,
         totalPayable: totalPayableAgg[0]?.total || 0,
       }
+    };
+
+    // Cache the result
+    dashboardCache.set(cacheKey, {
+      data: result,
     });
+
+    res.json(result);
   } catch (err) {
+    console.error('Error fetching dashboard stats:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -114,6 +149,16 @@ export const getSalesOverview = async (req, res) => {
   try {
     const userId = req.params.userId;
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
+    
+    // Check cache first
+    const cacheKey = _getDashboardCacheKey(userId, 'sales_overview');
+    const cachedResult = dashboardCache.get(cacheKey);
+    
+    if (cachedResult) {
+      console.log('Returning cached sales overview for user:', userId);
+      return res.json(cachedResult.data);
+    }
+    
     let objectUserId;
     try {
       objectUserId = new mongoose.Types.ObjectId(userId);
@@ -174,8 +219,16 @@ export const getSalesOverview = async (req, res) => {
       }))
       .sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    res.json({ success: true, overview: formatted });
+    const result = { success: true, overview: formatted };
+    
+    // Cache the result
+    dashboardCache.set(cacheKey, {
+      data: result,
+    });
+
+    res.json(result);
   } catch (err) {
+    console.error('Error fetching sales overview:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -184,6 +237,16 @@ export const getRecentActivity = async (req, res) => {
   try {
     const userId = req.params.userId;
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
+    
+    // Check cache first
+    const cacheKey = _getDashboardCacheKey(userId, 'recent_activity');
+    const cachedResult = dashboardCache.get(cacheKey);
+    
+    if (cachedResult) {
+      console.log('Returning cached recent activity for user:', userId);
+      return res.json(cachedResult.data);
+    }
+    
     let objectUserId;
     try {
       objectUserId = new mongoose.Types.ObjectId(userId);
@@ -202,15 +265,43 @@ export const getRecentActivity = async (req, res) => {
       import('../models/parties.js').then(m => m.default),
     ]);
 
-    // Fetch last 3 from each, then merge and sort
+    // Fetch last 3 from each with lean() for better performance
     const [sales, purchases, creditNotes, challans, quotations, items, parties] = await Promise.all([
-      Sale.find({ userId: objectUserId }).sort({ createdAt: -1 }).limit(3),
-      Purchase.find({ userId: objectUserId }).sort({ createdAt: -1 }).limit(3),
-      CreditNote.find({ userId: objectUserId }).sort({ createdAt: -1 }).limit(3),
-      DeliveryChallan.find({ userId: objectUserId }).sort({ createdAt: -1 }).limit(3),
-      Quotation.find({ userId: objectUserId }).sort({ createdAt: -1 }).limit(3),
-      Item.find({ userId: objectUserId }).sort({ createdAt: -1 }).limit(3),
-      Party.find({ user: objectUserId }).sort({ createdAt: -1 }).limit(3),
+      Sale.find({ userId: objectUserId })
+        .select('grandTotal partyName invoiceNo createdAt')
+        .sort({ createdAt: -1 })
+        .limit(3)
+        .lean(),
+      Purchase.find({ userId: objectUserId })
+        .select('grandTotal supplierName billNo createdAt')
+        .sort({ createdAt: -1 })
+        .limit(3)
+        .lean(),
+      CreditNote.find({ userId: objectUserId })
+        .select('grandTotal partyName creditNoteNo createdAt')
+        .sort({ createdAt: -1 })
+        .limit(3)
+        .lean(),
+      DeliveryChallan.find({ userId: objectUserId })
+        .select('total customerName partyName challanNumber createdAt')
+        .sort({ createdAt: -1 })
+        .limit(3)
+        .lean(),
+      Quotation.find({ userId: objectUserId })
+        .select('grandTotal total customerName partyName quotationNo createdAt')
+        .sort({ createdAt: -1 })
+        .limit(3)
+        .lean(),
+      Item.find({ userId: objectUserId })
+        .select('openingQuantity stock name itemId createdAt')
+        .sort({ createdAt: -1 })
+        .limit(3)
+        .lean(),
+      Party.find({ user: objectUserId })
+        .select('openingBalance name createdAt')
+        .sort({ createdAt: -1 })
+        .limit(3)
+        .lean(),
     ]);
 
     // Map to unified activity format
@@ -272,8 +363,16 @@ export const getRecentActivity = async (req, res) => {
       .sort((a, b) => new Date(b.date) - new Date(a.date))
       .slice(0, 3);
 
-    res.json({ success: true, activities: sorted });
+    const result = { success: true, activities: sorted };
+    
+    // Cache the result
+    dashboardCache.set(cacheKey, {
+      data: result,
+    });
+
+    res.json(result);
   } catch (err) {
+    console.error('Error fetching recent activity:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -326,5 +425,136 @@ export const updateProfile = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+}; 
+
+// GET /api/dashboard/receivables
+export const getReceivablesList = async (req, res) => {
+  try {
+    const userId = req.user && (req.user._id || req.user.id);
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    
+    // Check cache first
+    const cacheKey = _getDashboardCacheKey(userId, 'receivables');
+    const cachedResult = dashboardCache.get(cacheKey);
+    
+    if (cachedResult) {
+      console.log('Returning cached receivables for user:', userId);
+      return res.json(cachedResult.data);
+    }
+    
+    const objectUserId = new mongoose.Types.ObjectId(userId);
+    // Group by partyName, sum balance where balance > 0
+    const receivables = await Sale.aggregate([
+      { $match: { userId: objectUserId, balance: { $gt: 0 } } },
+      { $group: { _id: '$partyName', total: { $sum: '$balance' } } },
+      { $sort: { total: -1 } }
+    ]);
+    // Optionally, get party _id for linking
+    const parties = await Party.find({ user: userId }).select('name _id').lean();
+    const result = receivables.map(r => {
+      const party = parties.find(p => p.name === r._id);
+      return { name: r._id, _id: party ? party._id : undefined, amount: r.total };
+    });
+    
+    const response = { success: true, data: result };
+    
+    // Cache the result
+    dashboardCache.set(cacheKey, {
+      data: response,
+    });
+    
+    res.json(response);
+  } catch (err) {
+    console.error('Error fetching receivables:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// GET /api/dashboard/payables
+export const getPayablesList = async (req, res) => {
+  try {
+    const userId = req.user && (req.user._id || req.user.id);
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    
+    // Check cache first
+    const cacheKey = _getDashboardCacheKey(userId, 'payables');
+    const cachedResult = dashboardCache.get(cacheKey);
+    
+    if (cachedResult) {
+      console.log('Returning cached payables for user:', userId);
+      return res.json(cachedResult.data);
+    }
+    
+    const objectUserId = new mongoose.Types.ObjectId(userId);
+    // Group by supplierName, sum balance where balance > 0
+    const payables = await Purchase.aggregate([
+      { $match: { userId: objectUserId, balance: { $gt: 0 } } },
+      { $group: { _id: '$supplierName', total: { $sum: '$balance' } } },
+      { $sort: { total: -1 } }
+    ]);
+    // Optionally, get party _id for linking
+    const parties = await Party.find({ user: userId }).select('name _id').lean();
+    const result = payables.map(r => {
+      const party = parties.find(p => p.name === r._id);
+      return { name: r._id, _id: party ? party._id : undefined, amount: r.total };
+    });
+    
+    const response = { success: true, data: result };
+    
+    // Cache the result
+    dashboardCache.set(cacheKey, {
+      data: response,
+    });
+    
+    res.json(response);
+  } catch (err) {
+    console.error('Error fetching payables:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}; 
+
+// Cache invalidation functions for other controllers to call
+export const invalidateDashboardCache = (userId) => {
+  _clearUserDashboardCache(userId);
+  console.log(`Dashboard cache cleared for user: ${userId}`);
+};
+
+// Utility function to clear all cache for a user
+export const clearAllCacheForUser = (userId) => {
+  // Clear parties cache
+  if (global.partiesCache) {
+    const partiesCacheKeys = Array.from(global.partiesCache.keys()).filter(key => key.startsWith(`user_${userId}`));
+    partiesCacheKeys.forEach(key => global.partiesCache.delete(key));
+  }
+  
+  // Clear items cache
+  if (global.itemsCache) {
+    const itemsCacheKeys = Array.from(global.itemsCache.keys()).filter(key => key.startsWith(`user_${userId}`));
+    itemsCacheKeys.forEach(key => global.itemsCache.delete(key));
+  }
+  
+  // Clear dashboard cache
+  if (global.dashboardCache) {
+    const dashboardCacheKeys = Array.from(global.dashboardCache.keys()).filter(key => key.startsWith(`dashboard_${userId}`));
+    dashboardCacheKeys.forEach(key => global.dashboardCache.delete(key));
+  }
+  
+  console.log(`All cache cleared for user: ${userId}`);
+};
+
+// Performance monitoring function for dashboard
+export const getDashboardPerformanceStats = async (req, res) => {
+  try {
+    const stats = {
+      cacheSize: dashboardCache.size,
+      cacheKeys: Array.from(dashboardCache.keys()),
+      cacheHitRate: 0, // This would need to be calculated over time
+      timestamp: new Date().toISOString()
+    };
+    
+    return res.json({ success: true, data: stats });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to get performance stats', error: err.message });
   }
 }; 

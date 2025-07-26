@@ -19,3 +19,4 @@ export default function AddPage() {
     </div>
   )
 }
+  

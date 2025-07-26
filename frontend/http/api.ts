@@ -72,3 +72,27 @@ export async function fetchRecentActivity(userId: string, token?: string) {
   });
   return res.json();
 } 
+
+export const sendUserInvite = async (invite: { email: string, role: string, companyName: string }, token: string) => {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await api.post('/api/user-invite', invite, { headers });
+  return response.data;
+}; 
+
+export const getUserInvites = async (token: string) => {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await api.get('/api/user-invites', { headers });
+  return response.data;
+}; 
+
+export const getInvitesForMe = async (token: string) => {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await api.get('/api/invites/for-me', { headers });
+  return response.data;
+};
+
+export const respondToInvite = async (inviteId: string, action: 'Accepted' | 'Rejected', token: string) => {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await api.post('/api/invites/respond', { inviteId, action }, { headers });
+  return response.data;
+}; 

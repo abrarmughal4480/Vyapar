@@ -9,8 +9,9 @@ export const createPurchase = async (purchase: any, token: string) => {
   return data;
 };
 
-export const getPurchasesByUser = async (userId: string, token: string) => {
-  const { data } = await api.get(`/api/purchases/${userId}`, {
+export const getPurchasesByUser = async (userId: string, token: string, companyName?: string) => {
+  const url = companyName ? `/api/purchases/${userId}?companyName=${encodeURIComponent(companyName)}` : `/api/purchases/${userId}`;
+  const { data } = await api.get(url, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -37,8 +38,9 @@ export const makePayment = async (paymentData: any, token: string) => {
   return res.data;
 };
 
-export const getPurchaseStatsByUser = async (userId: string, token: string) => {
-  const { data } = await api.get(`/api/purchases/stats/${userId}`, {
+export const getPurchaseStatsByUser = async (userId: string, token: string, companyName?: string) => {
+  const url = companyName ? `/api/purchases/stats/${userId}?companyName=${encodeURIComponent(companyName)}` : `/api/purchases/stats/${userId}`;
+  const { data } = await api.get(url, {
     headers: {
       Authorization: `Bearer ${token}`,
     },

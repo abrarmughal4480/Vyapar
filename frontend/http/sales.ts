@@ -9,8 +9,9 @@ export const createSale = async (sale: any, token: string) => {
   return data;
 };
 
-export const getSalesByUser = async (userId: string, token: string) => {
-  const { data } = await api.get(`/api/sales/${userId}`, {
+export const getSalesByUser = async (userId: string, token: string, companyName?: string) => {
+  const url = companyName ? `/api/sales/${userId}?companyName=${encodeURIComponent(companyName)}` : `/api/sales/${userId}`;
+  const { data } = await api.get(url, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -49,8 +50,9 @@ export const receivePartyPayment = async (partyName: string, amount: number, tok
   return res.data;
 };
 
-export const getSalesStatsByUser = async (userId: string, token: string) => {
-  const { data } = await api.get(`/api/sales/stats/${userId}`, {
+export const getSalesStatsByUser = async (userId: string, token: string, companyName?: string) => {
+  const url = companyName ? `/api/sales/stats/${userId}?companyName=${encodeURIComponent(companyName)}` : `/api/sales/stats/${userId}`;
+  const { data } = await api.get(url, {
     headers: {
       Authorization: `Bearer ${token}`,
     },

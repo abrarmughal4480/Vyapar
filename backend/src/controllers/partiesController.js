@@ -1,8 +1,25 @@
 import Party from '../models/parties.js';
 import Sale from '../models/sale.js';
 import mongoose from 'mongoose';
+import { invalidateDashboardCache } from './dashboardController.js';
+
+// Simple in-memory cache for parties (global scope for logout access)
+if (!global.partiesCache) {
+  global.partiesCache = new Map();
+}
+const partiesCache = global.partiesCache;
+// No TTL - cache persists until logout
 
 const partiesController = {
+  // Cache management functions
+  _clearUserCache: (userId) => {
+    const cacheKeys = Array.from(partiesCache.keys()).filter(key => key.startsWith(`user_${userId}`));
+    cacheKeys.forEach(key => partiesCache.delete(key));
+  },
+  
+  _getCacheKey: (userId, page, limit, search, status, partyType) => {
+    return `user_${userId}_page_${page}_limit_${limit}_search_${search || ''}_status_${status || ''}_type_${partyType || ''}`;
+  },
   createParty: async (req, res) => {
     try {
       const {
@@ -46,6 +63,11 @@ const partiesController = {
       });
       await party.save();
       console.log(`Party created successfully: ${party.name} (ID: ${party._id}) by user ${req.user.id}`);
+      
+      // Clear cache for this user
+      partiesController._clearUserCache(req.user.id);
+      invalidateDashboardCache(req.user.id); // Invalidate dashboard cache
+      
       return res.status(201).json({ success: true, data: party });
     } catch (err) {
       return res.status(500).json({ success: false, message: 'Failed to create party', error: err.message });
@@ -53,15 +75,59 @@ const partiesController = {
   },
   getPartiesByUser: async (req, res) => {
     try {
-      const parties = await Party.find({
-        $or: [
-          { user: req.user.id },
-          { user: { $exists: false } },
-          { user: null }
-        ]
+      const { search, status, partyType } = req.query;
+      
+      // Check cache first
+      const cacheKey = partiesController._getCacheKey(req.user.id, 'all', 'all', search, status, partyType);
+      const cachedResult = partiesCache.get(cacheKey);
+      
+      if (cachedResult) {
+        console.log('Returning cached parties for user:', req.user.id);
+        return res.json(cachedResult.data);
+      }
+      
+      // Build query more efficiently
+      const query = { user: req.user.id };
+      
+      // Add search filter if provided
+      if (search) {
+        query.$or = [
+          { name: { $regex: search, $options: 'i' } },
+          { phone: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } },
+          { gstNumber: { $regex: search, $options: 'i' } }
+        ];
+      }
+      
+      // Add status filter
+      if (status) {
+        query.status = status;
+      }
+      
+      // Add party type filter
+      if (partyType) {
+        query.partyType = partyType;
+      }
+      
+      // Use lean() for better performance when you don't need Mongoose document methods
+      const parties = await Party.find(query)
+        .select('name phone email address gstNumber partyType openingBalance pan city state pincode tags status note createdAt')
+        .sort({ name: 1 })
+        .lean();
+      
+      const result = { 
+        success: true, 
+        data: parties
+      };
+      
+      // Cache the result
+      partiesCache.set(cacheKey, {
+        data: result
       });
-      return res.json({ success: true, data: parties });
+      
+      return res.json(result);
     } catch (err) {
+      console.error('Error fetching parties:', err);
       return res.status(500).json({ success: false, message: 'Failed to fetch parties', error: err.message });
     }
   },
@@ -102,6 +168,11 @@ const partiesController = {
         return res.status(404).json({ success: false, message: 'Party not found or not authorized' });
       }
       console.log(`Party updated successfully: ${party.name} (ID: ${party._id}) by user ${req.user.id}`);
+      
+      // Clear cache for this user
+      partiesController._clearUserCache(req.user.id);
+      invalidateDashboardCache(req.user.id); // Invalidate dashboard cache
+      
       return res.json({ success: true, data: party });
     } catch (err) {
       return res.status(500).json({ success: false, message: 'Failed to update party', error: err.message });
@@ -115,28 +186,14 @@ const partiesController = {
         return res.status(404).json({ success: false, message: 'Party not found or not authorized' });
       }
       console.log(`Party deleted successfully: ${party.name} (ID: ${party._id}) by user ${req.user.id}`);
+      
+      // Clear cache for this user
+      partiesController._clearUserCache(req.user.id);
+      invalidateDashboardCache(req.user.id); // Invalidate dashboard cache
+      
       return res.json({ success: true, message: 'Party deleted successfully' });
     } catch (err) {
       return res.status(500).json({ success: false, message: 'Failed to delete party', error: err.message });
-    }
-  },
-  getPartyBalance: async (req, res) => {
-    try {
-      const partyName = req.query.name;
-      const userId = req.user.id;
-      if (!partyName) {
-        return res.status(400).json({ success: false, message: 'Party name is required' });
-      }
-      // Find party
-      const party = await Party.findOne({ name: partyName, user: userId });
-      if (!party) {
-        return res.status(404).json({ success: false, message: 'Party not found' });
-      }
-      // Just return opening balance
-      const openingBalance = party.openingBalance || 0;
-      return res.json({ success: true, balance: openingBalance });
-    } catch (err) {
-      return res.status(500).json({ success: false, message: 'Failed to fetch party balance', error: err.message });
     }
   },
   bulkImport: async (req, res) => {
@@ -166,6 +223,11 @@ const partiesController = {
         return res.status(400).json({ success: false, message: 'No valid parties with name to import' });
       }
       await Party.insertMany(docs);
+      
+      // Clear cache for this user after bulk import
+      partiesController._clearUserCache(userId);
+      invalidateDashboardCache(userId); // Invalidate dashboard cache
+      
       return res.status(201).json({ success: true, message: `${docs.length} parties imported successfully` });
     } catch (err) {
       console.error('Bulk import error:', err);
@@ -216,7 +278,22 @@ const partiesController = {
       return res.status(500).json({ success: false, message: 'Failed to get party balance', error: err.message });
     }
   },
+  // Performance monitoring function
+  getPerformanceStats: async (req, res) => {
+    try {
+      const stats = {
+        cacheSize: partiesCache.size,
+        cacheKeys: Array.from(partiesCache.keys()),
+        cacheHitRate: 0, // This would need to be calculated over time
+        timestamp: new Date().toISOString()
+      };
+      
+      return res.json({ success: true, data: stats });
+    } catch (err) {
+      return res.status(500).json({ success: false, message: 'Failed to get performance stats', error: err.message });
+    }
+  },
   // You can add more party-related methods here (list, update, delete, etc.)
 };
 
-export default partiesController; 
+export default partiesController;

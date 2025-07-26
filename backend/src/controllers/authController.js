@@ -1,6 +1,7 @@
 import User from '../models/user.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { clearAllCacheForUser } from './dashboardController.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'changeme';
 const JWT_EXPIRES_IN = '100y';
@@ -62,6 +63,7 @@ const authController = {
       // Clear the current token from user document
       if (req.user && req.user.id) {
         await User.findByIdAndUpdate(req.user.id, { currentToken: null });
+        clearAllCacheForUser(req.user.id);
       }
       return res.json({ success: true, message: 'Logged out successfully' });
     } catch (err) {

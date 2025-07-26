@@ -77,4 +77,45 @@ export const getUserItems = async (token: string) => {
     console.error('Error fetching items:', error);
     return [];
   }
+};
+
+// Optimized function with search and filtering support
+export const getUserItemsWithFilters = async (
+  token: string, 
+  search?: string, 
+  category?: string, 
+  status?: string, 
+  type?: string
+) => {
+  try {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (category) params.append('category', category);
+    if (status) params.append('status', status);
+    if (type) params.append('type', type);
+    
+    const url = params.toString() ? `/items?${params.toString()}` : '/items';
+    
+    const res = await api.get(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    return res.data.data || res.data || [];
+  } catch (error) {
+    console.error('Error fetching items with filters:', error);
+    return [];
+  }
+};
+
+// Performance monitoring function
+export const getItemsPerformanceStats = async (token: string) => {
+  try {
+    const res = await api.get('/items/stats/performance', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return res.data;
+  } catch (error) {
+    console.error('Error fetching items performance stats:', error);
+    throw error;
+  }
 }; 

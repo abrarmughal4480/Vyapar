@@ -16,6 +16,7 @@ import creditNoteRoutes from './creditNote.js';
 import * as dashboardController from '../controllers/dashboardController.js';
 import { getDashboardStats, getSalesOverview, getRecentActivity, getProfile, updateProfile } from '../controllers/dashboardController.js';
 import sessionCheckRoutes from './sessionCheck.js';
+import { sendUserInvite, getUserInvites, getInvitesForMe, respondToInvite } from '../controllers/userInviteController.js';
 
 const router = express.Router();
 
@@ -33,6 +34,10 @@ router.use('/quotations', authMiddleware, quotationRoutes);
 
 // Dashboard stats route
 router.get('/dashboard/stats', authMiddleware, dashboardController.getDashboardStats);
+
+// Add the new route for receivables and payables
+router.get('/api/dashboard/receivables', authMiddleware, dashboardController.getReceivablesList);
+router.get('/api/dashboard/payables', authMiddleware, dashboardController.getPayablesList);
 
 // Add the new route for sales overview
 router.get('/api/dashboard/sales-overview/:userId', authMiddleware, getSalesOverview);
@@ -62,10 +67,27 @@ router.get('/items/:userId', itemsController.getItems);
 router.delete('/items/:userId/:itemId', itemsController.deleteItem);
 router.put('/items/:userId/:itemId', itemsController.updateItem);
 
+// Items performance monitoring route
+router.get('/items/stats/performance', authMiddleware, itemsController.getItemsPerformanceStats);
+
+// Dashboard performance monitoring route
+router.get('/dashboard/stats/performance', authMiddleware, dashboardController.getDashboardPerformanceStats);
+
 router.get('/parties/balance', authMiddleware, partiesController.getPartyBalance);
 
 // Profit and Loss report route
 router.get('/api/reports/profit-and-loss', authMiddleware, profitAndLossController.getProfitAndLoss);
+
+// User invite route
+router.post('/api/user-invite', authMiddleware, sendUserInvite);
+
+// Get all invites sent by the logged-in user
+router.get('/api/user-invites', authMiddleware, getUserInvites);
+
+// Get invites for the logged-in user's email
+router.get('/api/invites/for-me', authMiddleware, getInvitesForMe);
+// Accept or reject an invite
+router.post('/api/invites/respond', authMiddleware, respondToInvite);
 
 router.get('/', (req, res) => {
   res.send('Hello from Express backend!');

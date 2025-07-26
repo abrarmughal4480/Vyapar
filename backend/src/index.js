@@ -7,6 +7,9 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+console.log('EMAIL:', process.env.EMAIL);
+console.log('EMAIL_APP_PASSWORD:', process.env.EMAIL_APP_PASSWORD ? '***' : undefined);
+
 // Connect to MongoDB
 dbConnect();
 async function dbConnect() {

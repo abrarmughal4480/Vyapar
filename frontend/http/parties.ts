@@ -73,4 +73,18 @@ export const getPartyBalance = async (partyId: string, token: string) => {
     headers: { Authorization: `Bearer ${token}` }
   });
   return res.data;
+};
+
+export const getReceivables = async (token: string) => {
+  const res = await api.get('/api/dashboard/receivables', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return res.data.data;
+};
+
+export const getPayables = async (token: string) => {
+  const res = await api.get('/api/dashboard/payables', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return res.data.data;
 }; 

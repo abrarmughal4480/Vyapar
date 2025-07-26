@@ -673,21 +673,32 @@ export default function AddPurchasePage() {
     setNewPurchase(prev => ({ ...prev, items: prev.items.filter(item => item.id !== id) }));
   };
 
-  // Fetch parties from API
+  // Fetch parties from API (stale-while-revalidate)
   const fetchPartySuggestions = async () => {
     try {
+      // 1. Try to load from localStorage first
+      const cached = localStorage.getItem('vyapar_parties');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            setParties(parsed);
+          }
+        } catch (e) { /* ignore parse error */ }
+      }
+      // 2. Fetch from API in background
       const token = getToken();
       if (!token) {
         setToast({ message: 'Authentication required', type: 'error' });
         return;
       }
       const response = await fetchPartiesByUserId(token);
-      // Handle both response formats: { data: [...] } or direct array
       const partiesData = response.data || response || [];
       setParties(partiesData);
-      console.log('Fetched parties:', partiesData);
+      localStorage.setItem('vyapar_parties', JSON.stringify(partiesData));
+      // console.log('Fetched parties:', partiesData);
     } catch (error) {
-      console.error('Error fetching parties:', error);
+      // console.error('Error fetching parties:', error);
       setToast({ message: 'Failed to fetch parties', type: 'error' });
     }
   };
@@ -707,17 +718,26 @@ export default function AddPurchasePage() {
     }
   };
 
+  // Fetch item suggestions (stale-while-revalidate)
   const fetchItemSuggestions = async () => {
+    // 1. Try to load from localStorage first
+    const cached = localStorage.getItem('vyapar_items');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          setItemSuggestions(parsed);
+        }
+      } catch (e) { /* ignore parse error */ }
+    }
+    // 2. Fetch from API in background
     const token = getToken();
     if (!token) {
-      console.log('No token found for fetching items');
+      // console.log('No token found for fetching items');
       return;
     }
     try {
       const response = await getUserItems(token);
-      console.log('Fetched items response:', response);
-      
-      // Handle different response formats
       let items = [];
       if (response && response.success && response.items) {
         items = response.items;
@@ -726,11 +746,11 @@ export default function AddPurchasePage() {
       } else if (response && response.data) {
         items = response.data;
       }
-      
-      console.log('Processed items:', items);
       setItemSuggestions(items || []);
+      localStorage.setItem('vyapar_items', JSON.stringify(items || []));
+      // console.log('Processed items:', items);
     } catch (error) {
-      console.error('Error fetching items:', error);
+      // console.error('Error fetching items:', error);
       setItemSuggestions([]);
     }
   };
@@ -912,6 +932,29 @@ export default function AddPurchasePage() {
   const [discountTypeDropdownIndex, setDiscountTypeDropdownIndex] = useState(0);
   const [taxTypeDropdownIndex, setTaxTypeDropdownIndex] = useState(0);
 
+  // Add ref for form
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Prevent Enter key from submitting form, allow only Ctrl+S
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // If focus is inside a textarea, ignore Enter
+      if (e.key === 'Enter' && document.activeElement && document.activeElement.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+      }
+      // Ctrl+S to save
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (formRef.current) {
+          // Manually trigger submit
+          formRef.current.requestSubmit();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <div className="relative min-h-screen">
       {loading && (
@@ -939,7 +982,12 @@ export default function AddPurchasePage() {
               </button>
             </div>
             {/* Supplier and Date Section - match sale add page */}
-            <form onSubmit={handleSubmit} className="divide-y divide-gray-200 w-full">
+            <form ref={formRef} onSubmit={handleSubmit} className="divide-y divide-gray-200 w-full" onKeyDown={e => {
+              // Prevent Enter from submitting (except in textarea)
+              if (e.key === 'Enter' && e.target instanceof HTMLElement && e.target.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+              }
+            }}>
               <div className="bg-gray-50 px-6 py-6 w-full">
                 <div className={`grid gap-6 ${pageType === 'purchase-order' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
                   {/* Supplier and Phone - Full width for purchase bills */}

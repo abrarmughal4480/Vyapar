@@ -135,8 +135,11 @@ export const createSale = async (req, res) => {
 export const getSalesByUser = async (req, res) => {
   try {
     const { userId } = req.params;
+    const { companyName } = req.query;
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
-    const sales = await Sale.find({ userId }).sort({ createdAt: -1 });
+    const filter = { userId };
+    if (companyName) filter.companyName = companyName;
+    const sales = await Sale.find(filter).sort({ createdAt: -1 });
     const salesWithUnitString = sales.map(sale => {
       const saleObj = sale.toObject();
       if (Array.isArray(saleObj.items)) {

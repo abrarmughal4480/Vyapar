@@ -8,6 +8,7 @@ const router = express.Router();
 router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.post('/logout', authMiddleware, authController.logout);
+router.post('/switch-context', authMiddleware, authController.switchContext);
 
 // Example protected route
 router.get('/me', authMiddleware, async (req, res) => {

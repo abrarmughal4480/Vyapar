@@ -11,7 +11,8 @@ const userSchema = new mongoose.Schema({
   gstNumber: { type: String },
   website: { type: String },
   profileImage: { type: String },
-  currentToken: { type: String } // For single device login
+  currentToken: { type: String }, // For single device login
+  joinedCompanies: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }] // Array of company user IDs that this user has joined
 }, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);

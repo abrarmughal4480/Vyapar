@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { SidebarContext } from '../contexts/SidebarContext'
 import { FiChevronRight } from 'react-icons/fi'
 import { performLogout } from '../../lib/logout'
+import { getCurrentUserInfo } from '../../lib/roleAccessControl'
 
 // Define types for nav items
 interface NavSubItem {
@@ -109,6 +110,7 @@ export default function Sidebar() {
   const router = useRouter()
   const [businessName, setBusinessName] = useState('My Business')
   const [openDropdowns, setOpenDropdowns] = useState<{ [key: string]: boolean }>({})
+  const [userInfo, setUserInfo] = useState<any>(null)
 
   // Use SidebarContext for isCollapsed and setIsCollapsed
   const { isCollapsed, setIsCollapsed } = useContext(SidebarContext)
@@ -116,6 +118,10 @@ export default function Sidebar() {
   useEffect(() => {
     const name = localStorage.getItem('businessName')
     if (name) setBusinessName(name)
+    
+    // Get current user info for role-based access
+    const currentUserInfo = getCurrentUserInfo()
+    setUserInfo(currentUserInfo)
   }, [])
 
   const handleLogout = async () => {
@@ -168,6 +174,39 @@ export default function Sidebar() {
     return pathname === subItem.path
   }
 
+  // Function to check if nav item should be visible based on user role
+  const shouldShowNavItem = (item: NavItem): boolean => {
+    if (!userInfo) return true; // Show all items if user info not available
+    
+    // If user is not in company context (Default Admin), show all items
+    if (userInfo.context !== 'company') return true;
+    
+    const role = userInfo.role;
+    
+    // Role-based visibility rules
+    switch (role) {
+      case 'PURCHASER':
+        // PURCHASER can see: Dashboard, Parties, Items, Purchase, Cash & Bank, Barcode, Backup & Restore, Settings
+        return ['dashboard', 'parties', 'items', 'purchase', 'cash-bank', 'barcode', 'backup-restore', 'settings'].includes(item.id);
+      
+      case 'SALESMAN':
+        // SALESMAN can only see: Dashboard, Parties, Items, Sale, Cash & Bank, Barcode, Backup & Restore, Settings
+        return ['dashboard', 'parties', 'items', 'sale', 'cash-bank', 'barcode', 'backup-restore', 'settings'].includes(item.id);
+      
+      case 'CA':
+        // CA can see all pages
+        return true;
+      
+      case 'SECONDARY ADMIN':
+        // SECONDARY ADMIN can see most items except add-user functionality
+        return true;
+      
+      default:
+        // Default Admin and other roles can see all items
+        return true;
+    }
+  }
+
   return (
     <aside
       className={`fixed left-0 top-0 h-full bg-white shadow-lg border-r border-gray-200 transition-all duration-300 ease-in-out z-40 ${
@@ -202,7 +241,7 @@ export default function Sidebar() {
         className="flex-1 py-4 px-3 overflow-y-auto no-scrollbar"
         aria-label="Main navigation"
       >
-        {navItems.map((item) => (
+        {navItems.filter(shouldShowNavItem).map((item) => (
           <div key={item.id} className="mb-1">
             <button
               onClick={() => handleNavigation(item)}

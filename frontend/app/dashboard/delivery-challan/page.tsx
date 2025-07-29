@@ -6,6 +6,7 @@ import { getToken } from '../../lib/auth'
 import { getDeliveryChallans, updateDeliveryChallanStatus, deleteDeliveryChallan } from '../../../http/deliveryChallan'
 import TableActionMenu from '../../components/TableActionMenu'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import { getCurrentUserInfo, canAddData, canEditData, canDeleteData, canEditSalesData, canDeleteSalesData } from '../../../lib/roleAccessControl'
 
 interface DeliveryChallanItem {
   id: string
@@ -67,6 +68,10 @@ export default function DeliveryChallanPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   const [challanToDelete, setChallanToDelete] = useState<DeliveryChallan | null>(null)
+  
+  // Role-based access control
+  const [userInfo, setUserInfo] = useState<any>(null)
+  const [isClient, setIsClient] = useState(false)
 
   const dateRanges = [
     { value: 'All', label: 'All Time' },
@@ -303,6 +308,13 @@ export default function DeliveryChallanPage() {
 
   // Initialize component
   useEffect(() => {
+    // Set client-side flag for hydration safety
+    setIsClient(true);
+    
+    // Get current user info for role-based access
+    const currentUserInfo = getCurrentUserInfo();
+    setUserInfo(currentUserInfo);
+    
     const initialize = async () => {
       setErrorMessage(''); // Clear any previous errors
       
@@ -397,12 +409,18 @@ export default function DeliveryChallanPage() {
             <p className="text-sm text-gray-500 mt-1">Manage delivery notes and shipping documents</p>
           </div>
           <div className="flex flex-col md:flex-row gap-2 md:gap-4">
-            <button
-              onClick={handleCreateDeliveryChallan}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
-            >
-              + New Delivery Challan
-            </button>
+            {isClient && canAddData() ? (
+              <button
+                onClick={handleCreateDeliveryChallan}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
+              >
+                + New Delivery Challan
+              </button>
+            ) : (
+              <div className="bg-gray-100 text-gray-500 px-6 py-2 rounded-lg font-medium flex items-center gap-2">
+                + New Delivery Challan (Restricted)
+              </div>
+            )}
             <button 
               onClick={() => fetchDeliveryChallans()}
               className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
@@ -649,7 +667,7 @@ export default function DeliveryChallanPage() {
                     </td>
                     <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
                       <div className="flex justify-center gap-2 relative">
-                        {getEffectiveStatus(challan) === 'Open' ? (
+                        {isClient && canAddData() && getEffectiveStatus(challan) === 'Open' ? (
                           <button 
                             onClick={() => handleConvertToSale(challan.id)}
                             className="text-blue-600 hover:text-blue-800 text-sm font-medium"
@@ -666,11 +684,15 @@ export default function DeliveryChallanPage() {
                       </div>
                     </td>
                     <td className="px-4 py-4 text-center">
-                      <TableActionMenu
-                        onEdit={() => router.push(`/dashboard/delivery-challan/create?id=${challan.id}`)}
-                        onDelete={() => handleDeleteChallan(challan)}
-                        onView={() => openPreview(challan)}
-                      />
+                      {isClient && (canEditSalesData() || canDeleteSalesData()) ? (
+                        <TableActionMenu
+                          onEdit={canEditSalesData() ? () => router.push(`/dashboard/delivery-challan/create?id=${challan.id}`) : undefined}
+                          onDelete={canDeleteSalesData() ? () => handleDeleteChallan(challan) : undefined}
+                          onView={() => openPreview(challan)}
+                        />
+                      ) : (
+                        <div className="text-gray-400 text-sm">No actions</div>
+                      )}
                     </td>
                   </tr>
                 ))

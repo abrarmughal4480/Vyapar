@@ -833,13 +833,13 @@ const AddSalePage = () => {
           setToast({ message: `Sale saved! Invoice No: ${result.sale.invoiceNo || ''}`, type: 'success' });
         }
         
-        setTimeout(() => router.push(`/dashboard/sale/invoice/${result.sale._id}`), 1500);
+        setTimeout(() => router.push(`/dashboard/invoices?saleId=${result.sale._id}&invoiceNo=${result.sale.invoiceNo}`), 1500);
         return;
       }
       if (result.success) {
         setToast({ message: 'Sale saved successfully!', type: 'success' });
         setLoading(false);
-        setTimeout(() => router.push('/dashboard/sale'), 1200);
+        setTimeout(() => router.push('/dashboard/invoices'), 1200);
       } else {
         setToast({ message: result.message || 'Failed to save sale', type: 'error' });
         setLoading(false);

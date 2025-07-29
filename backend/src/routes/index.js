@@ -1,6 +1,7 @@
 import express from 'express';
 import authRoutes from './auth.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
+import { requirePageAccess } from '../middlewares/accessControlMiddleware.js';
 import partiesRoutes from './parties.js';
 import { addItem, bulkImportItems, getItems, getItemsByLoggedInUser, deleteItem, updateItem, getItemsPerformanceStats } from '../controllers/itemsController.js';
 import saleRoutes from './sale.js';
@@ -14,7 +15,7 @@ import profitAndLossController from '../controllers/profitAndLossController.js';
 import creditNoteRoutes from './creditNote.js';
 import { getDashboardStats, getSalesOverview, getRecentActivity, getProfile, updateProfile, getReceivablesList, getPayablesList, getDashboardPerformanceStats } from '../controllers/dashboardController.js';
 import sessionCheckRoutes from './sessionCheck.js';
-// import { sendUserInvite, getUserInvites, getInvitesForMe, respondToInvite } from '../controllers/userInviteController.js';
+import { sendUserInvite, getUserInvites, getInvitesForMe, respondToInvite } from '../controllers/userInviteController.js';
 
 const router = express.Router();
 
@@ -74,16 +75,16 @@ router.get('/dashboard/stats/performance', authMiddleware, getDashboardPerforman
 // Profit and Loss report route
 router.get('/api/reports/profit-and-loss', authMiddleware, profitAndLossController.getProfitAndLoss);
 
-// User invite route
-// router.post('/api/user-invite', authMiddleware, sendUserInvite);
+// User invite route - restricted to non-SECONDARY ADMIN roles
+router.post('/api/user-invite', authMiddleware, requirePageAccess('add-user'), sendUserInvite);
 
 // Get all invites sent by the logged-in user
-// router.get('/api/user-invites', authMiddleware, getUserInvites);
+router.get('/api/user-invites', authMiddleware, getUserInvites);
 
 // Get invites for the logged-in user's email
-// router.get('/api/invites/for-me', authMiddleware, getInvitesForMe);
+router.get('/api/invites/for-me', authMiddleware, getInvitesForMe);
 // Accept or reject an invite
-// router.post('/api/invites/respond', authMiddleware, respondToInvite);
+router.post('/api/invites/respond', authMiddleware, respondToInvite);
 
 router.get('/', (req, res) => {
   res.send('Hello from Express backend!');

@@ -1,25 +1,26 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Shield } from 'lucide-react';
 import { sendUserInvite } from '@/http/api';
+import { canAccessAddUser, getCurrentUserInfo } from '@/lib/roleAccessControl';
 
 const ROLES = ["SALESMAN", "SECONDARY ADMIN", "CA", "PURCHASER", "Custom"];
 const PAGES = [
   "Sale", "Payment In", "Sale Order", "Credit Note", "Estimate", "Expense",
   "Purchase Bill", "Payment Out", "Purchase Order", "Debit Note", "Purchase Estimate", "Purchase Expense"
 ];
-const PERMISSIONS = ["view", "add", "edit", "delete", "share", "preview", "reopen"];
+const PERMISSIONS = ["view", "add", "edit", "delete", "share", "preview", "reopen", "convert"];
 
 // Role defaults copied from settings/page.tsx
 const ROLE_DEFAULTS: Record<string, any[]> = {
   "SALESMAN": [
-    { page: "Sale", permissions: { view: true, add: true, edit: false, delete: false, share: true, preview: true, reopen: false } },
-    { page: "Payment In", permissions: { view: true, add: true, edit: false, delete: false, share: true, preview: false, reopen: false } },
-    { page: "Sale Order", permissions: { view: false, add: false, edit: false, delete: false, share: false, preview: false, reopen: false } },
-    { page: "Credit Note", permissions: { view: false, add: false, edit: false, delete: false, share: false, preview: false, reopen: false } },
-    { page: "Estimate", permissions: { view: true, add: true, edit: false, delete: false, share: true, preview: false, reopen: false } },
-    { page: "Expense", permissions: { view: true, add: true, edit: false, delete: false, share: true, preview: false, reopen: false } },
+    { page: "Sale", permissions: { view: true, add: true, edit: false, delete: false, share: true, preview: true, reopen: false, convert: true } },
+    { page: "Payment In", permissions: { view: true, add: true, edit: false, delete: false, share: true, preview: false, reopen: false, convert: false } },
+    { page: "Sale Order", permissions: { view: true, add: true, edit: false, delete: false, share: true, preview: true, reopen: false, convert: true } },
+    { page: "Credit Note", permissions: { view: true, add: true, edit: false, delete: false, share: true, preview: false, reopen: false, convert: true } },
+    { page: "Estimate", permissions: { view: true, add: true, edit: false, delete: false, share: true, preview: false, reopen: false, convert: true } },
+    { page: "Expense", permissions: { view: true, add: true, edit: false, delete: false, share: true, preview: false, reopen: false, convert: false } },
     { page: "Purchase Bill", permissions: { view: false, add: false, edit: false, delete: false, share: false, preview: false, reopen: false } },
     { page: "Payment Out", permissions: { view: false, add: false, edit: false, delete: false, share: false, preview: false, reopen: false } },
     { page: "Purchase Order", permissions: { view: false, add: false, edit: false, delete: false, share: false, preview: false, reopen: false } },
@@ -59,6 +60,8 @@ export default function AddUserPage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
+  const [hasAccess, setHasAccess] = useState(true);
+  const [userInfo, setUserInfo] = useState<any>(null);
 
   const handlePermissionChange = (pageIdx: number, perm: string) => {
     setPermissions(prev => prev.map((p, idx) =>
@@ -92,10 +95,34 @@ export default function AddUserPage() {
     }
   };
 
+  // Check access on component mount
+  useEffect(() => {
+    const checkAccess = () => {
+      const currentUserInfo = getCurrentUserInfo();
+      setUserInfo(currentUserInfo);
+      
+      if (!canAccessAddUser()) {
+        setHasAccess(false);
+        console.log(`❌ Access DENIED: ${currentUserInfo?.email} (${currentUserInfo?.role}) cannot access add-user page`);
+      } else {
+        console.log(`✅ Access GRANTED: ${currentUserInfo?.email} (${currentUserInfo?.role}) can access add-user page`);
+      }
+    };
+    
+    checkAccess();
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSuccess(false);
     setError("");
+    
+    // Double check access before submitting
+    if (!canAccessAddUser()) {
+      setError("Access denied. You don't have permission to add users.");
+      return;
+    }
+    
     if (!name || !email || !role) {
       setError("Name, Email, aur Role zaroori hain");
       return;
@@ -128,6 +155,44 @@ export default function AddUserPage() {
     }
   };
 
+  // Show access denied message if user doesn't have permission
+  if (!hasAccess) {
+    return (
+      <div className="p-6 bg-gray-50 min-h-screen">
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100 flex items-center gap-4">
+          <button onClick={() => router.back()} className="p-2 rounded-lg hover:bg-blue-100 transition-colors">
+            <ArrowLeft className="w-5 h-5 text-blue-600" />
+          </button>
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Access Denied</h1>
+            <p className="text-sm text-gray-500 mt-1">You don't have permission to access this page</p>
+          </div>
+        </div>
+        
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center">
+          <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-red-700 mb-2">Access Restricted</h2>
+          <p className="text-red-600 mb-4">
+            Your role <strong>{userInfo?.role}</strong> does not have permission to add new users.
+          </p>
+          <div className="bg-white rounded-lg p-4 mb-4">
+            <p className="text-sm text-gray-600">
+              <strong>Current User:</strong> {userInfo?.email}<br/>
+              <strong>Role:</strong> {userInfo?.role}<br/>
+              <strong>Context:</strong> {userInfo?.context}
+            </p>
+          </div>
+          <button
+            onClick={() => router.push('/dashboard/settings')}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+          >
+            Back to Settings
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       {/* Header */}
@@ -138,6 +203,11 @@ export default function AddUserPage() {
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-gray-900">Add New User</h1>
           <p className="text-sm text-gray-500 mt-1">Create a new user and set their permissions</p>
+        </div>
+        {/* Show current user info */}
+        <div className="ml-auto flex items-center gap-2 bg-green-50 text-green-700 px-3 py-1 rounded-lg border border-green-200">
+          <Shield className="w-4 h-4" />
+          <span className="text-sm font-medium">{userInfo?.role}</span>
         </div>
       </div>
       {/* Form Card */}

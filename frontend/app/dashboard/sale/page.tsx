@@ -10,8 +10,10 @@ import Toast from '../../components/Toast';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { useRouter } from 'next/navigation';
 import { businessStorage } from '@/lib/storage';
+import { getCurrentUserInfo, canAddData, canEditData, canDeleteData, canEditSalesData, canDeleteSalesData } from '../../../lib/roleAccessControl';
 
-const SaleInvoicesPage = () => {  const [filterType, setFilterType] = useState('All');
+const SaleInvoicesPage = () => {  
+  const [filterType, setFilterType] = useState('All');
   const [firmFilter, setFirmFilter] = useState('All Firms');
   const [paymentFilter, setPaymentFilter] = useState('All');
   const [amountFilter, setAmountFilter] = useState('All');
@@ -30,7 +32,10 @@ const SaleInvoicesPage = () => {  const [filterType, setFilterType] = useState('
     subject: '',
     message: ''
   });
-  const [showMobileMenu, setShowMobileMenu] = useState(false);  const [loading, setLoading] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [userInfo, setUserInfo] = useState<any>(null);
+  const [isClient, setIsClient] = useState(false);
   const [customers, setCustomers] = useState<any[]>([]);
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
   const [showItemSuggestions, setShowItemSuggestions] = useState<{[id: number]: boolean}>({});
@@ -67,6 +72,13 @@ const SaleInvoicesPage = () => {  const [filterType, setFilterType] = useState('
 
   // Load transactions and stats on component mount
   useEffect(() => {
+    // Set client-side flag for hydration safety
+    setIsClient(true);
+    
+    // Get current user info for role-based access
+    const currentUserInfo = getCurrentUserInfo();
+    setUserInfo(currentUserInfo);
+    
     const fetchSales = async () => {
       try {
         const token =
@@ -760,9 +772,9 @@ Your Business Name`;
   // TableActionMenu component for each row
   function TableActionMenu({ transaction, onEdit, onDelete, onReceivePayment }: {
     transaction: any,
-    onEdit: () => void,
-    onDelete: () => void,
-    onReceivePayment: () => void,
+    onEdit?: () => void,
+    onDelete?: () => void,
+    onReceivePayment?: () => void,
   }) {
     const [open, setOpen] = useState(false);
     const btnRef = useRef<HTMLButtonElement | null>(null);
@@ -817,24 +829,30 @@ Your Business Name`;
             ref={dropdownRef}
             className="z-[9999] bg-white border border-gray-200 rounded-lg shadow-lg min-w-[150px] w-[180px] flex flex-col text-left animate-fadeinup"
           >
-            <button
-              onClick={e => { e.stopPropagation(); setOpen(false); onEdit(); }}
-              className="px-4 py-2 hover:bg-gray-200 text-black w-full text-left"
-            >
-              Edit
-            </button>
-            <button
-              onClick={e => { e.stopPropagation(); setOpen(false); onDelete(); }}
-              className="px-4 py-2 hover:bg-gray-200 text-black w-full text-left"
-            >
-              Delete
-            </button>
-            <button
-              onClick={e => { e.stopPropagation(); setOpen(false); onReceivePayment(); }}
-              className="px-4 py-2 hover:bg-gray-200 text-black w-full text-left"
-            >
-              Receive Payment
-            </button>
+            {onEdit && (
+              <button
+                onClick={e => { e.stopPropagation(); setOpen(false); onEdit(); }}
+                className="px-4 py-2 hover:bg-gray-200 text-black w-full text-left"
+              >
+                Edit
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={e => { e.stopPropagation(); setOpen(false); onDelete(); }}
+                className="px-4 py-2 hover:bg-gray-200 text-black w-full text-left"
+              >
+                Delete
+              </button>
+            )}
+            {onReceivePayment && (
+              <button
+                onClick={e => { e.stopPropagation(); setOpen(false); onReceivePayment(); }}
+                className="px-4 py-2 hover:bg-gray-200 text-black w-full text-left"
+              >
+                Receive Payment
+              </button>
+            )}
           </div>,
           document.body
         )}
@@ -880,13 +898,19 @@ Your Business Name`;
               <p className="text-sm text-gray-500 mt-1">Manage your sales, invoices, and payments</p>
             </div>
             <div className="flex flex-col md:flex-row gap-2 md:gap-4">
-              <button
-                onClick={() => window.location.href = '/dashboard/sale/add'}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
-                disabled={loading}
-              >
-                + Add Sale
-              </button>
+              {isClient && canAddData() ? (
+                <button
+                  onClick={() => window.location.href = '/dashboard/sale/add'}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
+                  disabled={loading}
+                >
+                  + Add Sale
+                </button>
+              ) : (
+                <div className="bg-gray-100 text-gray-500 px-6 py-2 rounded-lg font-medium flex items-center gap-2">
+                  + Add Sale (Restricted)
+                </div>
+              )}
               <button className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
                 <Settings className="w-5 h-5 text-gray-600" />
               </button>
@@ -1147,12 +1171,16 @@ Your Business Name`;
                               >
                                 View
                               </button>
-                              <TableActionMenu
-                                transaction={transaction}
-                                onEdit={() => handleEditTransaction(transaction)}
-                                onDelete={() => handleDeleteTransaction(transaction._id || transaction.id)}
-                                onReceivePayment={() => handleReceivePayment(transaction)}
-                              />
+                              {isClient ? (
+                                <TableActionMenu
+                                  transaction={transaction}
+                                  onEdit={canEditSalesData() ? () => handleEditTransaction(transaction) : undefined}
+                                  onDelete={canDeleteSalesData() ? () => handleDeleteTransaction(transaction._id || transaction.id) : undefined}
+                                  onReceivePayment={() => handleReceivePayment(transaction)}
+                                />
+                              ) : (
+                                <div className="text-gray-400 text-sm">No actions</div>
+                              )}
                             </div>
                           </td>
                         </tr>

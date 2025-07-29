@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Search, BarChart3, Printer, Settings, ChevronDown, Eye, Edit, MoreHorizontal, Trash2 } from 'lucide-react'
 import { getCreditNotesByUser } from '../../../http/credit-notes';
 import { getToken, getUserIdFromToken } from '../../lib/auth';
+import { getCurrentUserInfo, canAddData, canEditData, canDeleteData, canEditSalesData, canDeleteSalesData } from '../../../lib/roleAccessControl';
 
 interface CreditNoteItem {
   id: string
@@ -62,6 +63,10 @@ export default function CreditNotePage() {
   const [showDateDropdown, setShowDateDropdown] = useState(false)
   const dateDropdownRef = useRef<HTMLDivElement>(null)
   const dateDropdownButtonRef = useRef<HTMLButtonElement>(null)
+  
+  // Role-based access control
+  const [userInfo, setUserInfo] = useState<any>(null)
+  const [isClient, setIsClient] = useState(false)
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
@@ -176,6 +181,13 @@ export default function CreditNotePage() {
 
   // Initialize component
   useEffect(() => {
+    // Set client-side flag for hydration safety
+    setIsClient(true);
+    
+    // Get current user info for role-based access
+    const currentUserInfo = getCurrentUserInfo();
+    setUserInfo(currentUserInfo);
+    
     const fetchNotes = async () => {
       setErrorMessage('');
       try {
@@ -236,12 +248,18 @@ export default function CreditNotePage() {
               <p className="text-sm text-gray-500 mt-1">Manage credit notes for returns and adjustments</p>
             </div>
             <div className="flex flex-col md:flex-row gap-2 md:gap-4">
-              <button
-                onClick={handleCreateCreditNote}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
-              >
-                + Create Credit Note
-              </button>
+              {isClient && canAddData() ? (
+                <button
+                  onClick={handleCreateCreditNote}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
+                >
+                  + Create Credit Note
+                </button>
+              ) : (
+                <div className="bg-gray-100 text-gray-500 px-6 py-2 rounded-lg font-medium flex items-center gap-2">
+                  + Create Credit Note (Restricted)
+                </div>
+              )}
               <button className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
                 <span className="text-gray-600">⚙️</span>
               </button>
@@ -479,24 +497,28 @@ export default function CreditNotePage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
-                      <div className="flex justify-center gap-2 relative">
-                        <button
-                          onClick={() => setToast({ message: 'Print feature coming soon!', type: 'success' })}
-                          className="p-1 text-gray-600 hover:text-blue-600 transition-colors"
-                          title="Print"
-                        >
-                          <Printer className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setToast({ message: 'Share feature coming soon!', type: 'success' })}
-                          className="p-1 text-gray-600 hover:text-green-600 transition-colors"
-                          title="Share"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
-                          </svg>
-                        </button>
-                      </div>
+                      {isClient && canEditData() ? (
+                        <div className="flex justify-center gap-2 relative">
+                          <button
+                            onClick={() => setToast({ message: 'Print feature coming soon!', type: 'success' })}
+                            className="p-1 text-gray-600 hover:text-blue-600 transition-colors"
+                            title="Print"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setToast({ message: 'Share feature coming soon!', type: 'success' })}
+                            className="p-1 text-gray-600 hover:text-green-600 transition-colors"
+                            title="Share"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                            </svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-gray-400 text-sm">No actions</div>
+                      )}
                     </td>
                   </tr>
                 ))

@@ -7,6 +7,7 @@ import { createParty, fetchPartiesByUserId, updateParty, deleteParty } from '@/h
 import Toast from '../../components/Toast'
 import { useExport, ExportColumn } from '../../hooks/useExport'
 import PartiesSearchParamsClient from './PartiesSearchParamsClient';
+import { getCurrentUserInfo, canAddData, canEditData, canDeleteData } from '../../../lib/roleAccessControl'
 
 interface Party {
   id: string
@@ -67,6 +68,10 @@ function PartiesPageContent() {
   const { exportCSV, exportExcel } = useExport()
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 })
   const [balanceType, setBalanceType] = useState<'toReceive' | 'toPay'>('toReceive')
+  
+  // Role-based access control
+  const [userInfo, setUserInfo] = useState<any>(null)
+  const [isClient, setIsClient] = useState(false)
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
@@ -197,6 +202,13 @@ function PartiesPageContent() {
   }, [parties])
 
   useEffect(() => {
+    // Set client-side flag for hydration safety
+    setIsClient(true);
+    
+    // Get current user info for role-based access
+    const currentUserInfo = getCurrentUserInfo();
+    setUserInfo(currentUserInfo);
+    
     if (authToken) {
       loadPartiesFromAPI()
     }
@@ -599,27 +611,48 @@ function PartiesPageContent() {
           
           {/* Responsive Button Group */}
           <div className="flex flex-col space-y-2 md:flex-row md:space-y-0 md:space-x-3">
-            <button
-              onClick={() => importParties()}
-              className="w-full md:w-auto px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center justify-center space-x-2 transition-colors"
-            >
-              <span>📤</span>
-              <span>Import</span>
-            </button>
-            <button
-              onClick={() => setExportModal(true)}
-              className="w-full md:w-auto px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center justify-center space-x-2 transition-colors"
-            >
-              <span>⬇️</span>
-              <span>Export</span>
-            </button>
-            <button
-              onClick={() => openModal()}
-              className="w-full md:w-auto px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center space-x-2 transition-colors"
-            >
-              <span>+</span>
-              <span>Add Party</span>
-            </button>
+            {isClient && canAddData() ? (
+              <button
+                onClick={() => importParties()}
+                className="w-full md:w-auto px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center justify-center space-x-2 transition-colors"
+              >
+                <span>📤</span>
+                <span>Import</span>
+              </button>
+            ) : (
+              <div className="w-full md:w-auto px-4 py-2 border border-gray-300 rounded-lg text-gray-400 flex items-center justify-center space-x-2">
+                <span>📤</span>
+                <span>Import (Restricted)</span>
+              </div>
+            )}
+            {isClient && canAddData() ? (
+              <button
+                onClick={() => setExportModal(true)}
+                className="w-full md:w-auto px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center justify-center space-x-2 transition-colors"
+              >
+                <span>⬇️</span>
+                <span>Export</span>
+              </button>
+            ) : (
+              <div className="w-full md:w-auto px-4 py-2 border border-gray-300 rounded-lg text-gray-400 flex items-center justify-center space-x-2">
+                <span>⬇️</span>
+                <span>Export (Restricted)</span>
+              </div>
+            )}
+            {isClient && canAddData() ? (
+              <button
+                onClick={() => openModal()}
+                className="w-full md:w-auto px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center space-x-2 transition-colors"
+              >
+                <span>+</span>
+                <span>Add Party</span>
+              </button>
+            ) : (
+              <div className="w-full md:w-auto px-6 py-2 bg-gray-100 text-gray-500 rounded-lg flex items-center justify-center space-x-2">
+                <span>+</span>
+                <span>Add Party (Restricted)</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -865,21 +898,29 @@ function PartiesPageContent() {
                       PKR {Math.abs(party.currentBalance).toLocaleString()}
                     </div>
                     <div className="flex space-x-2">
-                      <button
-                        onClick={() => openModal(party)}
-                        className="text-blue-600 hover:text-blue-900 text-sm font-medium"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => {
-                          setPartyToDelete(party)
-                          setDeleteConfirmModal(true)
-                        }}
-                        className="text-red-600 hover:text-red-900 text-sm font-medium"
-                      >
-                        Delete
-                      </button>
+                      {isClient && canEditData() ? (
+                        <button
+                          onClick={() => openModal(party)}
+                          className="text-blue-600 hover:text-blue-900 text-sm font-medium"
+                        >
+                          Edit
+                        </button>
+                      ) : (
+                        <div className="text-gray-400 text-sm">Edit</div>
+                      )}
+                      {isClient && canDeleteData() ? (
+                        <button
+                          onClick={() => {
+                            setPartyToDelete(party)
+                            setDeleteConfirmModal(true)
+                          }}
+                          className="text-red-600 hover:text-red-900 text-sm font-medium"
+                        >
+                          Delete
+                        </button>
+                      ) : (
+                        <div className="text-gray-400 text-sm">Delete</div>
+                      )}
                     </div>
                   </div>
                   {party.gstin && (
@@ -941,21 +982,29 @@ function PartiesPageContent() {
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <button
-                              onClick={() => openModal(party)}
-                              className="text-blue-600 hover:text-blue-900 mr-4"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => {
-                                setPartyToDelete(party)
-                                setDeleteConfirmModal(true)
-                              }}
-                              className="text-red-600 hover:text-red-900"
-                            >
-                              Delete
-                            </button>
+                            {isClient && canEditData() ? (
+                              <button
+                                onClick={() => openModal(party)}
+                                className="text-blue-600 hover:text-blue-900 mr-4"
+                              >
+                                Edit
+                              </button>
+                            ) : (
+                              <div className="text-gray-400 text-sm mr-4">Edit</div>
+                            )}
+                            {isClient && canDeleteData() ? (
+                              <button
+                                onClick={() => {
+                                  setPartyToDelete(party)
+                                  setDeleteConfirmModal(true)
+                                }}
+                                className="text-red-600 hover:text-red-900"
+                              >
+                                Delete
+                              </button>
+                            ) : (
+                              <div className="text-gray-400 text-sm">Delete</div>
+                            )}
                           </td>
                         </tr>
                       ))}

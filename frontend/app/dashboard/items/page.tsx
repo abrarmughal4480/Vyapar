@@ -8,6 +8,7 @@ import { ITEM_CATEGORIES } from '../../constants/categories'
 import Toast from '../../components/Toast'
 import { jwtDecode } from 'jwt-decode'
 import ReactDOM from 'react-dom'
+import { getCurrentUserInfo, canAddData, canEditData, canDeleteData } from '../../../lib/roleAccessControl'
 
 interface Item {
   id?: string
@@ -249,6 +250,10 @@ export default function ItemsPage() {
   const { exportCSV, exportExcel } = useExport()
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null)
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 })
+  
+  // Role-based access control
+  const [userInfo, setUserInfo] = useState<any>(null)
+  const [isClient, setIsClient] = useState(false)
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -273,6 +278,13 @@ export default function ItemsPage() {
   }, [showCategoryDropdown])
 
   useEffect(() => {
+    // Set client-side flag for hydration safety
+    setIsClient(true);
+    
+    // Get current user info for role-based access
+    const currentUserInfo = getCurrentUserInfo();
+    setUserInfo(currentUserInfo);
+    
     const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
     let userId = '';
     if (token) {
@@ -428,27 +440,48 @@ export default function ItemsPage() {
             <p className="text-sm text-gray-500 mt-1">Manage your inventory and service offerings</p>
           </div>
           <div className="flex flex-col space-y-2 md:flex-row md:space-y-0 md:space-x-3">
-            <button
-              onClick={importItems}
-              className="w-full md:w-auto px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center justify-center space-x-2 transition-colors"
-            >
-              <span>📤</span>
-              <span>Import</span>
-            </button>
-            <button
-              onClick={() => setExportModal(true)}
-              className="w-full md:w-auto px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center justify-center space-x-2 transition-colors"
-            >
-              <span>⬇️</span>
-              <span>Export</span>
-            </button>
-            <button
-              onClick={openAddItemPage}
-              className="w-full md:w-auto px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center space-x-2 transition-colors"
-            >
-              <span>+</span>
-              <span>Add Item</span>
-            </button>
+            {isClient && canAddData() ? (
+              <button
+                onClick={importItems}
+                className="w-full md:w-auto px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center justify-center space-x-2 transition-colors"
+              >
+                <span>📤</span>
+                <span>Import</span>
+              </button>
+            ) : (
+              <div className="w-full md:w-auto px-4 py-2 border border-gray-300 rounded-lg text-gray-400 flex items-center justify-center space-x-2">
+                <span>📤</span>
+                <span>Import (Restricted)</span>
+              </div>
+            )}
+            {isClient && canAddData() ? (
+              <button
+                onClick={() => setExportModal(true)}
+                className="w-full md:w-auto px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center justify-center space-x-2 transition-colors"
+              >
+                <span>⬇️</span>
+                <span>Export</span>
+              </button>
+            ) : (
+              <div className="w-full md:w-auto px-4 py-2 border border-gray-300 rounded-lg text-gray-400 flex items-center justify-center space-x-2">
+                <span>⬇️</span>
+                <span>Export (Restricted)</span>
+              </div>
+            )}
+            {isClient && canAddData() ? (
+              <button
+                onClick={openAddItemPage}
+                className="w-full md:w-auto px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center space-x-2 transition-colors"
+              >
+                <span>+</span>
+                <span>Add Item</span>
+              </button>
+            ) : (
+              <div className="w-full md:w-auto px-6 py-2 bg-gray-100 text-gray-500 rounded-lg flex items-center justify-center space-x-2">
+                <span>+</span>
+                <span>Add Item (Restricted)</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -698,18 +731,26 @@ export default function ItemsPage() {
                     <div className="flex justify-between items-center mt-2">
                       <div className="text-sm font-medium text-blue-700">PKR {item.salePrice.toLocaleString()}</div>
                       <div className="flex gap-3">
-                        <button
-                          onClick={() => openEditItemPage(item)}
-                          className="text-blue-600 hover:text-blue-900 text-sm font-medium"
-                        >
-                          Edit
-                        </button>
+                        {isClient && canEditData() ? (
+                          <button
+                            onClick={() => openEditItemPage(item)}
+                            className="text-blue-600 hover:text-blue-900 text-sm font-medium"
+                          >
+                            Edit
+                          </button>
+                        ) : (
+                          <div className="text-gray-400 text-sm">Edit</div>
+                        )}
                         <button className="text-green-600 hover:text-green-900 text-sm font-medium">
                           View
                         </button>
-                        <button className="text-red-600 hover:text-red-900 text-sm font-medium" onClick={() => handleDeleteItem(item)}>
-                          Delete
-                        </button>
+                        {isClient && canDeleteData() ? (
+                          <button className="text-red-600 hover:text-red-900 text-sm font-medium" onClick={() => handleDeleteItem(item)}>
+                            Delete
+                          </button>
+                        ) : (
+                          <div className="text-gray-400 text-sm">Delete</div>
+                        )}
                       </div>
                     </div>
                     <div className="mt-2 text-xs text-gray-500">
@@ -759,7 +800,7 @@ export default function ItemsPage() {
                       const margin = item.salePrice ? ((profit / item.salePrice) * 100).toFixed(1) : '0.0'
                       return (
                         <tr key={key} className={`hover:bg-blue-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
-                          onDoubleClick={() => openEditItemPage(item)}
+                          onDoubleClick={isClient && canEditData() ? () => openEditItemPage(item) : undefined}
                         >
                           <td className="px-6 py-4 whitespace-nowrap flex items-center space-x-3">
                             <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-base flex-shrink-0">
@@ -804,18 +845,26 @@ export default function ItemsPage() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-center">
                             <div className="flex justify-center gap-2">
-                              <button 
-                                onClick={() => openEditItemPage(item)}
-                                className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors px-2 py-1 rounded hover:bg-blue-50"
-                              >
-                                Edit
-                              </button>
+                              {isClient && canEditData() ? (
+                                <button 
+                                  onClick={() => openEditItemPage(item)}
+                                  className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors px-2 py-1 rounded hover:bg-blue-50"
+                                >
+                                  Edit
+                                </button>
+                              ) : (
+                                <div className="text-gray-400 text-sm px-2 py-1">Edit</div>
+                              )}
                               <button className="text-green-600 hover:text-green-800 text-sm font-medium transition-colors px-2 py-1 rounded hover:bg-green-50">
                                 View
                               </button>
-                              <button className="text-red-600 hover:text-red-800 text-sm font-medium transition-colors px-2 py-1 rounded hover:bg-red-50" onClick={() => handleDeleteItem(item)}>
-                                Delete
-                              </button>
+                              {isClient && canDeleteData() ? (
+                                <button className="text-red-600 hover:text-red-800 text-sm font-medium transition-colors px-2 py-1 rounded hover:bg-red-50" onClick={() => handleDeleteItem(item)}>
+                                  Delete
+                                </button>
+                              ) : (
+                                <div className="text-gray-400 text-sm px-2 py-1">Delete</div>
+                              )}
                             </div>
                           </td>
                         </tr>

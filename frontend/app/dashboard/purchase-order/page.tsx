@@ -6,6 +6,7 @@ import { getUserPurchaseOrders, updatePurchaseOrder, fixCompletedPurchaseOrders,
 import { useRouter, useSearchParams } from 'next/navigation';
 import TableActionMenu from '../../components/TableActionMenu';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import { getCurrentUserInfo, canEditData, canDeleteData, canAddData } from '../../../lib/roleAccessControl';
 
 // Purchase Form Page Component
 function PurchaseFormPage({ onClose, onSave }: { onClose: () => void; onSave?: (data: any) => void }) {
@@ -1109,6 +1110,19 @@ export default function PurchaseOrderPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<any | null>(null);
+  const [userInfo, setUserInfo] = useState<any>(null);
+  const [isClient, setIsClient] = useState(false);
+
+  // Get current user info for role-based access
+  useEffect(() => {
+    const currentUserInfo = getCurrentUserInfo();
+    setUserInfo(currentUserInfo);
+  }, []);
+
+  // Add loading state to prevent hydration mismatch
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Fetch purchase orders from database
   useEffect(() => {
@@ -1150,6 +1164,11 @@ export default function PurchaseOrderPage() {
   }, [editId]);
 
   const handleAddPurchaseOrder = () => {
+    // Check if user can add data
+    if (!isClient || !canAddData()) {
+      console.log('❌ User cannot add purchase orders');
+      return;
+    }
     router.push('/dashboard/purchaseAdd?from=purchase-order');
   };
 
@@ -1418,6 +1437,12 @@ export default function PurchaseOrderPage() {
             <p className="text-sm text-gray-500 mt-1">Manage your purchase orders and convert them to bills</p>
           </div>
           <div className="flex flex-col md:flex-row gap-2 md:gap-4">
+            {!isClient ? (
+              // Show loading state during SSR to prevent hydration mismatch
+              <div className="bg-gray-100 text-gray-500 px-6 py-2 rounded-lg font-medium flex items-center gap-2">
+                + Add Purchase Order
+              </div>
+            ) : canAddData() ? (
             <button
               onClick={handleAddPurchaseOrder}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
@@ -1425,6 +1450,11 @@ export default function PurchaseOrderPage() {
             >
               + Add Purchase Order
             </button>
+            ) : (
+              <div className="bg-gray-100 text-gray-500 px-6 py-2 rounded-lg font-medium flex items-center gap-2">
+                + Add Purchase Order (Restricted)
+              </div>
+            )}
             <button className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
               <Settings className="w-5 h-5 text-gray-600" />
             </button>
@@ -1694,12 +1724,13 @@ export default function PurchaseOrderPage() {
                         </div>
                       </td>
                       <td className="px-4 py-4 text-center">
+                        {isClient && (canEditData() || canDeleteData()) ? (
                         <TableActionMenu
-                          onEdit={async () => {
+                            onEdit={canEditData() ? async () => {
                             const token = getToken();
                             const id = order._id || order.id;
                             if (!id) return;
-                            const result = await getPurchaseOrderById(id!, token);
+                              const result = await getPurchaseOrderById(id, token);
                             if (result && result.success && result.order) {
                               // Prepare purchaseData as in handleConvertToPurchase
                               const purchaseData = {
@@ -1730,10 +1761,13 @@ export default function PurchaseOrderPage() {
                               });
                               router.push(`/dashboard/purchaseAdd?${queryParams.toString()}`);
                             }
-                          }}
-                          onDelete={() => handleDeleteOrder(order)}
+                            } : undefined}
+                            onDelete={canDeleteData() ? () => handleDeleteOrder(order) : undefined}
                           // onView={() => ...} // Optional: implement view modal if needed
                         />
+                        ) : (
+                          <div className="text-gray-400 text-sm">No actions</div>
+                        )}
                       </td>
                     </tr>
                   ))

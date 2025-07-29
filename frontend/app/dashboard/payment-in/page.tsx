@@ -6,6 +6,7 @@ import Toast from "../../components/Toast";
 import PaymentInModal from "../../components/PaymentInModal";
 import { useRouter, useSearchParams } from "next/navigation";
 import TableActionMenu from "../../components/TableActionMenu";
+import { getCurrentUserInfo, canEditData, canDeleteData, canAddData } from "../../../lib/roleAccessControl";
 
 const dateRanges = [
   { value: 'All', label: 'All Time' },
@@ -42,6 +43,19 @@ const PaymentInPageContent = () => {
   const dateDropdownButtonRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [userInfo, setUserInfo] = useState<any>(null);
+  const [isClient, setIsClient] = useState(false);
+
+  // Get current user info for role-based access
+  useEffect(() => {
+    const currentUserInfo = getCurrentUserInfo();
+    setUserInfo(currentUserInfo);
+  }, []);
+
+  // Add loading state to prevent hydration mismatch
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   useEffect(() => {
     const fetchPayments = async () => {
@@ -211,12 +225,23 @@ const PaymentInPageContent = () => {
             <p className="text-sm text-gray-500 mt-1">All payments received from customers</p>
           </div>
           {/* Add Payment In Button */}
+          {!isClient ? (
+            // Show loading state during SSR to prevent hydration mismatch
+            <div className="px-6 py-2 rounded-full bg-gray-100 text-gray-500 font-semibold text-sm">
+              + Add Payment In
+            </div>
+          ) : canAddData() ? (
           <button
             className="px-6 py-2 rounded-full bg-blue-600 text-white font-semibold shadow hover:bg-blue-700 transition-all text-sm"
             onClick={() => { setSelectedTransaction(null); setShowPaymentIn(true); }}
           >
             + Add Payment In
           </button>
+          ) : (
+            <div className="px-6 py-2 rounded-full bg-gray-100 text-gray-500 font-semibold text-sm">
+              + Add Payment In (Restricted)
+            </div>
+          )}
         </div>
       </div>
       {/* Stats Grid */}
@@ -459,6 +484,7 @@ const PaymentInPageContent = () => {
                         </button>
                       </td>
                       <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
+                        {isClient && canEditData() ? (
                         <TableActionMenu
                           onView={() => window.open(`/dashboard/sale/invoice/${transaction._id}`, '_blank')}
                           extraActions={[
@@ -468,6 +494,9 @@ const PaymentInPageContent = () => {
                             }
                           ]}
                         />
+                        ) : (
+                          <div className="text-gray-400 text-sm">No actions</div>
+                        )}
                       </td>
                     </tr>
                   );

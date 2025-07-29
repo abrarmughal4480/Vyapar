@@ -1,6 +1,9 @@
 "use client";
 import React, { useRef, useState, useEffect } from "react";
-import { QrCode, FileText, Printer } from "lucide-react";
+import { QrCode, FileText, Printer, ArrowLeft } from "lucide-react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { getSaleById } from "../../../http/sales";
+import { jwtDecode } from "jwt-decode";
 
 // Constants
 const PAPER_SIZES = {
@@ -10,8 +13,8 @@ const PAPER_SIZES = {
 
 const mmToPx = (mm: number) => mm * 3.78;
 
-// Sample data - adding more items to test overflow
-const invoiceData = {
+// Default sample data - will be overridden by real data
+const defaultInvoiceData = {
   invoiceNumber: "INV-0001",
   invoiceDate: "21/06/2024",
   dueDate: "28/06/2024",
@@ -50,10 +53,10 @@ const invoiceData = {
 };
 
 // Utility functions
-const calculateTotals = (items: typeof invoiceData.items) => {
-  const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
-  const grandTotal = subtotal - invoiceData.discount + invoiceData.tax;
-  const balance = grandTotal - parseFloat(invoiceData.received);
+const calculateTotals = (items: typeof defaultInvoiceData.items, discount: number, tax: number, received: string) => {
+  const subtotal = items.reduce((sum: number, item: any) => sum + item.amount, 0);
+  const grandTotal = subtotal - discount + tax;
+  const balance = grandTotal - parseFloat(received);
   return { subtotal, grandTotal, balance };
 };
 
@@ -71,7 +74,7 @@ const QRCodeDisplay: React.FC<{ value: string; size?: number }> = ({ value, size
 const InvoiceHeader: React.FC<{ 
   isA4: boolean; 
   isThermal: boolean; 
-  data: typeof invoiceData 
+  data: typeof defaultInvoiceData 
 }> = ({ isA4, isThermal, data }) => {
   if (isThermal) {
     return (
@@ -88,22 +91,18 @@ const InvoiceHeader: React.FC<{
 
   return (
     <div className="flex justify-between items-start border-b-2 border-gray-200 pb-6 mb-6">
-      <div className="flex items-center gap-4">
-        <div className="w-16 h-16 bg-blue-100 rounded-lg flex items-center justify-center">
-          <FileText className="w-8 h-8 text-blue-600" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{data.business.name}</h1>
-          <p className="text-sm text-gray-600">Invoice #{data.invoiceNumber}</p>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">{data.business.name}</h1>
+        <p className="text-sm text-gray-600">Invoice #{data.invoiceNumber}</p>
+        {data.business.address && (
           <p className="text-sm text-gray-500">{data.business.address}</p>
+        )}
+        {(data.business.phone || data.business.email) && (
           <p className="text-sm text-gray-500">
-            {data.business.phone} | {data.business.email}
+            {data.business.phone && data.business.email ? `${data.business.phone} | ${data.business.email}` : 
+             data.business.phone || data.business.email}
           </p>
-        </div>
-      </div>
-      <div className="text-center">
-        <QRCodeDisplay value={data.qrUrl} />
-        <p className="text-xs text-gray-500 mt-1">Scan to view</p>
+        )}
       </div>
     </div>
   );
@@ -113,7 +112,7 @@ const InvoiceHeader: React.FC<{
 const CustomerDetails: React.FC<{ 
   isA4: boolean; 
   isThermal: boolean;
-  data: typeof invoiceData;
+  data: typeof defaultInvoiceData;
   totals: ReturnType<typeof calculateTotals>;
 }> = ({ isA4, isThermal, data, totals }) => {
   if (isThermal) {
@@ -133,7 +132,6 @@ const CustomerDetails: React.FC<{
         <div className="bg-gray-50 p-3 rounded-lg">
           <p className="font-semibold">{data.customer.name}</p>
           <p className="text-sm text-gray-600">{data.customer.phone}</p>
-          <p className="text-sm text-gray-600">{data.customer.address}</p>
         </div>
       </div>
       <div>
@@ -167,7 +165,7 @@ const CustomerDetails: React.FC<{
 const ItemsTable: React.FC<{ 
   isA4: boolean; 
   isThermal: boolean; 
-  items: typeof invoiceData.items 
+  items: typeof defaultInvoiceData.items 
 }> = ({ isA4, isThermal, items }) => {
   const tableClasses = isA4 
     ? "w-full border border-gray-200 rounded-lg overflow-hidden" 
@@ -230,7 +228,7 @@ const ItemsTable: React.FC<{
 const InvoiceSummary: React.FC<{ 
   isA4: boolean; 
   isThermal: boolean; 
-  data: typeof invoiceData;
+  data: typeof defaultInvoiceData;
   totals: ReturnType<typeof calculateTotals>;
 }> = ({ isA4, isThermal, data, totals }) => {
   if (isThermal) {
@@ -252,10 +250,19 @@ const InvoiceSummary: React.FC<{
           <span>Total:</span>
           <span>PKR {totals.grandTotal}</span>
         </div>
-        <div className="flex justify-between">
-          <span>Balance:</span>
-          <span>PKR {Math.max(0, totals.balance).toFixed(2)}</span>
-        </div>
+        {/* Show Received and Balance only for Credit payments */}
+        {data.paymentType === 'Credit' && (
+          <>
+            <div className="flex justify-between">
+              <span>Received:</span>
+              <span>PKR {data.received}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Balance:</span>
+              <span>PKR {Math.max(0, totals.balance).toFixed(2)}</span>
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -269,10 +276,13 @@ const InvoiceSummary: React.FC<{
             <span>Method:</span>
             <span>{data.paymentType}</span>
           </div>
-          <div className="flex justify-between">
-            <span>Received:</span>
-            <span className="text-green-600 font-semibold">PKR {data.received}</span>
-          </div>
+          {/* Show Received only for Credit payments */}
+          {data.paymentType === 'Credit' && (
+            <div className="flex justify-between">
+              <span>Received:</span>
+              <span className="text-green-600 font-semibold">PKR {data.received}</span>
+            </div>
+          )}
         </div>
       </div>
       <div>
@@ -293,12 +303,15 @@ const InvoiceSummary: React.FC<{
             <span>Total:</span>
             <span>PKR {totals.grandTotal}</span>
           </div>
-          <div className="flex justify-between">
-            <span>Balance:</span>
-            <span className="text-red-600 font-semibold">
-              PKR {Math.max(0, totals.balance).toFixed(2)}
-            </span>
-          </div>
+          {/* Show Balance only for Credit payments */}
+          {data.paymentType === 'Credit' && (
+            <div className="flex justify-between">
+              <span>Balance:</span>
+              <span className="text-red-600 font-semibold">
+                PKR {Math.max(0, totals.balance).toFixed(2)}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -306,11 +319,11 @@ const InvoiceSummary: React.FC<{
 };
 
 // Main Invoice Component with auto page breaks
-const InvoiceContent: React.FC<{ size: keyof typeof PAPER_SIZES }> = ({ size }) => {
+const InvoiceContent: React.FC<{ size: keyof typeof PAPER_SIZES; data: typeof defaultInvoiceData }> = ({ size, data }) => {
   const { width, height } = PAPER_SIZES[size];
   const isA4 = size === 'A4';
   const isThermal = size === 'Thermal';
-  const totals = calculateTotals(invoiceData.items);
+  const totals = calculateTotals(data.items, data.discount, data.tax, data.received);
   const [contentRef, setContentRef] = useState<HTMLDivElement | null>(null);
   const [needsMultiplePages, setNeedsMultiplePages] = useState(false);
 
@@ -339,16 +352,16 @@ const InvoiceContent: React.FC<{ size: keyof typeof PAPER_SIZES }> = ({ size }) 
         ref={setContentRef}
       >
         <div className={`${isA4 ? 'p-6' : 'p-2'} h-full`}>
-          <InvoiceHeader isA4={isA4} isThermal={isThermal} data={invoiceData} />
-          <CustomerDetails isA4={isA4} isThermal={isThermal} data={invoiceData} totals={totals} />
-          <ItemsTable isA4={isA4} isThermal={isThermal} items={invoiceData.items} />
-          <InvoiceSummary isA4={isA4} isThermal={isThermal} data={invoiceData} totals={totals} />
+                  <InvoiceHeader isA4={isA4} isThermal={isThermal} data={data} />
+        <CustomerDetails isA4={isA4} isThermal={isThermal} data={data} totals={totals} />
+        <ItemsTable isA4={isA4} isThermal={isThermal} items={data.items} />
+        <InvoiceSummary isA4={isA4} isThermal={isThermal} data={data} totals={totals} />
           
-          {invoiceData.description && (
+          {data.description && (
             <div className={`${isA4 ? 'mt-6 pt-6 border-t border-gray-200' : 'mt-2 pt-2 border-t border-dashed border-gray-400'}`}>
               <h4 className="font-semibold text-gray-900 mb-2">Notes</h4>
               <p className={`text-gray-700 ${isThermal ? 'text-xs' : 'text-sm'}`}>
-                {invoiceData.description}
+                {data.description}
               </p>
             </div>
           )}
@@ -371,8 +384,8 @@ const InvoiceContent: React.FC<{ size: keyof typeof PAPER_SIZES }> = ({ size }) 
 
   // Multiple pages for A4 when content overflows
   const itemsPerPage = 12; // Increased items per page
-  const firstPageItems = invoiceData.items.slice(0, itemsPerPage);
-  const remainingItems = invoiceData.items.slice(itemsPerPage);
+  const firstPageItems = data.items.slice(0, itemsPerPage);
+  const remainingItems = data.items.slice(itemsPerPage);
   
   return (
     <div className="space-y-8">
@@ -382,8 +395,8 @@ const InvoiceContent: React.FC<{ size: keyof typeof PAPER_SIZES }> = ({ size }) 
         style={containerStyle}
       >
         <div className="p-6 h-full">
-          <InvoiceHeader isA4={isA4} isThermal={isThermal} data={invoiceData} />
-          <CustomerDetails isA4={isA4} isThermal={isThermal} data={invoiceData} totals={totals} />
+          <InvoiceHeader isA4={isA4} isThermal={isThermal} data={data} />
+          <CustomerDetails isA4={isA4} isThermal={isThermal} data={data} totals={totals} />
           <ItemsTable isA4={isA4} isThermal={isThermal} items={firstPageItems} />
         </div>
       </div>
@@ -422,12 +435,12 @@ const InvoiceContent: React.FC<{ size: keyof typeof PAPER_SIZES }> = ({ size }) 
             </table>
           </div>
 
-          <InvoiceSummary isA4={isA4} isThermal={isThermal} data={invoiceData} totals={totals} />
+          <InvoiceSummary isA4={isA4} isThermal={isThermal} data={data} totals={totals} />
           
-          {invoiceData.description && (
+          {data.description && (
             <div className="mt-4 pt-4 border-t border-gray-200">
               <h4 className="font-semibold text-gray-900 mb-2">Notes</h4>
-              <p className="text-gray-700 text-sm">{invoiceData.description}</p>
+              <p className="text-gray-700 text-sm">{data.description}</p>
             </div>
           )}
           
@@ -496,6 +509,120 @@ const ControlPanel: React.FC<{
 // Main Component
 const InvoicePage: React.FC = () => {
   const [selectedSize, setSelectedSize] = useState<keyof typeof PAPER_SIZES>('A4');
+  const [invoiceData, setInvoiceData] = useState(defaultInvoiceData);
+  const [loading, setLoading] = useState(false);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // Fetch sale data if saleId is provided
+  useEffect(() => {
+    const fetchSaleData = async () => {
+      const saleId = searchParams.get('saleId');
+      if (saleId) {
+        setLoading(true);
+        try {
+          const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
+          const result = await getSaleById(saleId, token);
+          
+          if (result.success && result.sale) {
+            const sale = result.sale;
+            
+            // Get business info from token
+            const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
+            let businessInfo = {
+              name: "Devease Digital Pvt Ltd.",
+              address: "",
+              phone: "",
+              email: "",
+            };
+            
+            if (token) {
+              try {
+                const decoded: any = jwtDecode(token);
+                // Use business name from token if available
+                if (decoded.name && decoded.name !== decoded.email) {
+                  businessInfo.name = decoded.name;
+                }
+                // You can also add other business fields from token if available
+              } catch (error) {
+                console.error('Error decoding token:', error);
+              }
+            }
+            
+            // Transform sale data to invoice format
+            const transformedData = {
+              invoiceNumber: sale.invoiceNo || sale.invoiceNumber || "INV-0001",
+              invoiceDate: sale.invoiceDate || sale.createdAt ? new Date(sale.createdAt).toLocaleDateString('en-GB') : "21/06/2024",
+              dueDate: sale.dueDate || "28/06/2024",
+              status: (() => {
+                // Auto-determine status based on payment type and received amount
+                const paymentType = sale.paymentType || "Cash";
+                const receivedAmount = parseFloat(sale.receivedAmount?.toString() || "0");
+                const grandTotal = sale.grandTotal || sale.amount || 0;
+                
+                if (paymentType === "Cash") {
+                  return "Paid"; // Cash payments are always paid
+                } else if (paymentType === "Credit") {
+                  if (receivedAmount >= grandTotal) {
+                    return "Paid"; // Full amount received
+                  } else if (receivedAmount > 0) {
+                    return "Partial"; // Partial payment received
+                  } else {
+                    return "Pending"; // No payment received
+                  }
+                }
+                return sale.status || "Pending";
+              })(),
+              customer: {
+                name: sale.customerName || sale.customer?.name || "Customer",
+                phone: sale.customerPhone || sale.customer?.phone || "+92 300 1234567",
+                address: sale.customerAddress || sale.customer?.address || "Address",
+              },
+              business: {
+                name: businessInfo.name,
+                address: sale.businessAddress || "",
+                phone: sale.businessPhone || "",
+                email: sale.businessEmail || "",
+              },
+              items: sale.items?.map((item: any) => ({
+                name: item.item || item.name || "Item",
+                qty: item.qty || 1,
+                unit: item.unit || "pcs",
+                rate: item.price || item.rate || 0,
+                amount: item.amount || 0,
+              })) || defaultInvoiceData.items,
+              discount: sale.discount || 0,
+              tax: sale.tax || 0,
+              paymentType: sale.paymentType || "Cash",
+              received: (() => {
+                // Handle different field names for received amount
+                if (sale.receivedAmount !== undefined && sale.receivedAmount !== null) {
+                  return sale.receivedAmount.toString();
+                } else if (sale.received !== undefined && sale.received !== null) {
+                  return sale.received.toString();
+                } else if (sale.paymentType === 'Cash') {
+                  // For cash payments, received amount equals grand total
+                  const grandTotal = sale.grandTotal || sale.amount || 0;
+                  return grandTotal.toString();
+                }
+                return "0";
+              })(),
+              description: sale.description || "Thank you for your business! Please pay by the due date.",
+              qrUrl: `https://deveasedigital.com/invoice/${sale.invoiceNo || sale.invoiceNumber}`,
+            };
+            
+            setInvoiceData(transformedData);
+          }
+        } catch (error) {
+          console.error('Error fetching sale data:', error);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchSaleData();
+  }, [searchParams]);
 
   const handlePrint = () => {
     const style = document.createElement('style');
@@ -527,9 +654,26 @@ const InvoicePage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
+        {/* Back Button */}
+        <div className="mb-6">
+          <button
+            onClick={() => router.back()}
+            className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-gray-50 transition-colors text-gray-700 font-medium"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </button>
+        </div>
+        
         <div className="flex flex-col lg:flex-row gap-8 items-start">
           <div className="flex-1 invoice-print-area">
-            <InvoiceContent size={selectedSize} />
+            {loading ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="text-lg text-gray-600">Loading invoice data...</div>
+              </div>
+            ) : (
+              <InvoiceContent size={selectedSize} data={invoiceData} />
+            )}
           </div>
           <ControlPanel 
             selectedSize={selectedSize}

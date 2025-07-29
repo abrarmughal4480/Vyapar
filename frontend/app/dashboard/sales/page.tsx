@@ -7,6 +7,7 @@ import { getSaleOrders, updateSaleOrderStatus, convertSaleOrderToInvoice, delete
 import TableActionMenu from '@/components/TableActionMenu'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { deleteSale } from '@/http/sales'
+import { getCurrentUserInfo, canEditData, canDeleteData, canAddData, canEditSalesData, canDeleteSalesData, canShareSalesData } from '../../../lib/roleAccessControl'
 
 // Status badge component
 function StatusBadge({ status, dueDate }: { status: string, dueDate?: string }) {
@@ -41,7 +42,7 @@ function StatusBadge({ status, dueDate }: { status: string, dueDate?: string }) 
 }
 
 // Header component
-function DeveaseDigitalHeader({ onNewOrder }: { onNewOrder: () => void }) {
+function DeveaseDigitalHeader({ onNewOrder, isClient, canAddData }: { onNewOrder: () => void; isClient: boolean; canAddData: () => boolean }) {
   return (
     <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
       <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
@@ -50,12 +51,23 @@ function DeveaseDigitalHeader({ onNewOrder }: { onNewOrder: () => void }) {
           <p className="text-sm text-gray-500 mt-1">Manage your sales orders and pending invoices</p>
         </div>
         <div className="flex flex-col md:flex-row gap-2 md:gap-4">
+          {!isClient ? (
+            // Show loading state during SSR to prevent hydration mismatch
+            <div className="bg-gray-100 text-gray-500 px-6 py-2 rounded-lg font-medium flex items-center gap-2">
+              + New Sales Order
+            </div>
+          ) : canAddData() ? (
           <button
             onClick={onNewOrder}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
           >
             + New Sales Order
           </button>
+          ) : (
+            <div className="bg-gray-100 text-gray-500 px-6 py-2 rounded-lg font-medium flex items-center gap-2">
+              + New Sales Order (Restricted)
+            </div>
+          )}
           <button className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
             <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -83,7 +95,7 @@ function formatDate(dateString: string | null | undefined): string {
 }
 
 // Sales Orders Table
-function SalesOrderTable({ salesOrders, onUpdateStatus, onConvertToInvoice, isLoading, handleEditSale, handleViewSale, loadSalesOrdersFromAPI }: { 
+function SalesOrderTable({ salesOrders, onUpdateStatus, onConvertToInvoice, isLoading, handleEditSale, handleViewSale, loadSalesOrdersFromAPI, isClient, canEditData, canDeleteData }: { 
   salesOrders: any[], 
   onUpdateStatus: (orderId: string, newStatus: string) => void,
   onConvertToInvoice: (orderId: string) => void,
@@ -91,6 +103,9 @@ function SalesOrderTable({ salesOrders, onUpdateStatus, onConvertToInvoice, isLo
   handleEditSale: (order: any) => void,
   handleViewSale: (order: any) => void,
   loadSalesOrdersFromAPI: () => Promise<void>,
+  isClient: boolean,
+  canEditData: () => boolean,
+  canDeleteData: () => boolean,
 }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [saleToDelete, setSaleToDelete] = useState<any>(null);
@@ -158,6 +173,7 @@ function SalesOrderTable({ salesOrders, onUpdateStatus, onConvertToInvoice, isLo
                           Invoice: {order.invoiceNumber}
                         </span>
                       ) : (order.status !== 'Completed' && order.status !== 'Cancelled') ? (
+                        isClient && canAddData() ? (
                         <button 
                           onClick={() => onConvertToInvoice(order._id || order.id)}
                           className="text-green-600 hover:text-green-800 text-sm font-medium"
@@ -165,17 +181,24 @@ function SalesOrderTable({ salesOrders, onUpdateStatus, onConvertToInvoice, isLo
                         >
                           Convert to Sale
                         </button>
+                        ) : (
+                          <span className="text-gray-400 text-sm">Convert (Restricted)</span>
+                        )
                       ) : (
                         <span className="text-gray-400 text-sm">-</span>
                       )}
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
+                    {isClient && (canEditSalesData() || canDeleteSalesData() || canAddData()) ? (
                     <TableActionMenu
-                      onEdit={() => handleEditSale(order)}
-                      onDelete={() => { setSaleToDelete(order); setDeleteDialogOpen(true); }}
+                        onEdit={canEditSalesData() ? () => handleEditSale(order) : undefined}
+                        onDelete={canDeleteSalesData() ? () => { setSaleToDelete(order); setDeleteDialogOpen(true); } : undefined}
                       onView={() => handleViewSale(order)}
                     />
+                    ) : (
+                      <div className="text-gray-400 text-sm">No actions</div>
+                    )}
                   </td>
                 </tr>
               ))
@@ -224,6 +247,8 @@ export default function SalesOrderPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [saleToDelete, setSaleToDelete] = useState<any>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [userInfo, setUserInfo] = useState<any>(null)
+  const [isClient, setIsClient] = useState(false)
   
   const dateRanges = [
     { value: 'All', label: 'All Time' },
@@ -235,6 +260,17 @@ export default function SalesOrderPage() {
     { value: 'This Year', label: 'This Year' },
     { value: 'Custom', label: 'Custom Range' },
   ]
+
+  // Get current user info for role-based access
+  useEffect(() => {
+    const currentUserInfo = getCurrentUserInfo();
+    setUserInfo(currentUserInfo);
+  }, []);
+
+  // Add loading state to prevent hydration mismatch
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Load sales orders from API
   const loadSalesOrdersFromAPI = useCallback(async () => {
@@ -264,6 +300,11 @@ export default function SalesOrderPage() {
 
   // Navigate to create sales order page
   const handleCreateSalesOrder = () => {
+    // Check if user can add data
+    if (!isClient || !canAddData()) {
+      console.log('❌ User cannot create sales orders');
+      return;
+    }
     router.push('/dashboard/sales/create')
   }
 
@@ -391,7 +432,11 @@ export default function SalesOrderPage() {
         </div>
       )}
 
-      <DeveaseDigitalHeader onNewOrder={handleCreateSalesOrder} />
+      <DeveaseDigitalHeader 
+        onNewOrder={handleCreateSalesOrder} 
+        isClient={isClient}
+        canAddData={canAddData}
+      />
       
       {/* Stats Grid (full width, responsive) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6">
@@ -558,6 +603,9 @@ export default function SalesOrderPage() {
         handleEditSale={handleEditSale}
         handleViewSale={handleViewSale}
         loadSalesOrdersFromAPI={loadSalesOrdersFromAPI}
+        isClient={isClient}
+        canEditData={canEditData}
+        canDeleteData={canDeleteData}
       />
     </div>
   )

@@ -6,6 +6,7 @@ import Toast from "../../components/Toast";
 import PaymentOutModal from "../../components/PaymentOutModal";
 import { useRouter, useSearchParams } from "next/navigation";
 import TableActionMenu from "../../components/TableActionMenu";
+import { getCurrentUserInfo, canAddData, canEditData, canDeleteData } from "../../../lib/roleAccessControl";
 
 const dateRanges = [
   { value: 'All', label: 'All Time' },
@@ -42,8 +43,19 @@ const PaymentOutPageContent = () => {
   const dateDropdownButtonRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
+  
+  // Role-based access control
+  const [userInfo, setUserInfo] = useState<any>(null);
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
+    // Set client-side flag for hydration safety
+    setIsClient(true);
+    
+    // Get current user info for role-based access
+    const currentUserInfo = getCurrentUserInfo();
+    setUserInfo(currentUserInfo);
+    
     const fetchPaymentOuts = async () => {
       setLoading(true);
       try {
@@ -213,12 +225,18 @@ const PaymentOutPageContent = () => {
             <p className="text-sm text-gray-500 mt-1">All payments made to suppliers</p>
           </div>
           {/* Add Payment Out Button */}
-          <button
-            className="px-6 py-2 rounded-full bg-blue-600 text-white font-semibold shadow hover:bg-blue-700 transition-all text-sm"
-            onClick={() => { setSelectedTransaction(null); setShowPaymentOut(true); }}
-          >
-            + Add Party Payment
-          </button>
+          {isClient && canAddData() ? (
+            <button
+              className="px-6 py-2 rounded-full bg-blue-600 text-white font-semibold shadow hover:bg-blue-700 transition-all text-sm"
+              onClick={() => { setSelectedTransaction(null); setShowPaymentOut(true); }}
+            >
+              + Add Party Payment
+            </button>
+          ) : (
+            <div className="px-6 py-2 rounded-full bg-gray-100 text-gray-500 font-semibold text-sm">
+              + Add Party Payment (Restricted)
+            </div>
+          )}
         </div>
       </div>
       {/* Stats Grid */}
@@ -437,33 +455,43 @@ const PaymentOutPageContent = () => {
                         <PaymentStatusBadge status={transaction.status || 'Partial'} />
                       </td>
                       <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
-                        <button
-                          className="px-2 py-1 text-sm text-blue-700 underline mr-2"
-                          onClick={() => window.open(`/dashboard/purchase/invoice/${transaction.purchaseId}`, '_blank')}
-                        >
-                          Print
-                        </button>
-                        <button
-                          className="px-2 py-1 text-sm text-blue-700 underline"
-                          onClick={() => {
-                            const url = `${window.location.origin}/dashboard/purchase/invoice/${transaction.purchaseId}`;
-                            navigator.clipboard.writeText(url);
-                            setToast({ message: 'Link copied!', type: 'success' });
-                          }}
-                        >
-                          Share
-                        </button>
+                        {isClient && canEditData() ? (
+                          <>
+                            <button
+                              className="px-2 py-1 text-sm text-blue-700 underline mr-2"
+                              onClick={() => window.open(`/dashboard/purchase/invoice/${transaction.purchaseId}`, '_blank')}
+                            >
+                              Print
+                            </button>
+                            <button
+                              className="px-2 py-1 text-sm text-blue-700 underline"
+                              onClick={() => {
+                                const url = `${window.location.origin}/dashboard/purchase/invoice/${transaction.purchaseId}`;
+                                navigator.clipboard.writeText(url);
+                                setToast({ message: 'Link copied!', type: 'success' });
+                              }}
+                            >
+                              Share
+                            </button>
+                          </>
+                        ) : (
+                          <div className="text-gray-400 text-sm">No actions</div>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
-                        <TableActionMenu
-                          onView={() => window.open(`/dashboard/purchase/invoice/${transaction.purchaseId}`, '_blank')}
-                          extraActions={[
-                            {
-                              label: 'Add Payment',
-                              onClick: () => { setSelectedTransaction(transaction); setShowPaymentOut(true); }
-                            }
-                          ]}
-                        />
+                        {isClient && canEditData() ? (
+                          <TableActionMenu
+                            onView={() => window.open(`/dashboard/purchase/invoice/${transaction.purchaseId}`, '_blank')}
+                            extraActions={[
+                              {
+                                label: 'Add Payment',
+                                onClick: () => { setSelectedTransaction(transaction); setShowPaymentOut(true); }
+                              }
+                            ]}
+                          />
+                        ) : (
+                          <div className="text-gray-400 text-sm">No actions</div>
+                        )}
                       </td>
                     </tr>
                   );

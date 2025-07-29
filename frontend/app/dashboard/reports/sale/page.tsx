@@ -9,6 +9,7 @@ import { createPopper } from '@popperjs/core';
 import Toast from '../../../components/Toast';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import { useRouter } from 'next/navigation';
+import { getCurrentUserInfo, canAddData, canEditData, canDeleteData } from '../../../../lib/roleAccessControl';
 
 const SaleInvoicesPage = () => {  const [filterType, setFilterType] = useState('All');
   const [firmFilter, setFirmFilter] = useState('All Firms');
@@ -69,11 +70,22 @@ const SaleInvoicesPage = () => {  const [filterType, setFilterType] = useState('
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [saleToDelete, setSaleToDelete] = useState<any>(null);
+  
+  // Role-based access control
+  const [userInfo, setUserInfo] = useState<any>(null)
+  const [isClient, setIsClient] = useState(false)
 
   const router = useRouter();
 
   // Load transactions and stats on component mount
   useEffect(() => {
+    // Set client-side flag for hydration safety
+    setIsClient(true);
+    
+    // Get current user info for role-based access
+    const currentUserInfo = getCurrentUserInfo();
+    setUserInfo(currentUserInfo);
+    
     const fetchSales = async () => {
       setLoading(true);
       try {
@@ -877,13 +889,19 @@ Your Business Name`;
               <p className="text-sm text-gray-500 mt-1">Manage your sales, invoices, and payments</p>
             </div>
             <div className="flex flex-col md:flex-row gap-2 md:gap-4">
-              <button
-                onClick={() => window.location.href = '/dashboard/sale/add'}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
-                disabled={loading}
-              >
-                + Add Sale
-              </button>
+              {isClient && canAddData() ? (
+                <button
+                  onClick={() => window.location.href = '/dashboard/sale/add'}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
+                  disabled={loading}
+                >
+                  + Add Sale
+                </button>
+              ) : (
+                <div className="bg-gray-100 text-gray-500 px-6 py-2 rounded-lg font-medium flex items-center gap-2">
+                  + Add Sale (Restricted)
+                </div>
+              )}
               <button className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
                 <Settings className="w-5 h-5 text-gray-600" />
               </button>
@@ -1144,12 +1162,16 @@ Your Business Name`;
                               >
                                 View
                               </button>
-                              <TableActionMenu
-                                transaction={transaction}
-                                onEdit={() => handleEditTransaction(transaction)}
-                                onDelete={() => handleDeleteTransaction(transaction._id || transaction.id)}
-                                onReceivePayment={() => handleReceivePayment(transaction)}
-                              />
+                              {isClient && (canEditData() || canDeleteData()) ? (
+                                <TableActionMenu
+                                  transaction={transaction}
+                                  onEdit={canEditData() ? () => handleEditTransaction(transaction) : undefined}
+                                  onDelete={canDeleteData() ? () => handleDeleteTransaction(transaction._id || transaction.id) : undefined}
+                                  onReceivePayment={() => handleReceivePayment(transaction)}
+                                />
+                              ) : (
+                                <div className="text-gray-400 text-sm">No actions</div>
+                              )}
                             </div>
                           </td>
                         </tr>

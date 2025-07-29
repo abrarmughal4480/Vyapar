@@ -8,6 +8,7 @@ import { jwtDecode } from 'jwt-decode';
 import TableActionMenu from '../../components/TableActionMenu';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import PaymentOutModal from '../../components/PaymentOutModal';
+import { getCurrentUserInfo, canEditData, canDeleteData, canAddData } from '../../../lib/roleAccessControl';
 
 // Type definitions
 interface Discount {
@@ -672,6 +673,20 @@ export default function PurchaseBillsPage() {
   const [purchaseToDelete, setPurchaseToDelete] = useState<PurchaseData | null>(null);
   const [showPaymentOut, setShowPaymentOut] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState<PurchaseData | null>(null);
+  const [userInfo, setUserInfo] = useState<any>(null);
+
+  // Get current user info for role-based access
+  React.useEffect(() => {
+    const currentUserInfo = getCurrentUserInfo();
+    setUserInfo(currentUserInfo);
+  }, []);
+
+  // Add loading state to prevent hydration mismatch
+  const [isClient, setIsClient] = useState(false);
+
+  React.useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Fetch purchases and stats from API
   React.useEffect(() => {
@@ -720,6 +735,11 @@ export default function PurchaseBillsPage() {
   }, []);
 
   const handleAddPurchase = () => {
+    // Check if user can add data
+    if (!canAddData()) {
+      console.log('❌ User cannot add purchase bills');
+      return;
+    }
     // Navigate to purchase add page with purchase bills context
     router.push('/dashboard/purchaseAdd?from=purchase-bills');
   };
@@ -820,12 +840,23 @@ export default function PurchaseBillsPage() {
               <p className="text-sm text-gray-500 mt-1">Manage your purchases, bills, and payments</p>
             </div>
             <div className="flex flex-col md:flex-row gap-2 md:gap-4">
+              {!isClient ? (
+                // Show loading state during SSR to prevent hydration mismatch
+                <div className="bg-gray-100 text-gray-500 px-6 py-2 rounded-lg font-medium flex items-center gap-2">
+                  + Add Purchase
+                </div>
+              ) : canAddData() ? (
               <button
                 onClick={handleAddPurchase}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
               >
                 + Add Purchase
               </button>
+              ) : (
+                <div className="bg-gray-100 text-gray-500 px-6 py-2 rounded-lg font-medium flex items-center gap-2">
+                  + Add Purchase (Restricted)
+                </div>
+              )}
               <button className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
                 <Settings className="w-5 h-5 text-gray-600" />
               </button>
@@ -1031,8 +1062,8 @@ export default function PurchaseBillsPage() {
                         </td>
                         <td className="px-4 py-4 text-center">
                           <TableActionMenu
-                            onEdit={() => router.push(`/dashboard/purchaseAdd?id=${purchase._id}`)}
-                            onDelete={() => handleDeletePurchase(purchase)}
+                            onEdit={isClient && canEditData() ? () => router.push(`/dashboard/purchaseAdd?id=${purchase._id}`) : undefined}
+                            onDelete={isClient && canDeleteData() ? () => handleDeletePurchase(purchase) : undefined}
                             extraActions={[
                               {
                                 label: 'Make Payment',

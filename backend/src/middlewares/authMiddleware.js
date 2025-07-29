@@ -18,13 +18,37 @@ const authMiddleware = async (req, res, next) => {
     
     // Check if this token matches the user's current active token (single device login)
     if (ENABLE_SINGLE_DEVICE_LOGIN) {
-      const user = await User.findById(decoded.id);
-      if (!user || user.currentToken !== token) {
+      // For company context tokens, check against original user's token
+      const userIdToCheck = decoded.originalUserId || decoded.id;
+      const user = await User.findById(userIdToCheck);
+      
+      if (!user) {
         return res.status(401).json({ 
           success: false, 
-          message: 'Session expired. You have been logged in from another device.',
+          message: 'User not found.',
           code: 'SESSION_EXPIRED'
         });
+      }
+      
+      // For company context, we don't check token match (allow multiple contexts)
+      if (decoded.context === 'company') {
+        // Just verify the user exists and has access to the company
+        if (!user.joinedCompanies || !user.joinedCompanies.includes(decoded.id)) {
+          return res.status(403).json({ 
+            success: false, 
+            message: 'Access denied to this company.',
+            code: 'ACCESS_DENIED'
+          });
+        }
+      } else {
+        // For user context, check token match
+        if (user.currentToken !== token) {
+          return res.status(401).json({ 
+            success: false, 
+            message: 'Session expired. You have been logged in from another device.',
+            code: 'SESSION_EXPIRED'
+          });
+        }
       }
     }
     

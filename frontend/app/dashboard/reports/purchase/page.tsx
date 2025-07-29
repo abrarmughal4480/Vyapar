@@ -7,6 +7,7 @@ import { getPurchasesByUser, getPurchaseStatsByUser, deletePurchase } from '../.
 import { jwtDecode } from 'jwt-decode';
 import TableActionMenu from '../../../components/TableActionMenu';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import { getCurrentUserInfo, canAddData, canEditData, canDeleteData } from '../../../../lib/roleAccessControl';
 
 // Type definitions
 interface Discount {
@@ -667,9 +668,20 @@ export default function PurchaseBillsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [purchaseToDelete, setPurchaseToDelete] = useState<PurchaseData | null>(null);
+  
+  // Role-based access control
+  const [userInfo, setUserInfo] = useState<any>(null)
+  const [isClient, setIsClient] = useState(false)
 
   // Fetch purchases and stats from API
   React.useEffect(() => {
+    // Set client-side flag for hydration safety
+    setIsClient(true);
+    
+    // Get current user info for role-based access
+    const currentUserInfo = getCurrentUserInfo();
+    setUserInfo(currentUserInfo);
+    
     const fetchPurchases = async () => {
       try {
         setLoading(true);
@@ -817,12 +829,18 @@ export default function PurchaseBillsPage() {
               <p className="text-sm text-gray-500 mt-1">Manage your purchases, bills, and payments</p>
             </div>
             <div className="flex flex-col md:flex-row gap-2 md:gap-4">
-              <button
-                onClick={handleAddPurchase}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
-              >
-                + Add Purchase
-              </button>
+              {isClient && canAddData() ? (
+                <button
+                  onClick={handleAddPurchase}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
+                >
+                  + Add Purchase
+                </button>
+              ) : (
+                <div className="bg-gray-100 text-gray-500 px-6 py-2 rounded-lg font-medium flex items-center gap-2">
+                  + Add Purchase (Restricted)
+                </div>
+              )}
               <button className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
                 <Settings className="w-5 h-5 text-gray-600" />
               </button>
@@ -1027,10 +1045,14 @@ export default function PurchaseBillsPage() {
                           <span className={`px-3 py-1 text-xs font-medium rounded-full border ${purchase.balance === 0 ? 'bg-green-100 text-green-800 border-green-200' : 'bg-orange-100 text-orange-800 border-orange-200'}`}>{purchase.balance === 0 ? 'Paid' : 'Unpaid'}</span>
                         </td>
                         <td className="px-4 py-4 text-center">
-                          <TableActionMenu
-                            onEdit={() => router.push(`/dashboard/purchaseAdd?id=${purchase._id}`)}
-                            onDelete={() => handleDeletePurchase(purchase)}
-                          />
+                          {isClient && (canEditData() || canDeleteData()) ? (
+                            <TableActionMenu
+                              onEdit={canEditData() ? () => router.push(`/dashboard/purchaseAdd?id=${purchase._id}`) : undefined}
+                              onDelete={canDeleteData() ? () => handleDeletePurchase(purchase) : undefined}
+                            />
+                          ) : (
+                            <div className="text-gray-400 text-sm">No actions</div>
+                          )}
                         </td>
                       </tr>
                     ))

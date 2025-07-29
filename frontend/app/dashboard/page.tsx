@@ -138,6 +138,7 @@ export default function Dashboard() {
   const [payables, setPayables] = useState<any[]>([]);
   const [loadingReceivables, setLoadingReceivables] = useState(false);
   const [loadingPayables, setLoadingPayables] = useState(false);
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -277,6 +278,36 @@ export default function Dashboard() {
     setLoadingPayables(false);
   };
 
+  // Function to get debug information
+  const getDebugInfo = () => {
+    if (typeof window === 'undefined') return null;
+    
+    const token = localStorage.getItem('token');
+    const selectedCompany = localStorage.getItem('selectedCompany');
+    const selectedCompanyId = localStorage.getItem('selectedCompanyId');
+    const currentUserId = localStorage.getItem('currentUserId');
+    const user = localStorage.getItem('user');
+    
+    let tokenPayload = null;
+    if (token) {
+      try {
+        const payload = token.split('.')[1];
+        tokenPayload = JSON.parse(atob(payload));
+      } catch (e) {
+        tokenPayload = 'Invalid token';
+      }
+    }
+    
+    return {
+      token: token ? `${token.substring(0, 20)}...` : 'No token',
+      tokenPayload,
+      selectedCompany: selectedCompany || 'None',
+      selectedCompanyId: selectedCompanyId || 'None',
+      currentUserId: currentUserId || 'None',
+      user: user ? JSON.parse(user) : null
+    };
+  };
+
   // Enhanced stats array with modern styling
   const dashboardStats = [
     { 
@@ -407,6 +438,13 @@ export default function Dashboard() {
                 <p className="text-xs text-gray-500 cursor-pointer" onClick={() => router.push('/dashboard/profile')}>{user ? user.email : 'user@email.com'}</p>
               </div>
             </div>
+            <button 
+              onClick={() => setShowDebugInfo(!showDebugInfo)}
+              className="p-3 text-gray-600 hover:text-blue-600 transition-colors duration-200 hover:bg-blue-50 rounded-xl group"
+              title="Debug Info"
+            >
+              <Settings className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+            </button>
             <button 
               onClick={() => {
                 localStorage.removeItem('isAuthenticated');
@@ -642,6 +680,132 @@ export default function Dashboard() {
         </div>
         )}
       </main>
+
+      {/* Debug Information Panel */}
+      {showDebugInfo && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-gray-900">Debug Information</h3>
+                <button
+                  onClick={() => setShowDebugInfo(false)}
+                  className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div className="p-6">
+              {(() => {
+                const debugInfo = getDebugInfo();
+                if (!debugInfo) return <div>No debug info available</div>;
+                
+                return (
+                  <div className="space-y-6">
+                    {/* Token Information */}
+                    <div className="bg-gray-50 rounded-2xl p-4">
+                      <h4 className="font-semibold text-gray-900 mb-3">🔐 JWT Token</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Token (truncated):</span>
+                          <span className="text-sm font-mono bg-gray-200 px-2 py-1 rounded">{debugInfo.token}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Token Payload:</span>
+                          <span className="text-sm font-mono bg-gray-200 px-2 py-1 rounded max-w-xs truncate">
+                            {JSON.stringify(debugInfo.tokenPayload)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Company Context */}
+                    <div className="bg-blue-50 rounded-2xl p-4">
+                      <h4 className="font-semibold text-gray-900 mb-3">🏢 Company Context</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Selected Company:</span>
+                          <span className="text-sm font-mono bg-blue-200 px-2 py-1 rounded">{debugInfo.selectedCompany}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Selected Company ID:</span>
+                          <span className="text-sm font-mono bg-blue-200 px-2 py-1 rounded">{debugInfo.selectedCompanyId}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Current User ID:</span>
+                          <span className="text-sm font-mono bg-blue-200 px-2 py-1 rounded">{debugInfo.currentUserId}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* User Information */}
+                    <div className="bg-green-50 rounded-2xl p-4">
+                      <h4 className="font-semibold text-gray-900 mb-3">👤 User Information</h4>
+                      <div className="space-y-2">
+                        {debugInfo.user ? (
+                          <>
+                            <div className="flex justify-between">
+                              <span className="text-sm text-gray-600">Name:</span>
+                              <span className="text-sm font-mono bg-green-200 px-2 py-1 rounded">{debugInfo.user.name}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-sm text-gray-600">Email:</span>
+                              <span className="text-sm font-mono bg-green-200 px-2 py-1 rounded">{debugInfo.user.email}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-sm text-gray-600">Business Name:</span>
+                              <span className="text-sm font-mono bg-green-200 px-2 py-1 rounded">{debugInfo.user.businessName}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-sm text-gray-600">User ID:</span>
+                              <span className="text-sm font-mono bg-green-200 px-2 py-1 rounded">{debugInfo.user._id}</span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-sm text-gray-500">No user information available</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Backend Context */}
+                    <div className="bg-purple-50 rounded-2xl p-4">
+                      <h4 className="font-semibold text-gray-900 mb-3">🚀 Backend Context</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Company ID for API:</span>
+                          <span className="text-sm font-mono bg-purple-200 px-2 py-1 rounded">
+                            {debugInfo.selectedCompanyId !== 'None' ? debugInfo.selectedCompanyId : debugInfo.currentUserId}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Context Type:</span>
+                          <span className="text-sm font-mono bg-purple-200 px-2 py-1 rounded">
+                            {debugInfo.selectedCompanyId !== 'None' ? 'Company Context' : 'Own Context'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Copy to Clipboard */}
+                    <div className="flex justify-center">
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(JSON.stringify(debugInfo, null, 2));
+                          alert('Debug info copied to clipboard!');
+                        }}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        Copy Debug Info to Clipboard
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Most Used Reports Section */}
       <div className="mb-10 px-2 sm:px-4 md:px-6 lg:px-8">

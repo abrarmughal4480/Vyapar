@@ -1,5 +1,5 @@
 "use client";
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, Suspense } from "react";
 import { QrCode, FileText, Printer, ArrowLeft } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { getSaleById } from "../../../http/sales";
@@ -507,7 +507,7 @@ const ControlPanel: React.FC<{
 );
 
 // Main Component
-const InvoicePage: React.FC = () => {
+const InvoicePageContent: React.FC = () => {
   const [selectedSize, setSelectedSize] = useState<keyof typeof PAPER_SIZES>('A4');
   const [invoiceData, setInvoiceData] = useState(defaultInvoiceData);
   const [loading, setLoading] = useState(false);
@@ -683,6 +683,22 @@ const InvoicePage: React.FC = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+const InvoicePage: React.FC = () => {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-lg text-gray-600">Loading...</div>
+          </div>
+        </div>
+      </div>
+    }>
+      <InvoicePageContent />
+    </Suspense>
   );
 };
 

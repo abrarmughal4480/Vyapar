@@ -56,10 +56,7 @@ export default function JoinCompanyPage() {
         const res = await getInvitesForMe(token);
         setInvites(res.data || []);
         
-        console.log('=== INVITES DEBUG ===');
-        console.log('All invites:', res.data);
-        console.log('Accepted invites:', res.data?.filter((inv: any) => inv.status === 'Accepted'));
-        console.log('=== END INVITES DEBUG ===');
+
         
         // Get current user ID from token or localStorage
         let currentUserIdFromStorage = localStorage.getItem('currentUserId');
@@ -77,13 +74,11 @@ export default function JoinCompanyPage() {
               localStorage.setItem('currentUserId', tokenPayload.id);
             }
           } catch (e) {
-            console.log('Could not extract user ID from token:', e);
+            // Silent error handling
           }
         } else if (currentUserIdFromStorage) {
           setCurrentUserId(currentUserIdFromStorage);
         }
-        
-        console.log('Current User ID set to:', currentUserIdFromStorage);
       } catch {
         setInvites([]);
       }
@@ -149,17 +144,17 @@ export default function JoinCompanyPage() {
       });
 
       if (response.ok) {
-        console.log('User company context updated successfully');
+
         setToast({
           show: true,
           message: 'Company context updated successfully!',
           type: 'success'
         });
       } else {
-        console.error('Failed to update user company context');
+
       }
     } catch (error) {
-      console.error('Error updating user company context:', error);
+      // Silent error handling
     }
   };
 
@@ -190,7 +185,7 @@ export default function JoinCompanyPage() {
         localStorage.setItem('token', data.token);
         localStorage.setItem('originalToken', originalToken); // Keep original for reset
         
-        console.log('🔐 JWT Token updated with company context:', companyId);
+
         
         setToast({
           show: true,
@@ -198,7 +193,7 @@ export default function JoinCompanyPage() {
           type: 'success'
         });
       } else {
-        console.error('Failed to update token with company context');
+
         setToast({
           show: true,
           message: 'Failed to switch to company context',
@@ -206,7 +201,7 @@ export default function JoinCompanyPage() {
         });
       }
     } catch (error) {
-      console.error('Error updating JWT token:', error);
+              // Silent error handling
       setToast({
         show: true,
         message: 'Error switching context',
@@ -223,7 +218,7 @@ export default function JoinCompanyPage() {
         localStorage.setItem('token', originalToken);
         localStorage.removeItem('originalToken');
         
-        console.log('🔐 JWT Token reset to original user');
+
         
         setToast({
           show: true,
@@ -232,29 +227,11 @@ export default function JoinCompanyPage() {
         });
       }
     } catch (error) {
-      console.error('Error resetting JWT token:', error);
+              // Silent error handling
     }
   };
 
-  // Function to get current context for backend requests
-  const getCurrentContext = () => {
-    const selectedCompany = localStorage.getItem('selectedCompany');
-    const selectedCompanyId = localStorage.getItem('selectedCompanyId');
-    const currentUserId = localStorage.getItem('currentUserId');
-    
-    console.log('=== BACKEND CONTEXT ===');
-    console.log('For API requests, use:');
-    console.log('selectedCompanyId:', selectedCompanyId || currentUserId);
-    console.log('selectedCompany:', selectedCompany || 'Own Company');
-    console.log('currentUserId:', currentUserId);
-    console.log('=== END CONTEXT ===');
-    
-    return {
-      selectedCompanyId: selectedCompanyId || currentUserId,
-      selectedCompany: selectedCompany || 'Own Company',
-      currentUserId
-    };
-  };
+
 
   return (
     <div className="p-6 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 min-h-screen">
@@ -281,12 +258,7 @@ export default function JoinCompanyPage() {
                     const selectedInvite = joinedCompanies.find(c => c.companyName === e.target.value);
                     let newCompanyId = selectedInvite ? selectedInvite.requestedBy : null;
                     
-                    console.log('=== DROPDOWN DEBUG ===');
-                    console.log('Selected company name:', e.target.value);
-                    console.log('Found invite:', selectedInvite);
-                    console.log('Company ID from invite:', selectedInvite?.requestedBy);
-                    console.log('Current User ID:', currentUserId);
-                    console.log('Joined Companies:', joinedCompanies);
+                    
                     
                     // If no company selected, use current user's ID
                     if (!e.target.value && currentUserId) {
@@ -304,35 +276,9 @@ export default function JoinCompanyPage() {
                       resetJWTTokenToUser();
                     }
                     
-                    // Show toast with old and new company IDs
-                    const oldId = oldCompanyId || 'None';
-                    const newId = newCompanyId || 'None';
-                    const message = !e.target.value && currentUserId 
-                      ? `Switched to your own ID: ${oldId} → ${newId}`
-                      : `Company ID changed: ${oldId} → ${newId}`;
-                    setToast({
-                      show: true,
-                      message,
-                      type: 'success'
-                    });
 
-                    // Debug: Log what's being saved to localStorage
-                    console.log('=== STORAGE DEBUG ===');
-                    console.log('Selected Company:', e.target.value || 'None');
-                    console.log('Selected Company ID:', newCompanyId || 'None');
-                    console.log('Current User ID:', currentUserId || 'None');
-                    console.log('localStorage selectedCompany:', e.target.value || 'None');
-                    console.log('localStorage selectedCompanyId:', newCompanyId || 'None');
-                    console.log('localStorage currentUserId:', currentUserId || 'None');
-                    
-                    // Log actual localStorage content
-                    console.log('=== ACTUAL LOCALSTORAGE ===');
-                    console.log('localStorage.getItem("selectedCompany"):', localStorage.getItem('selectedCompany'));
-                    console.log('localStorage.getItem("selectedCompanyId"):', localStorage.getItem('selectedCompanyId'));
-                    console.log('localStorage.getItem("currentUserId"):', localStorage.getItem('currentUserId'));
-                    console.log('localStorage.getItem("token"):', localStorage.getItem('token') ? 'Token exists' : 'No token');
-                    console.log('=== END LOCALSTORAGE ===');
-                    console.log('=== END DEBUG ===');
+
+
                   }}
                   className="w-full px-4 py-2 border-2 border-indigo-200 rounded-xl bg-white text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 >
@@ -356,12 +302,7 @@ export default function JoinCompanyPage() {
         </div>
         <h2 className="text-2xl font-bold text-gray-800 mb-2">Your Company Requests</h2>
         <p className="text-gray-500 mb-2 text-center max-w-xl">Here you can see all companies you can join. Send a request to join and track the status. Once accepted, you'll be able to access company resources.</p>
-        <button
-          onClick={getCurrentContext}
-          className="mt-4 px-4 py-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors font-medium"
-        >
-          Check Backend Context (Console)
-        </button>
+
       </div>
       {/* Invites Grid */}
       {loading ? (

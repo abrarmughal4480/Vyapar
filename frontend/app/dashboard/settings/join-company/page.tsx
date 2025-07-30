@@ -150,11 +150,6 @@ export default function JoinCompanyPage() {
           message: 'Company context updated successfully!',
           type: 'success'
         });
-        
-        // Refresh the page after successful token update
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
       } else {
 
       }

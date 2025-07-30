@@ -276,10 +276,8 @@ export default function JoinCompanyPage() {
                       resetJWTTokenToUser();
                     }
                     
-                    // Refresh the page after a short delay to allow token update
-                    setTimeout(() => {
-                      window.location.reload();
-                    }, 1000);
+
+
 
                   }}
                   className="w-full px-4 py-2 border-2 border-indigo-200 rounded-xl bg-white text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"

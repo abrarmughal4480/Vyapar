@@ -29,6 +29,7 @@ export default function JoinCompanyPage() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' });
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [shouldRefreshAfterToast, setShouldRefreshAfterToast] = useState(false);
   const joinedCompanies = invites.filter(invite => invite.status === 'Accepted');
   
   // Load selected company from localStorage on component mount
@@ -105,6 +106,19 @@ export default function JoinCompanyPage() {
       localStorage.removeItem('currentUserId');
     }
   }, [selectedCompany, selectedCompanyId, currentUserId]);
+
+  // Handle page refresh 1 second after toast is shown
+  React.useEffect(() => {
+    if (shouldRefreshAfterToast && toast.show) {
+      // Set a timer to refresh the page 1 second after toast is shown
+      const timer = setTimeout(() => {
+        setShouldRefreshAfterToast(false);
+        window.location.reload();
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [shouldRefreshAfterToast, toast.show]);
 
   const handleRespond = async (inviteId: string, action: 'Accepted' | 'Rejected') => {
     setActionLoading(inviteId + action);
@@ -192,6 +206,7 @@ export default function JoinCompanyPage() {
           message: `Token updated with company ID: ${companyId}`,
           type: 'success'
         });
+        setShouldRefreshAfterToast(true);
       } else {
 
         setToast({
@@ -225,6 +240,7 @@ export default function JoinCompanyPage() {
           message: 'Token reset to original user',
           type: 'success'
         });
+        setShouldRefreshAfterToast(true);
       }
     } catch (error) {
               // Silent error handling
@@ -357,7 +373,10 @@ export default function JoinCompanyPage() {
         <Toast
           message={toast.message}
           type={toast.type}
-          onClose={() => setToast({ show: false, message: '', type: 'success' })}
+          onClose={() => {
+            setToast({ show: false, message: '', type: 'success' });
+            // If we need to refresh after toast, it will be handled by the useEffect
+          }}
         />
       )}
     </div>

@@ -1,6 +1,4 @@
-import { invoke } from '@tauri-apps/api/tauri';
-
-const isTauri = () => typeof window !== 'undefined' && !!window.__TAURI__;
+const isTauri = () => false; // Always return false since we're removing Tauri
 
 export class SafeStorage {
   private static instance: SafeStorage;
@@ -18,42 +16,41 @@ export class SafeStorage {
   }
 
   async set(key: string, value: any): Promise<void> {
-    if (this.isTauriEnv) {
-      await invoke('set_storage', { key, value: JSON.stringify(value) });
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(key, JSON.stringify(value));
     }
   }
 
   async get(key: string): Promise<any> {
-    if (this.isTauriEnv) {
-      const result = await invoke('get_storage', { key });
-      return result ? JSON.parse(result as string) : null;
+    if (typeof window !== 'undefined') {
+      const item = localStorage.getItem(key);
+      return item ? JSON.parse(item) : null;
     }
     return null;
   }
 
   async remove(key: string): Promise<void> {
-    if (this.isTauriEnv) {
-      await invoke('remove_storage', { key });
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(key);
     }
   }
 
   async clear(): Promise<void> {
-    if (this.isTauriEnv) {
-      await invoke('clear_storage');
+    if (typeof window !== 'undefined') {
+      localStorage.clear();
     }
   }
 
   async keys(): Promise<string[]> {
-    if (this.isTauriEnv) {
-      return await invoke('get_storage_keys') as string[];
+    if (typeof window !== 'undefined') {
+      return Object.keys(localStorage);
     }
     return [];
   }
 
   async has(key: string): Promise<boolean> {
-    if (this.isTauriEnv) {
-      const result = await invoke('has_storage', { key });
-      return result as boolean;
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(key) !== null;
     }
     return false;
   }

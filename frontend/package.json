@@ -4,56 +4,11 @@
   "description": "Devease Digital Business Management Software",
   "author": "Devease Digital",
   "private": true,
-  "main": "main.js",
-  "build": {
-    "appId": "com.devease.digital",
-    "productName": "Devease Digital",
-    "copyright": "Copyright © 2025 Devease Digital",
-    "files": [
-      "main.js",
-      "package.json",
-      ".next/**/*",
-      "public/**/*",
-      "node_modules/**/*",
-      "app/**/*",
-      "components/**/*",
-      "http/**/*",
-      "lib/**/*",
-      "next.config.*"
-    ],
-    "directories": {
-      "buildResources": "build",
-      "output": "dist"
-    },
-    "win": {
-      "target": [
-        {
-          "target": "portable",
-          "arch": ["x64"]
-        }
-      ],
-      "icon": "assets/icon.ico",
-      "signAndEditExecutable": false,
-      "verifyUpdateCodeSignature": false
-    },
-    "portable": {
-      "artifactName": "Devease-Digital-Portable.exe"
-    },
-    "forceCodeSigning": false
-  },
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start -p 3001",
-    "lint": "next lint",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "electron": "concurrently \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron-dev": "cross-env NODE_ENV=development electron .",
-    "build-electron": "npm run build && electron-builder",
-    "dist": "npm run build && electron-builder --publish=never",
-    "dist-portable": "npm run build && electron-builder --win portable"
+    "lint": "next lint"
   },
   "dependencies": {
     "@floating-ui/react-dom": "^2.1.4",
@@ -64,7 +19,6 @@
     "@radix-ui/react-select": "^2.2.5",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tabs": "^1.1.12",
-    "@tauri-apps/api": "^1.6.0",
     "axios": "^1.9.0",
     "class-variance-authority": "^0.7.1",
     "cloudinary": "^2.7.0",
@@ -92,19 +46,13 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.0.0-rc.18",
     "@types/node": "^20.19.1",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
     "@types/xlsx": "^0.0.35",
     "autoprefixer": "^10.4.21",
-    "concurrently": "^8.2.2",
-    "cross-env": "^7.0.3",
-    "electron": "^29.3.0",
-    "electron-builder": "^26.0.12",
     "postcss": "^8.5.4",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.0.0",
-    "wait-on": "^7.0.1"
+    "typescript": "^5.0.0"
   }
 }

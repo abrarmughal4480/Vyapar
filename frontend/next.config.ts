@@ -17,8 +17,6 @@ const nextConfig: NextConfig = {
     // Enable modern React features
     optimizePackageImports: ['lucide-react'],
   },
-  // Optimize for production
-  swcMinify: true,
   // Handle static assets properly
   assetPrefix: process.env.NODE_ENV === 'production' ? undefined : '',
 };

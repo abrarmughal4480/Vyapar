@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Eye, EyeOff, ArrowRight, CheckCircle, X, ArrowLeft } from 'lucide-react';
 import { resetPassword as resetPasswordApi } from '@/http/auth';
@@ -152,7 +152,7 @@ function LoadingOverlay({ show, message }: { show: boolean; message: string }) {
   );
 }
 
-export default function ResetPassword() {
+function ResetPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [formData, setFormData] = useState<ResetPasswordData>({
@@ -523,7 +523,46 @@ export default function ResetPassword() {
         .animate-logoPop {
           animation: logoPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
         }
-      `}</style>
+             `}</style>
+     </div>
+   );
+ }
+
+// Loading component for Suspense
+function ResetPasswordLoading() {
+  return (
+    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-gradient-to-br from-indigo-50 via-blue-100 to-purple-50 animate-fadeIn overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute -top-32 -left-32 w-96 h-96 bg-gradient-to-br from-indigo-400/30 to-purple-600/20 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-gradient-to-tr from-blue-400/30 to-cyan-600/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-gradient-to-r from-indigo-300/20 to-purple-300/20 rounded-full blur-3xl animate-pulse delay-500"></div>
+      </div>
+      <div className="flex flex-col items-center space-y-8 relative z-10">
+        <div className="relative">
+          <div className="w-24 h-24 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto shadow-2xl"></div>
+          <div className="absolute inset-0 w-24 h-24 border-4 border-transparent border-b-purple-400 rounded-full animate-spin mx-auto" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <img src="/devease_logo.svg" alt="Logo" className="w-16 h-16 object-contain drop-shadow-lg animate-logoPop" />
+          </div>
+        </div>
+        <div className="text-center space-y-2">
+          <h1 className="text-3xl md:text-4xl font-extrabold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent animate-slideInDown drop-shadow-lg">
+            Devease Digital
+          </h1>
+          <h2 className="text-xl md:text-2xl font-bold text-gray-700 animate-slideInUp mt-2 drop-shadow-md">
+            Loading Reset Password...
+          </h2>
+        </div>
+      </div>
     </div>
+  );
+}
+
+// Main component with Suspense boundary
+export default function ResetPassword() {
+  return (
+    <Suspense fallback={<ResetPasswordLoading />}>
+      <ResetPasswordContent />
+    </Suspense>
   );
 }

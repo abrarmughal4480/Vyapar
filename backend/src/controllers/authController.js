@@ -3,6 +3,9 @@ import UserInvite from '../models/userInvite.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { clearAllCacheForUser } from './dashboardController.js';
+import { sendEmail } from '../services/emailService.js';
+import crypto from 'crypto';
+import config from '../config/config.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'changeme';
 const JWT_EXPIRES_IN = '100y';
@@ -143,6 +146,134 @@ const authController = {
     } catch (err) {
       console.error('Error switching context:', err);
       return res.status(500).json({ success: false, message: 'Failed to switch context', error: err.message });
+    }
+  },
+
+  forgotPassword: async (req, res) => {
+    try {
+      const { email, frontendUrl } = req.body;
+      
+      if (!email) {
+        return res.status(400).json({ success: false, message: 'Email is required' });
+      }
+
+      // Check if user exists
+      const user = await User.findOne({ email });
+      if (!user) {
+        // Don't reveal if user exists or not for security
+        return res.json({ success: true, message: 'If an account with that email exists, a password reset link has been sent.' });
+      }
+
+      // Generate reset token
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
+
+      // Save reset token to user
+      await User.findByIdAndUpdate(user._id, {
+        resetPasswordToken: resetToken,
+        resetPasswordExpires: resetTokenExpiry
+      });
+
+      // Create reset URL - use provided frontend URL or fallback to config
+      const resetUrl = `${frontendUrl || config.frontendUrl}/reset-password?token=${resetToken}`;
+
+      // Send email
+      const emailContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 15px; text-align: center; margin-bottom: 30px;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">Devease Digital</h1>
+            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0;">Password Reset Request</p>
+          </div>
+          
+          <div style="background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+            <h2 style="color: #374151; margin-bottom: 20px;">Hello ${user.name || user.businessName},</h2>
+            
+            <p style="color: #6b7280; line-height: 1.6; margin-bottom: 25px;">
+              We received a request to reset your password for your Devease Digital account. 
+              If you didn't make this request, you can safely ignore this email.
+            </p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${resetUrl}" 
+                 style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                        color: white; 
+                        padding: 15px 30px; 
+                        text-decoration: none; 
+                        border-radius: 10px; 
+                        font-weight: bold; 
+                        display: inline-block;
+                        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
+                Reset Your Password
+              </a>
+            </div>
+            
+            <p style="color: #6b7280; line-height: 1.6; margin-bottom: 15px;">
+              This link will expire in 1 hour for security reasons.
+            </p>
+            
+            <p style="color: #6b7280; line-height: 1.6; margin-bottom: 15px;">
+              If the button above doesn't work, you can copy and paste this link into your browser:
+            </p>
+            
+            <p style="background: #f3f4f6; padding: 15px; border-radius: 8px; word-break: break-all; color: #374151; font-family: monospace; font-size: 14px;">
+              ${resetUrl}
+            </p>
+            
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+            
+            <p style="color: #9ca3af; font-size: 14px; text-align: center; margin: 0;">
+              If you have any questions, please contact our support team.
+            </p>
+          </div>
+        </div>
+      `;
+
+      await sendEmail({
+        to: email,
+        subject: 'Reset Your Password - Devease Digital',
+        html: emailContent,
+        fromName: 'Devease Digital Support'
+      });
+
+      return res.json({ success: true, message: 'If an account with that email exists, a password reset link has been sent.' });
+    } catch (err) {
+      console.error('Error in forgot password:', err);
+      return res.status(500).json({ success: false, message: 'Failed to process password reset request' });
+    }
+  },
+
+  resetPassword: async (req, res) => {
+    try {
+      const { token, password } = req.body;
+      
+      if (!token || !password) {
+        return res.status(400).json({ success: false, message: 'Token and password are required' });
+      }
+
+      // Find user with valid reset token
+      const user = await User.findOne({
+        resetPasswordToken: token,
+        resetPasswordExpires: { $gt: Date.now() }
+      });
+
+      if (!user) {
+        return res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Update user password and clear reset token
+      await User.findByIdAndUpdate(user._id, {
+        password: hashedPassword,
+        resetPasswordToken: undefined,
+        resetPasswordExpires: undefined
+      });
+
+      return res.json({ success: true, message: 'Password has been reset successfully' });
+    } catch (err) {
+      console.error('Error in reset password:', err);
+      return res.status(500).json({ success: false, message: 'Failed to reset password' });
     }
   }
 };

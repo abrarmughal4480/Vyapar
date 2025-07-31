@@ -12,7 +12,9 @@ const userSchema = new mongoose.Schema({
   website: { type: String },
   profileImage: { type: String },
   currentToken: { type: String }, // For single device login
-  joinedCompanies: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }] // Array of company user IDs that this user has joined
+  joinedCompanies: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // Array of company user IDs that this user has joined
+  resetPasswordToken: { type: String },
+  resetPasswordExpires: { type: Date }
 }, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);

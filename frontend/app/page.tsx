@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronRight, Shield, Zap, Users, TrendingUp, CheckCircle, Eye, EyeOff, ArrowRight, Star, Award, Globe, Lock, Smartphone, BarChart3, DollarSign, Clock, Menu, X } from 'lucide-react';
-import { register as registerApi, login as loginApi } from '@/http/auth';
+import { register as registerApi, login as loginApi, forgotPassword as forgotPasswordApi } from '@/http/auth';
 
 // Type definitions for better TypeScript support
 interface FormData {
@@ -412,6 +412,11 @@ export default function Home() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
+  const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState(false);
+  const [forgotPasswordError, setForgotPasswordError] = useState('');
 
   // All useEffect, useCallback, etc.
   useEffect(() => {
@@ -562,6 +567,36 @@ export default function Home() {
       setIsLoading(false);
     }
   }, [isLoading, validateForm, isLogin, formData, handleLogin, handleSignup, router]);
+
+  const handleForgotPassword = useCallback(async () => {
+    if (!forgotPasswordEmail || !/\S+@\S+\.\S+/.test(forgotPasswordEmail)) {
+      setForgotPasswordError('Please enter a valid email address');
+      return;
+    }
+    
+    setForgotPasswordLoading(true);
+    setForgotPasswordError('');
+    
+    try {
+      const response = await forgotPasswordApi(forgotPasswordEmail);
+      const result = response.data;
+      
+      if (result.success) {
+        setForgotPasswordSuccess(true);
+        setTimeout(() => {
+          setShowForgotPassword(false);
+          setForgotPasswordSuccess(false);
+          setForgotPasswordEmail('');
+        }, 3000);
+      } else {
+        setForgotPasswordError(result.message || 'Failed to send reset email');
+      }
+    } catch (error: any) {
+      setForgotPasswordError(error.response?.data?.message || 'Failed to send reset email. Please try again.');
+    } finally {
+      setForgotPasswordLoading(false);
+    }
+  }, [forgotPasswordEmail]);
 
   // Restore renderStepIndicator
   const renderStepIndicator = () => {
@@ -874,9 +909,10 @@ export default function Home() {
                       setIsLogin(true); 
                       setCurrentStep(1);
                       setApiError('');
+                      setShowForgotPassword(false);
                     }}
                     className={`flex-1 py-3 px-6 rounded-xl text-sm font-bold transition-all duration-300 ${
-                      isLogin 
+                      isLogin && !showForgotPassword
                         ? 'bg-white text-gray-900 shadow-lg' 
                         : 'text-gray-500 hover:text-gray-700'
                     }`}
@@ -888,9 +924,10 @@ export default function Home() {
                       setIsLogin(false); 
                       setCurrentStep(1);
                       setApiError('');
+                      setShowForgotPassword(false);
                     }}
                     className={`flex-1 py-3 px-6 rounded-xl text-sm font-bold transition-all duration-300 ${
-                      !isLogin 
+                      !isLogin && !showForgotPassword
                         ? 'bg-white text-gray-900 shadow-lg' 
                         : 'text-gray-500 hover:text-gray-700'
                     }`}
@@ -913,7 +950,90 @@ export default function Home() {
                 )}
 
                 <div className="space-y-3">
-                  {currentStep === 1 ? (
+                  {showForgotPassword ? (
+                    <>
+                      <div className="text-center mb-6">
+                        <h3 className="text-2xl font-bold text-gray-900 mb-2">Reset Your Password</h3>
+                        <p className="text-gray-600">Enter your email address and we'll send you a link to reset your password.</p>
+                      </div>
+                      
+                      {forgotPasswordSuccess ? (
+                        <div className="text-center space-y-4">
+                          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                            <CheckCircle className="w-8 h-8 text-green-600" />
+                          </div>
+                          <div>
+                            <h4 className="text-lg font-bold text-gray-900 mb-2">Email Sent!</h4>
+                            <p className="text-gray-600">We've sent a password reset link to <strong>{forgotPasswordEmail}</strong></p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setShowForgotPassword(false);
+                              setForgotPasswordSuccess(false);
+                              setForgotPasswordEmail('');
+                            }}
+                            className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-bold"
+                          >
+                            Back to Sign In
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div>
+                            <label className="block text-base font-bold text-gray-700 mb-1">
+                              Email Address
+                            </label>
+                            <input
+                              type="email"
+                              placeholder="your@email.com"
+                              className={`w-full px-4 py-2.5 border-2 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium ${
+                                forgotPasswordError ? 'border-red-500' : 'border-gray-200'
+                              }`}
+                              value={forgotPasswordEmail}
+                              onChange={(e) => {
+                                setForgotPasswordEmail(e.target.value);
+                                if (forgotPasswordError) setForgotPasswordError('');
+                              }}
+                            />
+                            {forgotPasswordError && (
+                              <p className="text-red-500 text-sm mt-1 font-medium">{forgotPasswordError}</p>
+                            )}
+                          </div>
+                          
+                          <button
+                            onClick={handleForgotPassword}
+                            disabled={forgotPasswordLoading}
+                            className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                          >
+                            {forgotPasswordLoading ? (
+                              <>
+                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                                Sending...
+                              </>
+                            ) : (
+                              <>
+                                Send Reset Link
+                                <ArrowRight className="w-5 h-5 ml-2" />
+                              </>
+                            )}
+                          </button>
+                          
+                          <div className="text-center">
+                            <button
+                              onClick={() => {
+                                setShowForgotPassword(false);
+                                setForgotPasswordEmail('');
+                                setForgotPasswordError('');
+                              }}
+                              className="text-sm text-gray-600 hover:text-gray-700 font-medium transition-colors duration-200"
+                            >
+                              ← Back to Sign In
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  ) : currentStep === 1 ? (
                     <>
                       {!isLogin && (
                         <>
@@ -1005,23 +1125,35 @@ export default function Home() {
                       </div>
 
                       {isLogin ? (
-                        <button
-                          onClick={handleSubmit}
-                          disabled={isLoading}
-                          className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                        >
-                          {isLoading ? (
-                            <>
-                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                              Signing in...
-                            </>
-                          ) : (
-                            <>
-                              Sign In
-                              <ArrowRight className="w-5 h-5 ml-2" />
-                            </>
+                        <>
+                          <button
+                            onClick={handleSubmit}
+                            disabled={isLoading}
+                            className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                          >
+                            {isLoading ? (
+                              <>
+                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                                Signing in...
+                              </>
+                            ) : (
+                              <>
+                                Sign In
+                                <ArrowRight className="w-5 h-5 ml-2" />
+                              </>
+                            )}
+                          </button>
+                          {isLogin && !showForgotPassword && (
+                            <div className="text-center mt-3">
+                              <button
+                                onClick={() => setShowForgotPassword(true)}
+                                className="text-sm text-indigo-600 hover:text-indigo-700 font-medium transition-colors duration-200 hover:underline"
+                              >
+                                Forgot your password?
+                              </button>
+                            </div>
                           )}
-                        </button>
+                        </>
                       ) : (
                         <button
                           onClick={nextStep}

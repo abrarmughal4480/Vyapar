@@ -1,0 +1,412 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
+  --secondary: #10b981;
+  --accent: #f59e0b;
+  --surface: #ffffff;
+  --text: #1e293b;
+  --text-secondary: #64748b;
+  --border: #e2e8f0;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  background-color: var(--background);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.btn {
+  @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 cursor-pointer;
+}
+
+.btn-primary {
+  @apply bg-blue-500 text-white hover:bg-blue-600;
+}
+
+.btn-secondary {
+  @apply bg-gray-200 text-gray-800 hover:bg-gray-300;
+}
+
+.card {
+  @apply bg-white rounded-lg shadow-md p-4 border border-gray-200;
+}
+
+.input {
+  @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+}
+
+/* Professional card shadows like Devease Digital */
+.card-shadow {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+.card-shadow-hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.card-shadow-lg {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Devease Digital-like gradient backgrounds */
+.gradient-bg-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.gradient-bg-success {
+  background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+}
+
+.gradient-bg-warning {
+  background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+}
+
+.gradient-bg-danger {
+  background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+}
+
+/* Disable browser autocomplete and suggestions for all input fields */
+input, textarea, select {
+  -webkit-autofill: none !important;
+  -webkit-autofill: transparent !important;
+  -webkit-box-shadow: 0 0 0 1000px white inset !important;
+  -webkit-text-fill-color: inherit !important;
+  autocomplete: off !important;
+  autocorrect: off !important;
+  autocapitalize: off !important;
+  spellcheck: false !important;
+}
+
+/* Remove browser datalist suggestions */
+input::-webkit-list-button {
+  display: none !important;
+}
+
+input::-webkit-search-cancel-button {
+  display: none !important;
+}
+
+input::-webkit-search-decoration {
+  display: none !important;
+}
+
+/* Remove browser dropdown arrows for select elements */
+select {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+  background-image: none !important;
+}
+
+/* Hide browser suggestions dropdown */
+input::-webkit-contacts-auto-fill-button {
+  display: none !important;
+}
+
+input::-webkit-credentials-auto-fill-button {
+  display: none !important;
+}
+
+/* Disable browser form suggestions */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+input[type="tel"],
+input[type="url"],
+input[type="number"],
+textarea {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+}
+
+/* Additional rules to completely disable browser autofill and saved data */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px white inset !important;
+  -webkit-text-fill-color: inherit !important;
+  transition: background-color 5000s ease-in-out 0s !important;
+  background-color: transparent !important;
+}
+
+/* Disable all browser autocomplete features */
+input[autocomplete="off"],
+input[autocomplete="new-password"],
+input[autocomplete="current-password"],
+input[autocomplete="username"],
+input[autocomplete="email"],
+input[autocomplete="tel"],
+input[autocomplete="url"],
+input[autocomplete="name"],
+input[autocomplete="given-name"],
+input[autocomplete="family-name"],
+input[autocomplete="organization"],
+input[autocomplete="street-address"],
+input[autocomplete="locality"],
+input[autocomplete="region"],
+input[autocomplete="postal-code"],
+input[autocomplete="country"] {
+  -webkit-autofill: none !important;
+  -webkit-box-shadow: 0 0 0 1000px white inset !important;
+  -webkit-text-fill-color: inherit !important;
+  background-color: transparent !important;
+}
+
+/* Hide browser password manager suggestions */
+input[type="password"]::-webkit-credentials-auto-fill-button {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* Disable browser form data suggestions */
+input::-webkit-inner-spin-button,
+input::-webkit-outer-spin-button {
+  display: none !important;
+}
+
+/* Additional Firefox specific rules */
+input:-moz-autofill {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+
+/* Disable browser saved form data */
+input[data-lpignore="true"],
+input[data-form-type="other"] {
+  -webkit-autofill: none !important;
+  background-color: transparent !important;
+}
+
+/* Custom scrollbar for the whole app */
+::-webkit-scrollbar {
+  width: 10px;
+  background: #f1f5f9; /* light gray */
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border-radius: 8px;
+  border: 2px solid #f1f5f9;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+}
+::-webkit-scrollbar-corner {
+  background: #f1f5f9;
+}
+
+/* Firefox */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #3b82f6 #f1f5f9;
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar {
+  background: #1e293b;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+  border: 2px solid #1e293b;
+}
+.dark ::-webkit-scrollbar-corner {
+  background: #1e293b;
+}
+.dark html {
+  scrollbar-color: #2563eb #1e293b;
+}
+
+/* Remove .no-scrollbar hiding for now so custom scrollbars show */
+.no-scrollbar::-webkit-scrollbar {
+  display: initial;
+}
+.no-scrollbar {
+  scrollbar-width: thin;
+  -ms-overflow-style: auto;
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.5rem;
+  }
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+.custom-dropdown-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #3b82f6 #f1f5f9;
+}
+.custom-dropdown-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-dropdown-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border-radius: 6px;
+}
+.custom-dropdown-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+/* Remove all custom checkbox appearance overrides */
+input[type="checkbox"] {
+  appearance: auto !important;
+  -webkit-appearance: auto !important;
+  accent-color: #6366f1; /* Tailwind indigo-600 */
+  width: auto !important;
+  height: auto !important;
+  display: inline-block !important;
+  opacity: 1 !important;
+  position: static !important;
+  margin-right: 4px;
+}
+
+/* Super-forced rule: checkboxes ko har halat me visible rakho */
+input[type="checkbox"] {
+  appearance: auto !important;
+  -webkit-appearance: auto !important;
+  accent-color: #3730a3 !important; /* Tailwind indigo-800 */
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  min-height: 24px !important;
+  display: inline-block !important;
+  opacity: 1 !important;
+  position: static !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  z-index: 99999 !important;
+  background: #fff !important;
+  color: #000 !important;
+  border: 1px solid #3730a3 !important;
+  box-shadow: none !important;
+  filter: none !important;
+  outline: none !important;
+}
+
+/* Modern custom checkbox style for all checkboxes - chota size */
+input[type="checkbox"] {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  min-height: 16px !important;
+  border: 2px solid #6366f1 !important; /* indigo-500 */
+  border-radius: 4px !important;
+  background: #fff !important;
+  transition: all 0.2s;
+  position: relative;
+  cursor: pointer;
+  outline: none !important;
+  box-shadow: 0 1px 2px 0 rgba(99,102,241,0.08);
+  display: inline-block !important;
+}
+input[type="checkbox"]:hover {
+  border-color: #3730a3 !important; /* indigo-800 */
+  box-shadow: 0 2px 8px 0 rgba(99,102,241,0.12);
+}
+input[type="checkbox"]:checked {
+  background: #3730a3 !important; /* indigo-800 */
+  border-color: #3730a3 !important;
+}
+input[type="checkbox"]:checked::after {
+  content: "";
+  display: block;
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid #6366f1 !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.25) !important;
+}
+

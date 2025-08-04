@@ -2,13 +2,13 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  BarChart3, 
-  DollarSign, 
-  Package, 
-  Users, 
-  TrendingUp, 
-  Bell, 
+import {
+  BarChart3,
+  DollarSign,
+  Package,
+  Users,
+  TrendingUp,
+  Bell,
   LogOut,
   Plus,
   Eye,
@@ -211,6 +211,31 @@ export default function Dashboard() {
     fetchUser();
   }, [API_BASE_URL]);
 
+  useEffect(() => {
+    const fetchStockSummary = async () => {
+      try {
+        let token: string | undefined = undefined;
+        if (typeof window !== 'undefined') {
+          const t = localStorage.getItem('token');
+          token = t !== null ? t : undefined;
+        }
+        const response = await fetch(`${API_BASE_URL}/dashboard/stock-summary`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const result = await response.json();
+          const stockData = result.data || { items: [] };
+          setStockSummary(stockData);
+        }
+      } catch (e) {
+        console.error('Failed to fetch stock summary:', e);
+        setStockSummary({ items: [] });
+      }
+    };
+
+    fetchStockSummary();
+  }, [API_BASE_URL]);
+
   // Simplified helper functions - with error handling
   const fetchSales = async (): Promise<any[]> => {
     try {
@@ -310,21 +335,21 @@ export default function Dashboard() {
 
   // Enhanced stats array with modern styling
   const dashboardStats = [
-    { 
-      title: 'Total Revenue', 
-      value: `PKR ${(businessStats.totalRevenue ?? 0).toLocaleString()}`, 
-      change: `${businessStats.revenueChange !== undefined ? (businessStats.revenueChange >= 0 ? '+' : '') + businessStats.revenueChange.toFixed(1) + '%' : ''}`, 
-      icon: DollarSign, 
+    {
+      title: 'Total Revenue',
+      value: `PKR ${(businessStats.totalRevenue ?? 0).toLocaleString()}`,
+      change: `${businessStats.revenueChange !== undefined ? (businessStats.revenueChange >= 0 ? '+' : '') + businessStats.revenueChange.toFixed(1) + '%' : ''}`,
+      icon: DollarSign,
       color: businessStats.revenueChange !== undefined ? (businessStats.revenueChange >= 0 ? 'text-emerald-600' : 'text-red-600') : 'text-emerald-600',
       bgGradient: 'from-emerald-500 to-teal-600',
       bgLight: 'bg-emerald-50',
       trend: businessStats.revenueChange !== undefined ? (businessStats.revenueChange >= 0 ? 'up' : 'down') : 'up'
     },
-    { 
-      title: 'Stock Value', 
-      value: `PKR ${(businessStats.totalStockValue ?? 0).toLocaleString()}`, 
-      change: `${businessStats.totalOrdersChange !== undefined ? (businessStats.totalOrdersChange >= 0 ? '+' : '') + businessStats.totalOrdersChange.toFixed(1) + '%' : ''}`, 
-      icon: Package, 
+    {
+      title: 'Stock Value',
+      value: `PKR ${(businessStats.totalStockValue ?? 0).toLocaleString()}`,
+      change: `${businessStats.totalOrdersChange !== undefined ? (businessStats.totalOrdersChange >= 0 ? '+' : '') + businessStats.totalOrdersChange.toFixed(1) + '%' : ''}`,
+      icon: Package,
       color: businessStats.totalOrdersChange !== undefined ? (businessStats.totalOrdersChange >= 0 ? 'text-blue-600' : 'text-red-600') : 'text-blue-600',
       bgGradient: 'from-blue-500 to-indigo-600',
       bgLight: 'bg-blue-50',
@@ -332,7 +357,7 @@ export default function Dashboard() {
     },
     {
       title: 'Low Stock Summary',
-      value: `${(businessStats.lowStockItems ?? 0) + (businessStats.outOfStockItems ?? 0) + (businessStats.negativeStockItems ?? 0)}`,
+      value: `${stockSummary.items?.length || 0}`,
       change: '',
       icon: AlertTriangle,
       color: 'text-orange-600',
@@ -414,7 +439,7 @@ export default function Dashboard() {
               <p className="text-sm text-gray-500 hidden sm:block">Business Management System</p>
             </div>
           </div>
-          
+
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-3 bg-white/50 backdrop-blur-sm rounded-2xl px-4 py-2 border border-white/20">
               <div className="relative">
@@ -430,7 +455,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <button 
+            <button
               onClick={() => {
                 localStorage.removeItem('isAuthenticated');
                 localStorage.removeItem('businessName');
@@ -492,7 +517,7 @@ export default function Dashboard() {
                   <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent rounded-2xl"></div>
                 </div>
               </div>
-              
+
               {/* Animated background gradient */}
               <div className={`absolute inset-0 bg-gradient-to-br ${stat.bgGradient} rounded-3xl opacity-0 group-hover:opacity-5 transition-opacity duration-300`}></div>
             </div>
@@ -524,7 +549,7 @@ export default function Dashboard() {
                       {action.title}
                     </span>
                   </div>
-                  
+
                   {/* Animated background effect */}
                   <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="absolute -top-10 -right-10 w-20 h-20 bg-white/10 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
@@ -598,14 +623,14 @@ export default function Dashboard() {
                   <AreaChart data={salesOverview} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <XAxis dataKey="name" tick={{ fontSize: 12 }}/>
-                    <YAxis tick={{ fontSize: 12 }}/>
+                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} />
                     <CartesianGrid strokeDasharray="3 3" />
-                    <Tooltip formatter={(value: any) => `PKR ${value.toLocaleString()}`}/>
+                    <Tooltip formatter={(value: any) => `PKR ${value.toLocaleString()}`} />
                     <Area type="monotone" dataKey="netSales" stroke="#6366f1" fillOpacity={1} fill="url(#colorSales)" name="Net Sales" />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -616,53 +641,53 @@ export default function Dashboard() {
 
         {/* Enhanced Welcome Banner */}
         {false && (
-        <div className="relative bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-3xl p-10 text-white overflow-hidden">
-          {/* Animated background elements */}
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute top-0 left-0 w-64 h-64 bg-white/10 rounded-full -translate-x-32 -translate-y-32 animate-pulse"></div>
-            <div className="absolute bottom-0 right-0 w-96 h-96 bg-white/5 rounded-full translate-x-48 translate-y-48"></div>
-          </div>
-          
-          <div className="relative z-10">
-            <div className="flex items-center space-x-4 mb-6">
-              <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-                <Sparkles className="w-8 h-8 text-yellow-300 animate-pulse" />
-              </div>
-              <h3 className="text-3xl font-bold">Welcome to Devease Digital Dashboard!</h3>
+          <div className="relative bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-3xl p-10 text-white overflow-hidden">
+            {/* Animated background elements */}
+            <div className="absolute inset-0 overflow-hidden">
+              <div className="absolute top-0 left-0 w-64 h-64 bg-white/10 rounded-full -translate-x-32 -translate-y-32 animate-pulse"></div>
+              <div className="absolute bottom-0 right-0 w-96 h-96 bg-white/5 rounded-full translate-x-48 translate-y-48"></div>
             </div>
-            
-            <p className="text-lg text-indigo-100 mb-8 max-w-3xl">
-              You've successfully logged in. This is your business command center where you can manage 
-              inventory, create invoices, track customers, and monitor your business performance with advanced analytics.
-            </p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 hover:bg-white/20 transition-colors duration-300 group">
-                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200">
-                  <FileText className="w-6 h-6" />
+
+            <div className="relative z-10">
+              <div className="flex items-center space-x-4 mb-6">
+                <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
+                  <Sparkles className="w-8 h-8 text-yellow-300 animate-pulse" />
                 </div>
-                <h4 className="font-semibold text-lg mb-2">Smart Invoicing</h4>
-                <p className="text-sm text-indigo-100">Create professional invoices with automated calculations and payment tracking</p>
+                <h3 className="text-3xl font-bold">Welcome to Devease Digital Dashboard!</h3>
               </div>
-              
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 hover:bg-white/20 transition-colors duration-300 group">
-                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200">
-                  <Package className="w-6 h-6" />
+
+              <p className="text-lg text-indigo-100 mb-8 max-w-3xl">
+                You've successfully logged in. This is your business command center where you can manage
+                inventory, create invoices, track customers, and monitor your business performance with advanced analytics.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 hover:bg-white/20 transition-colors duration-300 group">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200">
+                    <FileText className="w-6 h-6" />
+                  </div>
+                  <h4 className="font-semibold text-lg mb-2">Smart Invoicing</h4>
+                  <p className="text-sm text-indigo-100">Create professional invoices with automated calculations and payment tracking</p>
                 </div>
-                <h4 className="font-semibold text-lg mb-2">Inventory Control</h4>
-                <p className="text-sm text-indigo-100">Manage your products, track stock levels, and get low-stock alerts</p>
-              </div>
-              
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 hover:bg-white/20 transition-colors duration-300 group">
-                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200">
-                  <BarChart3 className="w-6 h-6" />
+
+                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 hover:bg-white/20 transition-colors duration-300 group">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200">
+                    <Package className="w-6 h-6" />
+                  </div>
+                  <h4 className="font-semibold text-lg mb-2">Inventory Control</h4>
+                  <p className="text-sm text-indigo-100">Manage your products, track stock levels, and get low-stock alerts</p>
                 </div>
-                <h4 className="font-semibold text-lg mb-2">Business Analytics</h4>
-                <p className="text-sm text-indigo-100">Track performance with detailed reports and business insights</p>
+
+                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 hover:bg-white/20 transition-colors duration-300 group">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200">
+                    <BarChart3 className="w-6 h-6" />
+                  </div>
+                  <h4 className="font-semibold text-lg mb-2">Business Analytics</h4>
+                  <p className="text-sm text-indigo-100">Track performance with detailed reports and business insights</p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
         )}
       </main>
 
@@ -672,34 +697,34 @@ export default function Dashboard() {
       <div className="mb-10 px-2 sm:px-4 md:px-6 lg:px-8">
         <h2 className="text-xl font-bold mb-3 text-gray-800">Most Used Reports</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                      <button
-              className="group bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-2xl p-5 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
-              onClick={() => router.push('/dashboard/reports/sale')}
-            >
-              <BarChart3 className="w-7 h-7 mb-1" />
-              <span className="font-semibold text-base">Sale Report</span>
-            </button>
-            <button
-              className="group bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-2xl p-5 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
-              onClick={() => router.push('/dashboard/reports/all-transactions')}
-            >
-              <FileText className="w-7 h-7 mb-1" />
-              <span className="font-semibold text-base">All Transactions</span>
-            </button>
-            <button
-              className="group bg-gradient-to-br from-purple-500 to-violet-600 text-white rounded-2xl p-5 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
-              onClick={() => router.push('/dashboard/reports/day-book')}
-            >
-              <Calendar className="w-7 h-7 mb-1" />
-              <span className="font-semibold text-base">Daybook Report</span>
-            </button>
-            <button
-              className="group bg-gradient-to-br from-orange-500 to-red-500 text-white rounded-2xl p-5 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
-              onClick={() => router.push('/dashboard/reports/party-statement')}
-            >
-              <Users className="w-7 h-7 mb-1" />
-              <span className="font-semibold text-base">Party Statement</span>
-            </button>
+          <button
+            className="group bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-2xl p-5 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
+            onClick={() => router.push('/dashboard/reports/sale')}
+          >
+            <BarChart3 className="w-7 h-7 mb-1" />
+            <span className="font-semibold text-base">Sale Report</span>
+          </button>
+          <button
+            className="group bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-2xl p-5 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
+            onClick={() => router.push('/dashboard/reports/all-transactions')}
+          >
+            <FileText className="w-7 h-7 mb-1" />
+            <span className="font-semibold text-base">All Transactions</span>
+          </button>
+          <button
+            className="group bg-gradient-to-br from-purple-500 to-violet-600 text-white rounded-2xl p-5 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
+            onClick={() => router.push('/dashboard/reports/day-book')}
+          >
+            <Calendar className="w-7 h-7 mb-1" />
+            <span className="font-semibold text-base">Daybook Report</span>
+          </button>
+          <button
+            className="group bg-gradient-to-br from-orange-500 to-red-500 text-white rounded-2xl p-5 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 flex flex-col items-center justify-center"
+            onClick={() => router.push('/dashboard/reports/party-statement')}
+          >
+            <Users className="w-7 h-7 mb-1" />
+            <span className="font-semibold text-base">Party Statement</span>
+          </button>
         </div>
       </div>
 
@@ -815,7 +840,7 @@ export default function Dashboard() {
                 {stockSummary.items?.map((item: any, index: number) => {
                   let stockColor = 'text-gray-600';
                   let stockText = item.currentStock.toString();
-                  
+
                   if (item.issueType === 'negative') {
                     stockColor = 'text-red-800';
                     stockText = `-${Math.abs(item.currentStock)}`;
@@ -826,7 +851,7 @@ export default function Dashboard() {
                     stockColor = 'text-orange-600';
                     stockText = item.currentStock.toString();
                   }
-                  
+
                   return (
                     <li key={index} className="py-2 flex justify-between items-center hover:bg-gray-50 px-2 rounded">
                       <span className="font-medium text-gray-900">{item.name}</span>

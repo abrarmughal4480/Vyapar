@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Printer, Share2, ChevronDown } from 'lucide-react';
 import TableActionMenu from '../../../components/TableActionMenu';
-import { getToken } from '../../../lib/auth';
+import { getToken, getUserIdFromToken } from '../../../lib/auth';
 import { getSalesByUser } from '../../../../http/sales';
 import { getPurchasesByUser, getPayments, getPaymentOutsByUser } from '../../../../http/purchases';
 import { getCreditNotesByUser } from '../../../../http/credit-notes';
@@ -28,30 +28,28 @@ export default function AllTransactionsPage() {
       try {
         const token = getToken();
         if (!token) throw new Error('Not authenticated');
-        // Get userId from token (decode or fetch from backend if needed)
-        // For now, fetch parties and use the first party's userId if available
-        let userId = '';
-        try {
-          const parties = await getCustomerParties(token);
-          if (parties && parties.length > 0 && parties[0].user) userId = parties[0].user;
-        } catch {}
-        // Fallback: try to get userId from sales
+        // Get userId from token
+        const userId = getUserIdFromToken();
         if (!userId) {
-          try {
-            const sales = await getSalesByUser('', token);
-            if (sales && sales.sales && sales.sales.length > 0 && sales.sales[0].userId) userId = sales.sales[0].userId;
-          } catch {}
+          throw new Error('User ID not found in token. Please login again.');
         }
-        // Fetch all data
-        const [salesRes, purchasesRes, creditNotesRes, deliveryChallansRes, paymentsRes] = await Promise.all([
+        // Fetch all data with error handling
+        const [salesRes, purchasesRes, creditNotesRes, deliveryChallansRes, paymentsRes] = await Promise.allSettled([
           getSalesByUser(userId, token),
           getPurchasesByUser(userId, token),
           getCreditNotesByUser(userId, token),
           getDeliveryChallans(token),
           getPayments(token),
         ]);
+        
+        // Log any failed requests for debugging
+        if (salesRes.status === 'rejected') console.error('Sales fetch failed:', salesRes.reason);
+        if (purchasesRes.status === 'rejected') console.error('Purchases fetch failed:', purchasesRes.reason);
+        if (creditNotesRes.status === 'rejected') console.error('Credit notes fetch failed:', creditNotesRes.reason);
+        if (deliveryChallansRes.status === 'rejected') console.error('Delivery challans fetch failed:', deliveryChallansRes.reason);
+        if (paymentsRes.status === 'rejected') console.error('Payments fetch failed:', paymentsRes.reason);
         // Map all to unified format
-        const sales = (salesRes.sales || []).map((s: any) => ({
+        const sales = (salesRes.status === 'fulfilled' ? (salesRes.value.sales || []) : []).map((s: any) => ({
           id: s._id,
           date: s.createdAt?.slice(0, 10) || '',
           ref: s.invoiceNo || s._id,
@@ -65,7 +63,7 @@ export default function AllTransactionsPage() {
           firm: s.firmName || 'Vyapar Pvt Ltd',
         }));
         // Add Payment In for each sale with received > 0
-        const paymentIns = (salesRes.sales || [])
+        const paymentIns = (salesRes.status === 'fulfilled' ? (salesRes.value.sales || []) : [])
           .filter((s: any) => s.received && s.received > 0)
           .map((s: any) => ({
             id: s._id + '-paymentin',
@@ -80,7 +78,7 @@ export default function AllTransactionsPage() {
             status: s.balance === 0 ? 'Paid' : (s.received > 0 ? 'Partial' : 'Unpaid'),
             firm: s.firmName || 'Vyapar Pvt Ltd',
           }));
-        const purchases = (purchasesRes.purchases || []).map((p: any) => ({
+        const purchases = (purchasesRes.status === 'fulfilled' ? (purchasesRes.value.purchases || []) : []).map((p: any) => ({
           id: p._id,
           date: p.createdAt?.slice(0, 10) || '',
           ref: p.billNo || p._id,
@@ -93,7 +91,7 @@ export default function AllTransactionsPage() {
           status: p.balance === 0 ? 'Paid' : (p.paid > 0 ? 'Partial' : 'Unpaid'),
           firm: p.firmName || 'Vyapar Pvt Ltd',
         }));
-        const creditNotes = (creditNotesRes.data || []).map((c: any) => ({
+        const creditNotes = (creditNotesRes.status === 'fulfilled' ? (creditNotesRes.value.data || []) : []).map((c: any) => ({
           id: c._id,
           date: c.createdAt?.slice(0, 10) || '',
           ref: c.creditNoteNo || c._id,
@@ -106,7 +104,7 @@ export default function AllTransactionsPage() {
           status: '-',
           firm: c.firmName || 'Vyapar Pvt Ltd',
         }));
-        const deliveryChallans = (deliveryChallansRes.data || []).map((d: any) => ({
+        const deliveryChallans = (deliveryChallansRes.status === 'fulfilled' ? (deliveryChallansRes.value.data || []) : []).map((d: any) => ({
           id: d._id,
           date: d.createdAt?.slice(0, 10) || '',
           ref: d.challanNumber || d._id,
@@ -119,7 +117,7 @@ export default function AllTransactionsPage() {
           status: '-',
           firm: d.firmName || 'Vyapar Pvt Ltd',
         }));
-        const payments = (paymentsRes.payments || []).map((p: any) => ({
+        const payments = (paymentsRes.status === 'fulfilled' ? (paymentsRes.value.payments || []) : []).map((p: any) => ({
           id: p._id,
           date: p.paymentDate?.slice(0, 10) || '',
           ref: p.billNo || p._id,

@@ -6,7 +6,7 @@ import { Upload, Download, Eye, CheckCircle, AlertCircle, X, FileText, Package, 
 import Toast from '../../../components/Toast'
 import { addItem, bulkImportItems } from '@/http/items'
 import * as XLSX from 'xlsx'
-import { jwtDecode } from 'jwt-decode'
+import { getToken, getUserIdFromToken } from '../../../lib/auth'
 
 interface ImportItem {
   name: string
@@ -49,6 +49,13 @@ export default function BulkImportItemsPage() {
   const [showPreview, setShowPreview] = useState(false)
   const [importProgress, setImportProgress] = useState(0)
   const [isImporting, setIsImporting] = useState(false)
+  const [importStatus, setImportStatus] = useState<string>('')
+  const [processedItems, setProcessedItems] = useState(0)
+  const [totalItems, setTotalItems] = useState(0)
+  const [currentChunk, setCurrentChunk] = useState(0)
+  const [totalChunks, setTotalChunks] = useState(0)
+  const [successCount, setSuccessCount] = useState(0)
+  const [errorCount, setErrorCount] = useState(0)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [showPasteModal, setShowPasteModal] = useState(false)
   const [pastedData, setPastedData] = useState('')
@@ -431,9 +438,15 @@ export default function BulkImportItemsPage() {
 
     setIsImporting(true)
     setImportProgress(0)
+    setImportStatus('Initializing import...')
+    setProcessedItems(0)
+    setTotalItems(items.length)
+    setCurrentChunk(0)
+    setSuccessCount(0)
+    setErrorCount(0)
 
     try {
-      const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || ''
+      const token = getToken()
       
       // Check if token is available
       if (!token) {
@@ -442,9 +455,8 @@ export default function BulkImportItemsPage() {
         return
       }
 
-      // Extract userId from JWT token like the sale page does
-      const decoded: any = jwtDecode(token)
-      const userId = decoded._id || decoded.id
+      // Extract userId from JWT token using utility function
+      const userId = getUserIdFromToken()
       
       // Check if userId is available
       if (!userId) {
@@ -481,30 +493,86 @@ export default function BulkImportItemsPage() {
 
       console.log('Calling bulk import with userId:', userId, 'and items count:', itemsToImport.length)
 
-      // Show progress updates
-      setImportProgress(10)
+      // Optimized import with chunking for large datasets
+      const CHUNK_SIZE = 100; // Reduced chunk size for better reliability
+      const chunks = [];
       
-      const result = await bulkImportItems(userId, itemsToImport)
-      
-      setImportProgress(90)
-
-      if (result && result.success) {
-        setToast({ 
-          message: result.message || `Import completed! ${result.data?.successCount || 0} items imported successfully.`, 
-          type: 'success' 
-        })
-
-        setImportProgress(100)
-        
-        setTimeout(() => {
-          router.push('/dashboard/items')
-        }, 2000)
-      } else {
-        setToast({ 
-          message: result.message || 'Import failed. Please try again.', 
-          type: 'error' 
-        })
+      for (let i = 0; i < itemsToImport.length; i += CHUNK_SIZE) {
+        chunks.push(itemsToImport.slice(i, i + CHUNK_SIZE));
       }
+
+      setTotalChunks(chunks.length)
+      setImportStatus(`Preparing to import ${itemsToImport.length} items in ${chunks.length} chunks...`)
+      setImportProgress(2) // Start at 2% instead of 5%
+
+      let totalSuccessCount = 0;
+      let totalErrorCount = 0;
+      let totalProcessingTime = 0;
+
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        setCurrentChunk(i + 1)
+        setImportStatus(`Processing chunk ${i + 1} of ${chunks.length} (${chunk.length} items)...`)
+        
+        // Improved progress calculation: 2% to 95%
+        const chunkProgress = 2 + ((i / chunks.length) * 93);
+        setImportProgress(Math.round(chunkProgress));
+
+        try {
+          console.log(`Starting chunk ${i + 1} with ${chunk.length} items...`);
+          const result = await bulkImportItems(userId, chunk, token);
+          console.log(`Chunk ${i + 1} result:`, result);
+          
+          if (result && result.success) {
+            const chunkSuccess = result.data?.successCount || 0;
+            const chunkErrors = result.data?.errorCount || 0;
+            const chunkTime = result.data?.processingTime || 0;
+            
+            totalSuccessCount += chunkSuccess;
+            totalErrorCount += chunkErrors;
+            totalProcessingTime += chunkTime;
+            
+            setSuccessCount(totalSuccessCount)
+            setErrorCount(totalErrorCount)
+            setProcessedItems((i + 1) * CHUNK_SIZE)
+            
+            setImportStatus(`Chunk ${i + 1} completed: ${chunkSuccess} success, ${chunkErrors} errors (${chunkTime}ms)`)
+            console.log(`Chunk ${i + 1} completed successfully`);
+          } else {
+            totalErrorCount += chunk.length;
+            setErrorCount(totalErrorCount)
+            setProcessedItems((i + 1) * CHUNK_SIZE)
+            setImportStatus(`Chunk ${i + 1} failed: ${result?.message || 'Unknown error'}`)
+            console.error(`Chunk ${i + 1} failed:`, result);
+          }
+        } catch (error) {
+          console.error(`Error importing chunk ${i + 1}:`, error);
+          totalErrorCount += chunk.length;
+          setErrorCount(totalErrorCount)
+          setProcessedItems((i + 1) * CHUNK_SIZE)
+          setImportStatus(`Chunk ${i + 1} error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        }
+      }
+
+      setImportProgress(98);
+      setImportStatus('Finalizing import...')
+
+      // Final success message
+      const avgProcessingTime = chunks.length > 0 ? Math.round(totalProcessingTime / chunks.length) : 0;
+      const successMessage = `Import completed! ${totalSuccessCount} items imported successfully, ${totalErrorCount} failed. Average processing time: ${avgProcessingTime}ms per chunk.`;
+      
+      setToast({ 
+        message: successMessage, 
+        type: 'success' 
+      })
+
+      setImportProgress(100)
+      setImportStatus(`Import completed successfully! ${totalSuccessCount} items imported.`)
+      
+      setTimeout(() => {
+        router.push('/dashboard/items')
+      }, 3000)
+      
     } catch (error: any) {
       console.error('Import error:', error)
       let errorMessage = 'Import failed. Please try again.'
@@ -529,6 +597,13 @@ export default function BulkImportItemsPage() {
     setValidationErrors([])
     setShowPreview(false)
     setImportProgress(0)
+    setImportStatus('')
+    setProcessedItems(0)
+    setTotalItems(0)
+    setCurrentChunk(0)
+    setTotalChunks(0)
+    setSuccessCount(0)
+    setErrorCount(0)
     setPastedData('')
     setRawDataPreview('')
     if (fileInputRef.current) {
@@ -766,23 +841,54 @@ export default function BulkImportItemsPage() {
               </div>
 
               {validationErrors.length === 0 ? (
-                <button
-                  onClick={handleImport}
-                  disabled={isImporting}
-                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-4 px-6 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                >
-                  {isImporting ? (
-                    <div className="flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-                      <span className="text-lg">Importing... {Math.round(importProgress)}%</span>
+                <div className="space-y-3">
+                  <button
+                    onClick={handleImport}
+                    disabled={isImporting}
+                    className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-4 px-6 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                  >
+                    {isImporting ? (
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
+                        <div className="text-center">
+                          <div className="text-lg">Importing... {Math.round(importProgress)}%</div>
+                          <div className="text-sm opacity-90">{successCount} success, {errorCount} errors</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center">
+                        <Package className="h-5 w-5 mr-2" />
+                        <span className="text-lg">Import {items.length} Items</span>
+                      </div>
+                    )}
+                  </button>
+                  
+                  {/* Import Summary */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-medium text-blue-900">Import Summary</h4>
+                      <div className="text-sm text-blue-600 font-medium">{items.length} items ready</div>
                     </div>
-                  ) : (
-                    <div className="flex items-center justify-center">
-                      <Package className="h-5 w-5 mr-2" />
-                      <span className="text-lg">Import All Items</span>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-blue-700">Total Items:</span>
+                        <span className="ml-2 font-medium">{items.length}</span>
+                      </div>
+                      <div>
+                        <span className="text-blue-700">Chunks:</span>
+                        <span className="ml-2 font-medium">{Math.ceil(items.length / 500)}</span>
+                      </div>
+                      <div>
+                        <span className="text-blue-700">Estimated Time:</span>
+                        <span className="ml-2 font-medium">~{Math.ceil(items.length / 500) * 2}s</span>
+                      </div>
+                      <div>
+                        <span className="text-blue-700">Status:</span>
+                        <span className="ml-2 font-medium text-green-600">Ready to Import</span>
+                      </div>
                     </div>
-                  )}
-                </button>
+                  </div>
+                </div>
               ) : (
                 <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-6">
                   <div className="flex items-center">
@@ -800,7 +906,7 @@ export default function BulkImportItemsPage() {
               )}
             </div>
 
-            {/* Progress Bar */}
+            {/* Enhanced Progress Bar */}
             {isImporting && (
               <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-100">
                 <div className="flex items-center justify-between mb-4">
@@ -810,7 +916,7 @@ export default function BulkImportItemsPage() {
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900">Import Progress</h3>
-                      <p className="text-sm text-gray-600">Processing your items...</p>
+                      <p className="text-sm text-gray-600">{importStatus}</p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -818,14 +924,42 @@ export default function BulkImportItemsPage() {
                     <div className="text-sm text-gray-500">Complete</div>
                   </div>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                
+                {/* Progress Bar */}
+                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden mb-4">
                   <div
                     className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300 shadow-sm"
                     style={{ width: `${importProgress}%` }}
                   ></div>
                 </div>
-                <div className="mt-3 text-sm text-gray-600">
-                  {Math.round(importProgress)} of {items.length} items processed
+                
+                {/* Detailed Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-gray-900">{processedItems}</div>
+                    <div className="text-xs text-gray-500">Processed</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-green-600">{successCount}</div>
+                    <div className="text-xs text-gray-500">Success</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-red-600">{errorCount}</div>
+                    <div className="text-xs text-gray-500">Errors</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-blue-600">{currentChunk}/{totalChunks}</div>
+                    <div className="text-xs text-gray-500">Chunks</div>
+                  </div>
+                </div>
+                
+                {/* Progress Details */}
+                <div className="text-sm text-gray-600 space-y-1">
+                  <div>Total Items: {totalItems}</div>
+                  <div>Progress: {processedItems} of {totalItems} items processed</div>
+                  {totalChunks > 1 && (
+                    <div>Chunk Progress: {currentChunk} of {totalChunks} chunks completed</div>
+                  )}
                 </div>
               </div>
             )}

@@ -395,7 +395,9 @@ function AddItemPageInner() {
       if (editMode && id) {
         result = await updateItem(businessId, id, newItem, token);
       } else {
-        result = await addItem(businessId, newItem, token);
+        // Ensure the item has userId field for backend compatibility
+        const itemWithUserId = { ...newItem, userId: businessId };
+        result = await addItem(businessId, itemWithUserId, token);
       }
       
       if (result.success) {

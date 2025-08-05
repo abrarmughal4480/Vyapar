@@ -171,33 +171,34 @@ export const addItem = async (req, res) => {
   }
 };
 
-// Bulk import items
+// Bulk import items - Optimized for performance with detailed logging
 export const bulkImportItems = async (req, res) => {
+  const importId = Date.now().toString();
+  console.log(`[${importId}] Bulk import request received`);
+  
   try {
-    console.log('Bulk import request received');
-    console.log('Request body:', req.body);
-    console.log('Request params:', req.params);
-    
     const userId = req.params.userId;
     const items = req.body.items || [];
     
-    console.log('UserId:', userId);
-    console.log('Items count:', items.length);
+    console.log(`[${importId}] UserId: ${userId}`);
+    console.log(`[${importId}] Items count: ${items.length}`);
     
     if (!Array.isArray(items) || items.length === 0) {
-      console.log('No items provided for bulk import');
+      console.log(`[${importId}] No items provided for bulk import`);
       return res.status(400).json({ 
         success: false, 
         message: 'No items provided for bulk import' 
       });
     }
 
-    const results = [];
-    let successCount = 0;
-    let errorCount = 0;
+    console.log(`[${importId}] Starting optimized bulk import...`);
+    const startTime = Date.now();
 
-    console.log('Starting to process items...');
-
+    // Process all items in memory first
+    console.log(`[${importId}] Step 1: Processing items in memory...`);
+    const processedItems = [];
+    const itemIds = [];
+    
     for (let i = 0; i < items.length; i++) {
       const itemData = items[i];
       try {
@@ -211,64 +212,152 @@ export const bulkImportItems = async (req, res) => {
           processedData.itemId = `${nameSlug}_${timestamp}_${i}`;
         }
         
-        // Check if item already exists
-        const existingItem = await Item.findOne({ 
-          userId, 
-          itemId: processedData.itemId 
-        });
-
-        if (existingItem) {
-          // Update existing item
-          const updatedItem = await Item.findOneAndUpdate(
-            { userId, itemId: processedData.itemId },
-            processedData,
-            { new: true }
-          );
-          results.push({
-            itemId: processedData.itemId,
-            status: 'updated',
-            data: updatedItem.toObject()
-          });
-          successCount++;
-        } else {
-          // Create new item
-          const newItem = new Item(processedData);
-          await newItem.save();
-          results.push({
-            itemId: processedData.itemId,
-            status: 'created',
-            data: newItem.toObject()
-          });
-          successCount++;
-        }
+        processedItems.push(processedData);
+        itemIds.push(processedData.itemId);
       } catch (error) {
-        console.error('Error processing item:', error);
-        results.push({
-          itemId: itemData.itemCode || `item_${i}`,
-          status: 'error',
-          error: error.message
-        });
-        errorCount++;
+        console.error(`[${importId}] Error processing item ${i}:`, error);
       }
     }
+    
+    console.log(`[${importId}] Step 1 completed: ${processedItems.length} items processed`);
 
-    console.log(`Bulk import completed. Success: ${successCount}, Errors: ${errorCount}`);
+    // Batch check for existing items
+    console.log(`[${importId}] Step 2: Checking for existing items...`);
+    const existingItems = await Item.find({ 
+      userId, 
+      itemId: { $in: itemIds } 
+    }).lean();
+    
+    console.log(`[${importId}] Found ${existingItems.length} existing items`);
+
+    const existingItemIds = new Set(existingItems.map(item => item.itemId));
+    
+    // Separate new and existing items
+    console.log(`[${importId}] Step 3: Separating new and existing items...`);
+    const newItems = [];
+    const updateOperations = [];
+    
+    processedItems.forEach(processedData => {
+      if (existingItemIds.has(processedData.itemId)) {
+        // Prepare update operation
+        updateOperations.push({
+          updateOne: {
+            filter: { userId, itemId: processedData.itemId },
+            update: { $set: processedData },
+            upsert: false
+          }
+        });
+      } else {
+        // Prepare insert operation
+        newItems.push(processedData);
+      }
+    });
+    
+    console.log(`[${importId}] Step 3 completed: ${newItems.length} new items, ${updateOperations.length} updates`);
+
+    let successCount = 0;
+    let errorCount = 0;
+    const results = [];
+
+    // Batch insert new items
+    if (newItems.length > 0) {
+      console.log(`[${importId}] Step 4: Inserting ${newItems.length} new items...`);
+      try {
+        const insertStartTime = Date.now();
+        const insertResult = await Item.insertMany(newItems, { 
+          ordered: false, // Continue on errors
+          rawResult: true 
+        });
+        const insertTime = Date.now() - insertStartTime;
+        
+        successCount += insertResult.insertedCount || newItems.length;
+        console.log(`[${importId}] Insert completed in ${insertTime}ms: ${insertResult.insertedCount || newItems.length} items inserted`);
+        
+        // Add results for inserted items
+        newItems.forEach(item => {
+          results.push({
+            itemId: item.itemId,
+            status: 'created',
+            data: item
+          });
+        });
+      } catch (error) {
+        console.error(`[${importId}] Error in batch insert:`, error);
+        errorCount += newItems.length;
+        newItems.forEach(item => {
+          results.push({
+            itemId: item.itemId,
+            status: 'error',
+            error: error.message
+          });
+        });
+      }
+    } else {
+      console.log(`[${importId}] No new items to insert`);
+    }
+
+    // Batch update existing items
+    if (updateOperations.length > 0) {
+      console.log(`[${importId}] Step 5: Updating ${updateOperations.length} existing items...`);
+      try {
+        const updateStartTime = Date.now();
+        const updateResult = await Item.bulkWrite(updateOperations, { 
+          ordered: false // Continue on errors
+        });
+        const updateTime = Date.now() - updateStartTime;
+        
+        successCount += updateResult.modifiedCount || updateOperations.length;
+        console.log(`[${importId}] Update completed in ${updateTime}ms: ${updateResult.modifiedCount || updateOperations.length} items updated`);
+        
+        // Add results for updated items
+        updateOperations.forEach(op => {
+          results.push({
+            itemId: op.updateOne.filter.itemId,
+            status: 'updated',
+            data: op.updateOne.update.$set
+          });
+        });
+      } catch (error) {
+        console.error(`[${importId}] Error in batch update:`, error);
+        errorCount += updateOperations.length;
+        updateOperations.forEach(op => {
+          results.push({
+            itemId: op.updateOne.filter.itemId,
+            status: 'error',
+            error: error.message
+          });
+        });
+      }
+    } else {
+      console.log(`[${importId}] No items to update`);
+    }
+
+    const endTime = Date.now();
+    const processingTime = endTime - startTime;
+    
+    console.log(`[${importId}] Bulk import completed in ${processingTime}ms. Success: ${successCount}, Errors: ${errorCount}`);
+    console.log(`[${importId}] Sending response to client...`);
 
     res.status(200).json({
       success: true,
-      message: `Bulk import completed. ${successCount} items processed successfully, ${errorCount} failed.`,
+      message: `Bulk import completed in ${processingTime}ms. ${successCount} items processed successfully, ${errorCount} failed.`,
       data: {
         totalItems: items.length,
         successCount,
         errorCount,
-        results
+        processingTime,
+        results: results.slice(0, 100) // Limit results to first 100 for performance
       }
     });
+    
+    console.log(`[${importId}] Response sent successfully`);
   } catch (err) {
-    console.error('Bulk import error:', err);
+    console.error(`[${importId}] Bulk import error:`, err);
+    console.error(`[${importId}] Error stack:`, err.stack);
     res.status(500).json({ 
       success: false, 
-      message: 'Bulk import failed: ' + err.message 
+      message: 'Internal server error during bulk import',
+      error: err.message 
     });
   }
 };

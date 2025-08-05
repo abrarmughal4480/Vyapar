@@ -74,4 +74,8 @@ module.exports = {
   	}
   },
   plugins: [require("tailwindcss-animate")],
+  // Suppress deprecated CSS warnings
+  future: {
+    hoverOnlyWhenSupported: true,
+  },
 }

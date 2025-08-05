@@ -6,7 +6,7 @@ import { useExport, ExportColumn } from '../../hooks/useExport'
 import { getItems, deleteItem } from '../../../http/items'
 import { ITEM_CATEGORIES } from '../../constants/categories'
 import Toast from '../../components/Toast'
-import { jwtDecode } from 'jwt-decode'
+import { getToken, getUserIdFromToken } from '../../lib/auth'
 import ReactDOM from 'react-dom'
 import { getCurrentUserInfo, canAddData, canEditData, canDeleteData } from '../../../lib/roleAccessControl'
 
@@ -291,15 +291,8 @@ export default function ItemsPage() {
     const currentUserInfo = getCurrentUserInfo();
     setUserInfo(currentUserInfo);
     
-    const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
-    let userId = '';
-    if (token) {
-      try {
-        const decoded: any = jwtDecode(token);
-        userId = decoded._id || decoded.id || '';
-      } catch {}
-    }
-    setBusinessId(userId);
+    const userId = getUserIdFromToken();
+    setBusinessId(userId || '');
   }, [])
 
   useEffect(() => {
@@ -308,7 +301,11 @@ export default function ItemsPage() {
 
   const fetchItems = async () => {
     try {
-      const token = localStorage.getItem('token') || '';
+      const token = getToken();
+      if (!token) {
+        setError('Authentication token not found. Please login again.');
+        return;
+      }
       const result = await getItems(businessId, token);
       if (result.success) {
         setItems(result.data)
@@ -406,8 +403,16 @@ export default function ItemsPage() {
     const id = item.itemId || item._id || '';
     if (!businessId || !id) return;
     if (!window.confirm('Are you sure you want to delete this item?')) return;
+    
     try {
-      const result = await deleteItem(businessId, id);
+      // Get token using utility function
+      const token = getToken();
+      if (!token) {
+        setToast({ message: 'Authentication token not found. Please login again.', type: 'error' });
+        return;
+      }
+      
+      const result = await deleteItem(businessId, id, token);
       if (result.success) {
         setToast({ message: 'Item deleted successfully!', type: 'success' });
         fetchItems();

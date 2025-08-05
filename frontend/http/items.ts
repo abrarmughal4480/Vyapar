@@ -30,18 +30,34 @@ export async function addItem(userId: string, item: any, token: string) {
   return res.json();
 }
 
-export async function bulkImportItems(userId: string, items: any[]) {
+export async function bulkImportItems(userId: string, items: any[], token: string) {
   try {
+    // Calculate timeout based on number of items (faster for smaller batches)
+    const timeoutMs = Math.min(30000 + (items.length * 50), 120000); // 30s-2min based on size
+    
+    console.log(`Starting bulk import request for ${items.length} items with ${timeoutMs}ms timeout`);
+    console.log('Request URL:', `${API_BASE_URL}/items/${userId}/bulk-import`);
+    console.log('Token present:', !!token);
+    console.log('Items sample:', items.slice(0, 2));
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
     const res = await fetch(`${API_BASE_URL}/items/${userId}/bulk-import`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({ items }),
-      // Increase timeout for large payloads
-      signal: AbortSignal.timeout(300000) // 5 minutes timeout
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
+    
+    console.log(`Bulk import response received: ${res.status} ${res.statusText}`);
+    console.log('Response headers:', Object.fromEntries(res.headers.entries()));
     
     if (!res.ok) {
       const errorText = await res.text();
@@ -49,20 +65,36 @@ export async function bulkImportItems(userId: string, items: any[]) {
       
       if (res.status === 413) {
         throw new Error('Payload too large. Please try importing fewer items at once.');
+      } else if (res.status === 401) {
+        throw new Error('Authentication failed. Please login again.');
+      } else if (res.status === 403) {
+        throw new Error('Access denied. You may not have permission to import items.');
+      } else if (res.status === 500) {
+        throw new Error('Server error. Please try again later.');
       }
       throw new Error(`HTTP ${res.status}: ${errorText}`);
     }
     
-    return res.json();
-  } catch (error) {
+    const result = await res.json();
+    console.log('Bulk import successful result:', result);
+    return result;
+  } catch (error: any) {
     console.error('Bulk import error:', error);
+    
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out. Please try with fewer items or check your connection.');
+    }
+    
     throw error;
   }
 }
 
-export async function deleteItem(userId: string, itemId: string) {
+export async function deleteItem(userId: string, itemId: string, token: string) {
   const res = await fetch(`${API_BASE_URL}/items/${userId}/${itemId}`, {
     method: 'DELETE',
+    headers: { 
+      'Authorization': `Bearer ${token}`
+    }
   });
   return res.json();
 }

@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+
+  output: 'export',
   // Remove standalone output for Next.js 14 compatibility
   trailingSlash: true,
   images: {
@@ -19,6 +21,8 @@ const nextConfig: NextConfig = {
   },
   // Handle static assets properly
   assetPrefix: process.env.NODE_ENV === 'production' ? undefined : '',
+  // Suppress hydration warnings for browser extension attributes
+  reactStrictMode: false,
 };
 
 export default nextConfig;

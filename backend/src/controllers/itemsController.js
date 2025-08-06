@@ -161,7 +161,7 @@ export const addItem = async (req, res) => {
     const item = new Item({ ...processedData, itemId });
     await item.save();
     const itemObj = item.toObject();
-    itemObj.unit = typeof itemObj.unit === 'object' ? getUnitDisplay(itemObj.unit) : itemObj.unit;
+    // Keep the original unit object structure for frontend price conversion
     // Log what was actually saved
     console.log('SAVED openingQuantity:', itemObj.openingQuantity, 'minStock:', itemObj.minStock, 'location:', itemObj.location);
     console.log('SAVED unit:', itemObj.unit);
@@ -367,12 +367,13 @@ export const getItems = async (req, res) => {
   try {
     const userId = req.params.userId;
     const items = await Item.find({ userId });
-    const itemsWithUnitString = items.map(item => {
+    // Keep the original unit object structure for frontend price conversion
+    const itemsWithOriginalUnit = items.map(item => {
       const itemObj = item.toObject();
-      itemObj.unit = typeof itemObj.unit === 'object' ? getUnitDisplay(itemObj.unit) : itemObj.unit;
+      // Don't convert unit to string, keep the object structure
       return itemObj;
     });
-    res.json({ success: true, data: itemsWithUnitString });
+    res.json({ success: true, data: itemsWithOriginalUnit });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -387,13 +388,14 @@ export const getItemsByLoggedInUser = async (req, res) => {
     console.log('User object:', req.user);
     if (!userId) return res.status(401).json({ success: false, message: 'User not authenticated' });
     const items = await Item.find({ userId });
-    const itemsWithUnitString = items.map(item => {
+    // Keep the original unit object structure for frontend price conversion
+    const itemsWithOriginalUnit = items.map(item => {
       const itemObj = item.toObject();
-      itemObj.unit = typeof itemObj.unit === 'object' ? getUnitDisplay(itemObj.unit) : itemObj.unit;
+      // Don't convert unit to string, keep the object structure
       return itemObj;
     });
     console.log('Found items:', items);
-    res.json({ success: true, data: itemsWithUnitString });
+    res.json({ success: true, data: itemsWithOriginalUnit });
   } catch (err) {
     console.error('Error in getItemsByLoggedInUser:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -485,7 +487,7 @@ export const updateItem = async (req, res) => {
 
     const updated = await Item.findOneAndUpdate({ userId, itemId }, processedData, { new: true });
     const updatedObj = updated.toObject();
-    updatedObj.unit = typeof updatedObj.unit === 'object' ? getUnitDisplay(updatedObj.unit) : updatedObj.unit;
+    // Keep the original unit object structure for frontend price conversion
     // Log what was actually updated
     console.log('UPDATED openingQuantity:', updatedObj.openingQuantity, 'minStock:', updatedObj.minStock, 'location:', updatedObj.location);
     console.log('UPDATED unit:', updatedObj.unit);

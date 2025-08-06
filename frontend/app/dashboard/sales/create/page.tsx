@@ -99,13 +99,13 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
     const factor = unit.conversionFactor;
     let convertedPrice = price;
     
-    // If converting from base to secondary, divide by factor (price per unit decreases)
+    // If converting from base to secondary, multiply by factor (price per unit increases)
     if (fromUnit === unit.base && toUnit === unit.secondary) {
-      convertedPrice = price / factor;
-    }
-    // If converting from secondary to base, multiply by factor (price per unit increases)
-    else if (fromUnit === unit.secondary && toUnit === unit.base) {
       convertedPrice = price * factor;
+    }
+    // If converting from secondary to base, divide by factor (price per unit decreases)
+    else if (fromUnit === unit.secondary && toUnit === unit.base) {
+      convertedPrice = price / factor;
     }
     
     // Round to 2 decimal places for price
@@ -116,13 +116,13 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
   if (typeof unit === 'string' && unit.includes(' / ')) {
     const parts = unit.split(' / ');
     if (parts.length === 2) {
-      // Simple conversion: if going from first to second unit, divide by 10
+      // Simple conversion: if going from first to second unit, multiply by 10
       // This is a fallback conversion factor
       if (fromUnit === parts[0] && toUnit === parts[1]) {
-        return (Math.round(price / 10 * 100) / 100).toFixed(2);
+        return (Math.round(price * 10 * 100) / 100).toFixed(2);
       }
       if (fromUnit === parts[1] && toUnit === parts[0]) {
-        return (Math.round(price * 10 * 100) / 100).toFixed(2);
+        return (Math.round(price / 10 * 100) / 100).toFixed(2);
       }
     }
   }
@@ -472,6 +472,8 @@ export default function CreateSalesOrderPage() {
     // Add state for item and unit dropdown highlight
     const [itemDropdownIndex, setItemDropdownIndex] = useState(0);
     const [unitDropdownIndex, setUnitDropdownIndex] = useState(0);
+    const [isKeyboardNavigating, setIsKeyboardNavigating] = useState(false);
+    const [unitDropdownOpen, setUnitDropdownOpen] = useState(false);
 
     const updateDropdownPosition = () => {
       if (inputRef.current) {
@@ -563,31 +565,55 @@ export default function CreateSalesOrderPage() {
               setItemDropdownIndex(0); // reset highlight
             }}
             onFocus={handleFocus}
-            onBlur={() => setTimeout(() => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false })), 200)}
+            onBlur={() => {
+              // Use a longer timeout to allow for keyboard navigation
+              setTimeout(() => {
+                // Only close if the focus is not within the dropdown
+                const activeElement = document.activeElement;
+                const dropdown = document.querySelector(`[data-dropdown-id="${item.id}"]`);
+                if (!dropdown?.contains(activeElement)) {
+                  setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+                }
+              }, 300);
+            }}
             className="item-dropdown-input w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
             placeholder="Enter item name..."
             data-testid={`item-input-${item.id}`}
             onKeyDown={e => {
-              console.log('KEY:', e.key, 'showItemSuggestions:', showItemSuggestions[item.id]);
+              console.log('Items dropdown key pressed:', e.key, 'Dropdown open:', showItemSuggestions[item.id], 'Current index:', itemDropdownIndex);
+              
               if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
                 e.preventDefault();
                 e.stopPropagation();
               }
-              if (!showItemSuggestions[item.id]) return;
+              
+              if (!showItemSuggestions[item.id]) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  handleFocus();
+                }
+                return;
+              }
+              
               const filtered = itemSuggestions.filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
               const optionsCount = filtered.length;
-              if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
-                e.preventDefault();
-                e.stopPropagation();
-              }
+              
+              console.log('Filtered items count:', optionsCount, 'Current index:', itemDropdownIndex);
+              
               if (e.key === 'ArrowDown') {
-                setItemDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
+                setIsKeyboardNavigating(true);
+                const newIndex = Math.min(itemDropdownIndex + 1, optionsCount - 1);
+                console.log('ArrowDown: setting index to', newIndex);
+                setItemDropdownIndex(newIndex);
               } else if (e.key === 'ArrowUp') {
-                setItemDropdownIndex(i => Math.max(i - 1, 0));
+                setIsKeyboardNavigating(true);
+                const newIndex = Math.max(itemDropdownIndex - 1, 0);
+                console.log('ArrowUp: setting index to', newIndex);
+                setItemDropdownIndex(newIndex);
               } else if (e.key === 'Enter') {
                 const idx = itemDropdownIndex;
                 const selected = filtered[idx];
                 if (selected) {
+                  setIsKeyboardNavigating(false);
                   handleItemChange(item.id, 'item', selected.name);
                   const unitDisplay = getUnitDisplay(selected.unit);
                   handleItemChange(item.id, 'unit', unitDisplay);
@@ -596,12 +622,17 @@ export default function CreateSalesOrderPage() {
                   setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                 }
               } else if (e.key === 'Escape') {
+                setIsKeyboardNavigating(false);
                 setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
               }
             }}
           />
           {showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
-            <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+            <ul 
+              style={dropdownStyle} 
+              className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-dropdown-scrollbar"
+              data-dropdown-id={item.id}
+            >
               {itemSuggestions
                 .filter((i: any) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()))
                 .map((i: any, idx: number) => (
@@ -611,6 +642,7 @@ export default function CreateSalesOrderPage() {
                     onMouseDown={e => {
                       e.preventDefault();
                       e.stopPropagation();
+                      setIsKeyboardNavigating(false);
                       handleItemChange(item.id, 'item', i.name);
                       const unitDisplay = getUnitDisplay(i.unit);
                       handleItemChange(item.id, 'unit', unitDisplay);
@@ -618,13 +650,46 @@ export default function CreateSalesOrderPage() {
                       handleItemChange(item.id, 'qty', '1');
                       setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                     }}
-                    ref={el => { if (itemDropdownIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
+                    ref={el => { 
+                      // Only scroll when actively navigating with keyboard
+                      if (itemDropdownIndex === idx && el && isKeyboardNavigating) {
+                        const container = el.closest('ul');
+                        if (container) {
+                          const elementTop = el.offsetTop;
+                          const elementHeight = el.offsetHeight;
+                          const containerHeight = container.clientHeight;
+                          const scrollTop = container.scrollTop;
+                          
+                          // Check if element is outside visible area
+                          if (elementTop < scrollTop || elementTop + elementHeight > scrollTop + containerHeight) {
+                            // Scroll to keep element in view
+                            container.scrollTo({
+                              top: Math.max(0, elementTop - containerHeight / 2),
+                              behavior: 'smooth'
+                            });
+                          }
+                        }
+                      }
+                    }}
                     role="option"
                     aria-selected={itemDropdownIndex === idx}
+                    tabIndex={0}
+                    onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleItemChange(item.id, 'item', i.name);
+                        const unitDisplay = getUnitDisplay(i.unit);
+                        handleItemChange(item.id, 'unit', unitDisplay);
+                        handleItemChange(item.id, 'price', i.salePrice || 0);
+                        handleItemChange(item.id, 'qty', '1');
+                        setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+                      }
+                    }}
                   >
                     <div className="flex justify-between items-center">
                       <span className="font-medium text-gray-800">{i.name}</span>
-                      <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock ?? 0}</span>
+                      <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock ?? 0}</span>
                     </div>
                   </li>
                 ))}
@@ -668,8 +733,8 @@ export default function CreateSalesOrderPage() {
               }
               handleItemChange(item.id, 'unit', val);
             }}
-            dropdownIndex={0}
-            setDropdownIndex={() => {}}
+            dropdownIndex={unitDropdownIndex}
+            setDropdownIndex={setUnitDropdownIndex}
             optionsCount={unitOptions.length}
           />
           {item.unit === 'Custom' && (
@@ -809,6 +874,11 @@ export default function CreateSalesOrderPage() {
           disabled={disabled}
           tabIndex={0}
           onKeyDown={(e: React.KeyboardEvent<HTMLButtonElement>) => {
+            if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+            
             if (e.key === 'ArrowDown') {
               setDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
             } else if (e.key === 'ArrowUp') {
@@ -841,9 +911,35 @@ export default function CreateSalesOrderPage() {
                 className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'} ${dropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
                 onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); }}
                 tabIndex={0}
-                onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { if (e.key === 'Enter') { onChange(opt.value); setOpen(false); }}}
+                onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { 
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onChange(opt.value); 
+                    setOpen(false);
+                  }
+                }}
                 aria-selected={value === opt.value}
-                ref={el => { if (dropdownIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
+                ref={el => { 
+                  if (dropdownIndex === idx && el) {
+                    const container = el.closest('ul');
+                    if (container) {
+                      const elementTop = el.offsetTop;
+                      const elementHeight = el.offsetHeight;
+                      const containerHeight = container.clientHeight;
+                      const scrollTop = container.scrollTop;
+                      
+                      // Check if element is outside visible area
+                      if (elementTop < scrollTop || elementTop + elementHeight > scrollTop + containerHeight) {
+                        // Scroll to keep element in view
+                        container.scrollTo({
+                          top: Math.max(0, elementTop - containerHeight / 2),
+                          behavior: 'smooth'
+                        });
+                      }
+                    }
+                  }
+                }}
               >
                 {opt.label}
               </li>
@@ -948,7 +1044,7 @@ export default function CreateSalesOrderPage() {
                   {searchDropdownOpen && (
                     <div className="absolute left-0 right-0 mt-1 w-full z-50">
                       {(customerSuggestions.length > 0 || true) ? (
-                        <ul className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        <ul className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-dropdown-scrollbar">
                           {/* Add Customer option at the top */}
                           <li
                             className={`px-4 py-2 cursor-pointer text-blue-600 font-semibold hover:bg-blue-50 rounded-t-lg ${customerDropdownIndex === 0 ? 'bg-blue-100 text-blue-700' : ''}`}
@@ -958,7 +1054,26 @@ export default function CreateSalesOrderPage() {
                               router.push('/dashboard/parties?addParty=1');
                               setSearchDropdownOpen(false);
                             }}
-                            ref={el => { if (customerDropdownIndex === 0 && el) el.scrollIntoView({ block: 'nearest' }); }}
+                            ref={el => { 
+                              if (customerDropdownIndex === 0 && el) {
+                                const container = el.closest('ul');
+                                if (container) {
+                                  const elementTop = el.offsetTop;
+                                  const elementHeight = el.offsetHeight;
+                                  const containerHeight = container.clientHeight;
+                                  const scrollTop = container.scrollTop;
+                                  
+                                  // Check if element is outside visible area
+                                  if (elementTop < scrollTop || elementTop + elementHeight > scrollTop + containerHeight) {
+                                    // Scroll to keep element in view
+                                    container.scrollTo({
+                                      top: Math.max(0, elementTop - containerHeight / 2),
+                                      behavior: 'smooth'
+                                    });
+                                  }
+                                }
+                              }
+                            }}
                             role="option"
                             aria-selected={customerDropdownIndex === 0}
                           >
@@ -979,7 +1094,26 @@ export default function CreateSalesOrderPage() {
                                   setFormData(prev => ({ ...prev, customer: party.name, phone: party.phone || '' }));
                                   setSearchDropdownOpen(false);
                                 }}
-                                ref={el => { if (customerDropdownIndex === idx + 1 && el) el.scrollIntoView({ block: 'nearest' }); }}
+                                ref={el => { 
+                                  if (customerDropdownIndex === idx + 1 && el) {
+                                    const container = el.closest('ul');
+                                    if (container) {
+                                      const elementTop = el.offsetTop;
+                                      const elementHeight = el.offsetHeight;
+                                      const containerHeight = container.clientHeight;
+                                      const scrollTop = container.scrollTop;
+                                      
+                                      // Check if element is outside visible area
+                                      if (elementTop < scrollTop || elementTop + elementHeight > scrollTop + containerHeight) {
+                                        // Scroll to keep element in view
+                                        container.scrollTo({
+                                          top: Math.max(0, elementTop - containerHeight / 2),
+                                          behavior: 'smooth'
+                                        });
+                                      }
+                                    }
+                                  }
+                                }}
                                 role="option"
                                 aria-selected={customerDropdownIndex === idx + 1}
                               >

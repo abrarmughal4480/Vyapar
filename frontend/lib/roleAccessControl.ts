@@ -1,8 +1,25 @@
 // Role-based access control for frontend
 // This file handles all permission checks before making API calls
 
+// Define role types
+type UserRole = 'SECONDARY ADMIN' | 'SALESMAN' | 'CA' | 'PURCHASER' | 'Default Admin';
+
+// Define user info interface
+interface UserInfo {
+  email: string;
+  role: UserRole;
+  context: string;
+  companyId: string | null;
+  originalUserId?: string;
+}
+
 // Define page permissions for each role
-const PAGE_PERMISSIONS = {
+const PAGE_PERMISSIONS: Record<UserRole, {
+  pages: string[];
+  operations: string[];
+  restrictedPages: string[];
+  restrictedOperations: string[];
+}> = {
   'SECONDARY ADMIN': {
     pages: ['dashboard', 'parties', 'items', 'sales', 'purchases', 'reports', 'settings'],
     operations: ['view', 'add', 'edit', 'delete', 'share', 'preview', 'reopen'],
@@ -26,11 +43,17 @@ const PAGE_PERMISSIONS = {
     operations: ['view', 'add', 'share', 'preview'],
     restrictedPages: ['add-user', 'sales', 'payment-in', 'sale-order', 'credit-note', 'estimate', 'expense'],
     restrictedOperations: ['add-user', 'delete-user', 'edit-user-permissions', 'delete', 'edit']
+  },
+  'Default Admin': {
+    pages: ['all'],
+    operations: ['all'],
+    restrictedPages: [],
+    restrictedOperations: []
   }
 };
 
 // Get current user info from token
-export const getCurrentUserInfo = () => {
+export const getCurrentUserInfo = (): UserInfo | null => {
   try {
     const token = localStorage.getItem('token');
     if (!token) return null;
@@ -39,7 +62,7 @@ export const getCurrentUserInfo = () => {
     
     return {
       email: tokenPayload.email || tokenPayload.userEmail,
-      role: tokenPayload.context === 'company' ? tokenPayload.role : 'Default Admin',
+      role: (tokenPayload.context === 'company' ? tokenPayload.role : 'Default Admin') as UserRole,
       context: tokenPayload.context,
       companyId: tokenPayload.context === 'company' ? tokenPayload.id : null,
       originalUserId: tokenPayload.originalUserId

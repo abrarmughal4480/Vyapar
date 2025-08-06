@@ -67,6 +67,39 @@ function CustomDropdown({ options, value, onChange, className = '', placeholder 
     }
   }, [open]);
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (disabled) return;
+    
+    if (!open) {
+      // When dropdown is closed, open it with Space, Enter, or ArrowDown
+      if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        setOpen(true);
+        setDropdownIndex(0);
+      }
+      return;
+    }
+
+    // When dropdown is open, handle navigation
+    if (["ArrowDown", "ArrowUp", "Enter", "Escape", " "].includes(e.key)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    if (e.key === 'ArrowDown') {
+      setDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
+    } else if (e.key === 'ArrowUp') {
+      setDropdownIndex(i => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      if (dropdownIndex >= 0 && dropdownIndex < options.length) {
+        onChange(options[dropdownIndex].value);
+        setOpen(false);
+      }
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+    }
+  };
+
   return (
     <div ref={ref} className={`relative ${disabled ? 'opacity-60 pointer-events-none' : ''} ${className}`}> 
       <button
@@ -74,8 +107,12 @@ function CustomDropdown({ options, value, onChange, className = '', placeholder 
         type="button"
         className={`w-full px-3 py-2 border-2 border-blue-100 rounded-lg bg-white flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-blue-200 appearance-none transition-all ${open ? 'ring-2 ring-blue-300' : ''}`}
         onClick={() => setOpen((v) => !v)}
+        onKeyDown={handleKeyDown}
         disabled={disabled}
         tabIndex={0}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={placeholder}
       >
         <span className="truncate text-left">{options.find((o: DropdownOption) => o.value === value)?.label || placeholder}</span>
         <span className={`ml-2 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}>
@@ -87,6 +124,8 @@ function CustomDropdown({ options, value, onChange, className = '', placeholder 
           style={dropdownStyle}
           className="bg-white border-2 border-blue-100 rounded-lg shadow-lg animate-fadeinup custom-dropdown-scrollbar"
           onMouseDown={e => e.preventDefault()}
+          role="listbox"
+          aria-label={placeholder}
         >
           {options.map((opt: DropdownOption, idx: number) => (
             <li
@@ -94,8 +133,17 @@ function CustomDropdown({ options, value, onChange, className = '', placeholder 
               className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'} ${dropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
               onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); setDropdownIndex(idx); }}
               tabIndex={0}
-              onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { if (e.key === 'Enter') { onChange(opt.value); setOpen(false); setDropdownIndex(idx); }}}
+              onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { 
+                if (e.key === 'Enter' || e.key === ' ') { 
+                  e.preventDefault();
+                  onChange(opt.value); 
+                  setOpen(false); 
+                  setDropdownIndex(idx); 
+                }
+              }}
               aria-selected={value === opt.value}
+              role="option"
+              ref={el => { if (dropdownIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
             >
               {opt.label}
             </li>
@@ -115,7 +163,7 @@ function getUnitDisplay(unit: any) {
     const base = unit.base || 'NONE';
     const secondary = unit.secondary && unit.secondary !== 'None' ? unit.secondary : null;
     
-    // Return secondary unit if available, otherwise return base unit
+    // Return secondary unit as default (Carton), not base unit (Box)
     return secondary || base;
   }
   
@@ -123,7 +171,7 @@ function getUnitDisplay(unit: any) {
   if (typeof unit === 'string') {
     if (unit.includes(' / ')) {
       const parts = unit.split(' / ');
-      // Return the second part (secondary unit) if available, otherwise first part (base unit)
+      // Return the second part (secondary unit) as default
       return parts[1] || parts[0];
     }
     return unit || 'NONE';
@@ -152,7 +200,7 @@ function getUnitConversionData(unit: any) {
     return {
       base: parts[0],
       secondary: parts[1],
-      conversionFactor: 6 // Default conversion factor, will be updated from item data
+      conversionFactor: 1 // Default conversion factor, will be updated from item data
     };
   }
   
@@ -172,14 +220,18 @@ function convertQuantity(currentQty: string, currentUnit: string, newUnit: strin
   const unitData = getUnitConversionData(itemData.unit);
   if (!unitData) return currentQty;
   
+  // Use the actual conversion factor from item data if available
+  const conversionFactor = itemData.unit && typeof itemData.unit === 'object' ? 
+    itemData.unit.conversionFactor : unitData.conversionFactor;
+  
   // Convert from base to secondary or vice versa
   if (newUnit === unitData.base && currentUnit === unitData.secondary) {
     // Converting from secondary to base (multiply by conversion factor)
-    const convertedQty = qty * unitData.conversionFactor;
+    const convertedQty = qty * conversionFactor;
     return Math.round(convertedQty).toString();
   } else if (newUnit === unitData.secondary && currentUnit === unitData.base) {
     // Converting from base to secondary (divide by conversion factor)
-    const convertedQty = qty / unitData.conversionFactor;
+    const convertedQty = qty / conversionFactor;
     return Math.round(convertedQty).toString();
   }
   
@@ -199,14 +251,18 @@ function convertPrice(currentPrice: string, currentUnit: string, newUnit: string
   const unitData = getUnitConversionData(itemData.unit);
   if (!unitData) return currentPrice;
   
+  // Use the actual conversion factor from item data if available
+  const conversionFactor = itemData.unit && typeof itemData.unit === 'object' ? 
+    itemData.unit.conversionFactor : unitData.conversionFactor;
+  
   // Convert price based on unit change
   if (newUnit === unitData.base && currentUnit === unitData.secondary) {
     // Converting from secondary to base (divide price by conversion factor)
-    const convertedPrice = price / unitData.conversionFactor;
+    const convertedPrice = price / conversionFactor;
     return (Math.round(convertedPrice * 100) / 100).toFixed(2); // Round to 2 decimal places
   } else if (newUnit === unitData.secondary && currentUnit === unitData.base) {
     // Converting from base to secondary (multiply price by conversion factor)
-    const convertedPrice = price * unitData.conversionFactor;
+    const convertedPrice = price * conversionFactor;
     return (Math.round(convertedPrice * 100) / 100).toFixed(2); // Round to 2 decimal places
   }
   
@@ -364,8 +420,19 @@ function ItemRow({
                 handleItemChange(item.id, 'item', selected.name);
                 const unitDisplay = getUnitDisplay(selected.unit);
                 handleItemChange(item.id, 'unit', unitDisplay);
-                // Use salePrice as default, wholesale logic will be applied when quantity changes
-                handleItemChange(item.id, 'price', selected.salePrice || 0);
+                
+                // Set price based on the selected unit
+                let initialPrice = selected.salePrice || 0;
+                
+                if (selected.unit && typeof selected.unit === 'object' && selected.unit.base && selected.unit.secondary) {
+                  // If the default unit is secondary unit (Carton), salePrice is already correct
+                  // If user selects base unit (Box), convert price from secondary to base
+                  if (unitDisplay === selected.unit.base && selected.unit.conversionFactor) {
+                    // salePrice is for secondary unit (Carton), so convert to base unit (Box)
+                    initialPrice = (selected.salePrice || 0) / selected.unit.conversionFactor;
+                  }
+                }
+                handleItemChange(item.id, 'price', initialPrice);
                 handleItemChange(item.id, 'qty', '');
                 setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
               }
@@ -388,8 +455,19 @@ function ItemRow({
                     handleItemChange(item.id, 'item', i.name);
                     const unitDisplay = getUnitDisplay(i.unit);
                     handleItemChange(item.id, 'unit', unitDisplay);
-                    // Use salePrice as default, wholesale logic will be applied when quantity changes
-                    handleItemChange(item.id, 'price', i.salePrice || 0);
+                    
+                    // Set price based on the selected unit
+                    let initialPrice = i.salePrice || 0;
+                    
+                    if (i.unit && typeof i.unit === 'object' && i.unit.base && i.unit.secondary) {
+                      // If the default unit is secondary unit (Carton), salePrice is already correct
+                      // If user selects base unit (Box), convert price from secondary to base
+                      if (unitDisplay === i.unit.base && i.unit.conversionFactor) {
+                        // salePrice is for secondary unit (Carton), so convert to base unit (Box)
+                        initialPrice = (i.salePrice || 0) / i.unit.conversionFactor;
+                      }
+                    }
+                    handleItemChange(item.id, 'price', initialPrice);
                     handleItemChange(item.id, 'qty', '');
                     setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                   }}
@@ -399,7 +477,7 @@ function ItemRow({
                 >
                   <div className="flex justify-between items-center">
                     <span className="font-medium text-gray-800">{i.name}</span>
-                    <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock ?? 0}</span>
+                    <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock ?? 0}</span>
                   </div>
                 </li>
               ))}
@@ -447,8 +525,8 @@ function ItemRow({
             }
             handleItemChange(item.id, 'unit', val);
           }}
-          dropdownIndex={0}
-          setDropdownIndex={() => {}}
+          dropdownIndex={unitDropdownIndex}
+          setDropdownIndex={setUnitDropdownIndex}
           optionsCount={unitOptions.length}
         />
         {item.unit === 'Custom' && (
@@ -494,7 +572,7 @@ function ItemRow({
         </div>
       </td>
       <td className="py-2 px-2">
-        <span className="text-gray-900 font-semibold">{isNaN(item.amount) ? '0.00' : item.amount.toFixed(2)} {item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? item.unit : ''}</span>
+        <span className="text-gray-900 font-semibold">{isNaN(item.amount) ? '0.00' : item.amount.toFixed(2)} {item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? (typeof item.unit === 'object' ? getUnitDisplay(item.unit) : item.unit) : ''}</span>
       </td>
       <td className="py-2 px-2 flex gap-1">
         {newSale.items.length > 1 && (
@@ -726,14 +804,11 @@ const AddSalePage = () => {
               updated.customUnit = '';
             }
             
-            // If quantity is changing, recalculate price based on wholesale logic
+            // If quantity is changing, DON'T recalculate price - only amount should change
+            // Price should only change when unit changes, not when quantity changes
             if (field === 'qty') {
-              const selectedItem = itemSuggestions.find(i => i.name === item.item);
-              if (selectedItem) {
-                const newPrice = calculatePriceForQuantity(value, selectedItem);
-                updated.price = newPrice.toString();
-                console.log(`Wholesale price calculation: qty=${value}, minWholesaleQty=${selectedItem.minimumWholesaleQuantity}, wholesalePrice=${selectedItem.wholesalePrice}, newPrice=${newPrice}`);
-              }
+              // Keep the existing price, don't change it
+              console.log(`Quantity changed to ${value}, keeping existing price: ${item.price}`);
             }
             
             // Always recalculate amount when qty, price, or unit changes

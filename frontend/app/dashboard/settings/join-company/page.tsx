@@ -29,6 +29,7 @@ export default function JoinCompanyPage() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' });
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [companySwitchLoading, setCompanySwitchLoading] = useState<boolean>(false);
   const joinedCompanies = invites.filter(invite => invite.status === 'Accepted');
   
   // Load selected company from localStorage on component mount
@@ -185,15 +186,17 @@ export default function JoinCompanyPage() {
         localStorage.setItem('token', data.token);
         localStorage.setItem('originalToken', originalToken); // Keep original for reset
         
-
-        
         setToast({
           show: true,
-          message: `Token updated with company ID: ${companyId}`,
+          message: `Successfully switched to company context!`,
           type: 'success'
         });
-      } else {
 
+        // Auto refresh page after 1 second to update all components
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      } else {
         setToast({
           show: true,
           message: 'Failed to switch to company context',
@@ -201,7 +204,7 @@ export default function JoinCompanyPage() {
         });
       }
     } catch (error) {
-              // Silent error handling
+      // Silent error handling
       setToast({
         show: true,
         message: 'Error switching context',
@@ -218,16 +221,19 @@ export default function JoinCompanyPage() {
         localStorage.setItem('token', originalToken);
         localStorage.removeItem('originalToken');
         
-
-        
         setToast({
           show: true,
-          message: 'Token reset to original user',
+          message: 'Successfully switched back to user context!',
           type: 'success'
         });
+
+        // Auto refresh page after 1 second to update all components
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
       }
     } catch (error) {
-              // Silent error handling
+      // Silent error handling
     }
   };
 
@@ -248,45 +254,50 @@ export default function JoinCompanyPage() {
         </div>
         <div className="w-full md:w-auto flex justify-end">
           {joinedCompanies.length > 0 && (
-            <div className="w-full max-w-xs md:mt-0 mt-2">
-              <label className="block text-gray-700 font-semibold mb-2 text-base">Select Joined Company</label>
-              <div className="flex gap-2">
-                <select
+                          <div className="w-full max-w-xs md:mt-0 mt-2">
+                <label className="block text-gray-700 font-semibold mb-2 text-base">Select Joined Company</label>
+                <div className="flex gap-2 items-center">
+                  <select
                   value={selectedCompany || ''}
-                  onChange={e => {
-                    const oldCompanyId = selectedCompanyId;
-                    const selectedInvite = joinedCompanies.find(c => c.companyName === e.target.value);
-                    let newCompanyId = selectedInvite ? selectedInvite.requestedBy : null;
-                    
-                    
-                    
-                    // If no company selected, use current user's ID
-                    if (!e.target.value && currentUserId) {
-                      newCompanyId = currentUserId;
+                  onChange={async (e) => {
+                    setCompanySwitchLoading(true);
+                    try {
+                      const oldCompanyId = selectedCompanyId;
+                      const selectedInvite = joinedCompanies.find(c => c.companyName === e.target.value);
+                      let newCompanyId = selectedInvite ? selectedInvite.requestedBy : null;
+                      
+                      // If no company selected, use current user's ID
+                      if (!e.target.value && currentUserId) {
+                        newCompanyId = currentUserId;
+                      }
+                      
+                      setSelectedCompany(e.target.value);
+                      setSelectedCompanyId(newCompanyId);
+                      
+                      // Update JWT token with company context
+                      if (newCompanyId && newCompanyId !== currentUserId) {
+                        await updateJWTTokenWithCompanyContext(newCompanyId);
+                      } else if (!e.target.value && currentUserId) {
+                        // Reset to original user token
+                        await resetJWTTokenToUser();
+                      }
+                    } catch (error) {
+                      console.error('Error switching company context:', error);
+                    } finally {
+                      setCompanySwitchLoading(false);
                     }
-                    
-                    setSelectedCompany(e.target.value);
-                    setSelectedCompanyId(newCompanyId);
-                    
-                    // Update JWT token with company context
-                    if (newCompanyId && newCompanyId !== currentUserId) {
-                      updateJWTTokenWithCompanyContext(newCompanyId);
-                    } else if (!e.target.value && currentUserId) {
-                      // Reset to original user token
-                      resetJWTTokenToUser();
-                    }
-                    
-
-
-
                   }}
-                  className="w-full px-4 py-2 border-2 border-indigo-200 rounded-xl bg-white text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                >
-                  <option value="">-- Select Company --</option>
-                  {joinedCompanies.map(c => (
-                    <option key={c._id} value={c.companyName}>{c.companyName}</option>
-                  ))}
-                </select>
+                  className={`w-full px-4 py-2 border-2 border-indigo-200 rounded-xl bg-white text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 ${companySwitchLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={companySwitchLoading}
+                                  >
+                    <option value="">-- My Own Company --</option>
+                    {joinedCompanies.map(c => (
+                      <option key={c._id} value={c.companyName}>{c.companyName}</option>
+                    ))}
+                  </select>
+                  {companySwitchLoading && (
+                    <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                  )}
               </div>
             </div>
           )}

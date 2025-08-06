@@ -103,13 +103,13 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
     const factor = unit.conversionFactor;
     let convertedPrice = price;
     
-    // If converting from base to secondary, divide by factor (price per unit decreases)
+    // If converting from base to secondary, multiply by factor (price per unit increases)
     if (fromUnit === unit.base && toUnit === unit.secondary) {
-      convertedPrice = price / factor;
-    }
-    // If converting from secondary to base, multiply by factor (price per unit increases)
-    else if (fromUnit === unit.secondary && toUnit === unit.base) {
       convertedPrice = price * factor;
+    }
+    // If converting from secondary to base, divide by factor (price per unit decreases)
+    else if (fromUnit === unit.secondary && toUnit === unit.base) {
+      convertedPrice = price / factor;
     }
     
     // Round to 2 decimal places for price
@@ -120,13 +120,13 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
   if (typeof unit === 'string' && unit.includes(' / ')) {
     const parts = unit.split(' / ');
     if (parts.length === 2) {
-      // Simple conversion: if going from first to second unit, divide by 10
+      // Simple conversion: if going from first to second unit, multiply by 10
       // This is a fallback conversion factor
       if (fromUnit === parts[0] && toUnit === parts[1]) {
-        return (Math.round(price / 10 * 100) / 100).toFixed(2);
+        return (Math.round(price * 10 * 100) / 100).toFixed(2);
       }
       if (fromUnit === parts[1] && toUnit === parts[0]) {
-        return (Math.round(price * 10 * 100) / 100).toFixed(2);
+        return (Math.round(price / 10 * 100) / 100).toFixed(2);
       }
     }
   }
@@ -1329,7 +1329,7 @@ export default function AddPurchasePage() {
                                       >
                                         <div className="flex justify-between items-center">
                                           <span className="font-medium text-gray-800">{i.name}</span>
-                                          <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.purchasePrice || 0} • Qty: {i.stock ?? 0}</span>
+                                          <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {i.purchasePrice || 0} • Qty: {i.stock ?? 0}</span>
                                         </div>
                                       </li>
                                       ))

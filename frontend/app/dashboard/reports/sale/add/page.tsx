@@ -105,12 +105,91 @@ function CustomDropdown({ options, value, onChange, className = '', placeholder 
 }
 
 function getUnitDisplay(unit: any) {
-  if (!unit) return '';
-  const base = unit.base === 'custom' ? unit.customBase : unit.base;
-  const secondary = unit.secondary && unit.secondary !== 'None'
-    ? (unit.secondary === 'custom' ? unit.customSecondary : unit.secondary)
-    : '';
-  return secondary ? `${base} / ${secondary}` : base;
+  if (!unit) return 'NONE';
+  
+  // Handle object format with conversion factor
+  if (typeof unit === 'object' && unit.base) {
+    const base = unit.base || 'NONE';
+    const secondary = unit.secondary && unit.secondary !== 'None' ? unit.secondary : null;
+    
+    // Return secondary unit if available, otherwise return base unit
+    return secondary || base;
+  }
+  
+  // Handle string format like "Piece / Packet"
+  if (typeof unit === 'string' && unit.includes(' / ')) {
+    const parts = unit.split(' / ');
+    return parts[1] && parts[1] !== 'None' ? parts[1] : parts[0];
+  }
+  
+  // Fallback for simple string units
+  if (typeof unit === 'string') {
+    return unit || 'NONE';
+  }
+  
+  return 'NONE';
+}
+
+// Function to convert quantity based on unit change
+function convertQuantity(currentQty: string, currentUnit: string, newUnit: string, itemData: any): string {
+  if (!currentQty || !currentUnit || !newUnit || currentUnit === newUnit) {
+    return currentQty;
+  }
+  
+  const qty = parseFloat(currentQty);
+  if (isNaN(qty)) return currentQty;
+  
+  // Get unit conversion data from item - use original unit object if available
+  const unitData = itemData.unit;
+  if (!unitData) return currentQty;
+  
+  // Use the actual conversion factor from item data if available
+  const conversionFactor = unitData && typeof unitData === 'object' ? 
+    unitData.conversionFactor : 1;
+  
+  // Convert from base to secondary or vice versa
+  if (newUnit === unitData.base && currentUnit === unitData.secondary) {
+    // Converting from secondary to base (multiply by conversion factor)
+    const convertedQty = qty * conversionFactor;
+    return Math.round(convertedQty).toString();
+  } else if (newUnit === unitData.secondary && currentUnit === unitData.base) {
+    // Converting from base to secondary (divide by conversion factor)
+    const convertedQty = qty / conversionFactor;
+    return Math.round(convertedQty).toString();
+  }
+  
+  return currentQty;
+}
+
+// Function to convert price based on unit change
+function convertPrice(currentPrice: string, currentUnit: string, newUnit: string, itemData: any): string {
+  if (!currentPrice || !currentUnit || !newUnit || currentUnit === newUnit) {
+    return currentPrice;
+  }
+  
+  const price = parseFloat(currentPrice);
+  if (isNaN(price)) return currentPrice;
+  
+  // Get unit conversion data from item
+  const unitData = itemData.unit;
+  if (!unitData) return currentPrice;
+  
+  // Use the actual conversion factor from item data if available
+  const conversionFactor = unitData && typeof unitData === 'object' ? 
+    unitData.conversionFactor : 1;
+  
+  // Convert price based on unit change
+  if (newUnit === unitData.base && currentUnit === unitData.secondary) {
+    // Converting from secondary to base (divide price by conversion factor)
+    const convertedPrice = price / conversionFactor;
+    return (Math.round(convertedPrice * 100) / 100).toFixed(2); // Round to 2 decimal places
+  } else if (newUnit === unitData.secondary && currentUnit === unitData.base) {
+    // Converting from base to secondary (multiply price by conversion factor)
+    const convertedPrice = price * conversionFactor;
+    return (Math.round(convertedPrice * 100) / 100).toFixed(2); // Round to 2 decimal places
+  }
+  
+  return currentPrice;
 }
 
 function ItemRow({
@@ -189,7 +268,7 @@ function ItemRow({
                     console.log('Setting quantity to stock value for item ID:', item.id);
                     handleItemChange(item.id, 'item', i.name);
                     // Set the unit to the item's unit string from backend
-                    handleItemChange(item.id, 'unit', i.unit || 'NONE');
+                    handleItemChange(item.id, 'unit', typeof i.unit === 'object' ? (i.unit.base && i.unit.secondary ? `${i.unit.base} / ${i.unit.secondary}` : i.unit.base || 'NONE') : (i.unit || 'NONE'));
                     handleItemChange(item.id, 'price', i.salePrice || 0);
                     // Keep quantity empty when item is selected
                     handleItemChange(item.id, 'qty', '');
@@ -199,7 +278,7 @@ function ItemRow({
                 >
                     <div className="flex justify-between items-center">
                       <span className="font-medium text-gray-800">{i.name}</span>
-                      <span className="text-xs text-gray-500">{i.unit || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock ?? 0}</span>
+                      <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock ?? 0}</span>
                     </div>
                 </li>
                 ))
@@ -246,25 +325,65 @@ function ItemRow({
           className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
         />
       </td>
-      <td className="py-2 px-2">
-        <CustomDropdown
-          options={[
-            { value: item.unit, label: item.unit },
-            { value: 'Custom', label: 'Custom' }
-          ]}
-          value={item.unit}
-          onChange={val => handleItemChange(item.id, 'unit', val)}
-        />
-        {item.unit === 'Custom' && (
-          <input
-            type="text"
-            value={item.customUnit}
-            onChange={e => handleItemChange(item.id, 'customUnit', e.target.value)}
-            className="mt-2 w-full px-3 py-2 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
-            placeholder="Enter custom unit"
+              <td className="py-2 px-2">
+          <CustomDropdown
+            options={(() => {
+              const options: DropdownOption[] = [];
+              if (item.item) {
+                const selectedItem = itemSuggestions.find(i => i.name === item.item);
+                if (selectedItem && selectedItem.unit) {
+                  const unit = selectedItem.unit;
+                  if (typeof unit === 'object' && unit.base) {
+                    if (unit.base && unit.base !== 'NONE') {
+                      options.push({ value: unit.base, label: unit.base });
+                    }
+                    if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) {
+                      options.push({ value: unit.secondary, label: unit.secondary });
+                    }
+                  } else if (typeof unit === 'string' && unit.includes(' / ')) {
+                    const parts = unit.split(' / ');
+                    if (parts[0] && parts[0] !== 'NONE') {
+                      options.push({ value: parts[0], label: parts[0] });
+                    }
+                    if (parts[1] && parts[1] !== 'None') {
+                      options.push({ value: parts[1], label: parts[1] });
+                    }
+                  } else if (typeof unit === 'string') {
+                    options.push({ value: unit, label: unit });
+                  }
+                }
+              }
+              if (options.length === 0) {
+                options.push({ value: 'NONE', label: 'NONE' });
+              }
+              return options;
+            })()}
+            value={item.unit}
+            onChange={val => {
+              const selectedItem = itemSuggestions.find(i => i.name === item.item);
+              if (selectedItem) {
+                if (item.qty) {
+                  const convertedQty = convertQuantity(item.qty, item.unit, val, selectedItem);
+                  handleItemChange(item.id, 'qty', convertedQty);
+                }
+                if (item.price) {
+                  const convertedPrice = convertPrice(item.price, item.unit, val, selectedItem);
+                  handleItemChange(item.id, 'price', convertedPrice);
+                }
+              }
+              handleItemChange(item.id, 'unit', val);
+            }}
           />
-        )}
-      </td>
+          {item.unit === 'Custom' && (
+            <input
+              type="text"
+              value={item.customUnit}
+              onChange={e => handleItemChange(item.id, 'customUnit', e.target.value)}
+              className="mt-2 w-full px-3 py-2 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+              placeholder="Enter custom unit"
+            />
+          )}
+        </td>
       <td className="py-2 px-2">
         <input
           type="number"

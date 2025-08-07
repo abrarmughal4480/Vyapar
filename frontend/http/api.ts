@@ -66,8 +66,21 @@ export const fetchSalesOverview = async (userId: string, token?: string) => {
   return response.data;
 };
 
+export const fetchSalesOverviewForUser = async (token?: string) => {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await api.get('/dashboard/sales-overview', { headers });
+  return response.data;
+};
+
 export async function fetchRecentActivity(userId: string, token?: string) {
   const res = await fetch(`${API_BASE_URL}/dashboard/recent-activity/${userId}`, {
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+  });
+  return res.json();
+}
+
+export async function fetchRecentActivityForUser(token?: string) {
+  const res = await fetch(`${API_BASE_URL}/dashboard/recent-activity`, {
     headers: token ? { 'Authorization': `Bearer ${token}` } : {},
   });
   return res.json();

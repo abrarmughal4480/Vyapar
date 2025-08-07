@@ -112,11 +112,14 @@ export default function Sidebar() {
   const [businessName, setBusinessName] = useState('My Business')
   const [openDropdowns, setOpenDropdowns] = useState<{ [key: string]: boolean }>({})
   const [userInfo, setUserInfo] = useState<any>(null)
+  const [userEmail, setUserEmail] = useState<string>('')
   const [showBuyPlan, setShowBuyPlan] = useState(false)
   const [daysSinceCreation, setDaysSinceCreation] = useState(0)
   const [hasLicenseKey, setHasLicenseKey] = useState(false)
   const [licenseDetails, setLicenseDetails] = useState<any>(null)
   const [isCheckingLicense, setIsCheckingLicense] = useState(false)
+  const [isDataLoaded, setIsDataLoaded] = useState(false)
+  const [isLicenseCheckComplete, setIsLicenseCheckComplete] = useState(false)
 
   // Use SidebarContext for isCollapsed and setIsCollapsed
   const { isCollapsed, setIsCollapsed } = useContext(SidebarContext)
@@ -129,13 +132,38 @@ export default function Sidebar() {
     const currentUserInfo = getCurrentUserInfo()
     setUserInfo(currentUserInfo)
     
+    // Log token details to see what email is in the token
+    try {
+      const token = localStorage.getItem('token')
+      if (token) {
+        const tokenPayload = JSON.parse(atob(token.split('.')[1]));
+        console.log('🔍 Sidebar Token Payload:', {
+          email: tokenPayload.email,
+          userEmail: tokenPayload.userEmail,
+          id: tokenPayload.id,
+          role: tokenPayload.role,
+          context: tokenPayload.context
+        });
+      }
+    } catch (error) {
+      console.error('Error parsing token in sidebar:', error);
+    }
+    
+    // Set user email from token
+    if (currentUserInfo && currentUserInfo.email) {
+      setUserEmail(currentUserInfo.email)
+      console.log('📧 Sidebar User Email set to:', currentUserInfo.email)
+    } else {
+      console.log('❌ No email found in currentUserInfo:', currentUserInfo)
+    }
+    
     // Check license key status from database
     const checkLicenseStatusFromDB = async () => {
       try {
         const token = localStorage.getItem('token')
         if (token) {
           setIsCheckingLicense(true)
-          console.log('Checking license status from database...')
+          console.log('Checking license status from database for email:', currentUserInfo?.email)
           const response = await checkLicenseStatus()
           console.log('License status response:', response)
           
@@ -156,6 +184,7 @@ export default function Sidebar() {
         setLicenseDetails(null)
       } finally {
         setIsCheckingLicense(false)
+        setIsLicenseCheckComplete(true) // Mark license check as complete
       }
     }
     
@@ -173,12 +202,23 @@ export default function Sidebar() {
         setShowBuyPlan(true)
       }
     }
+    
+    // Mark data as loaded after all checks are complete
+    setIsDataLoaded(true)
+    
+    // If no token, mark license check as complete immediately
+    if (!localStorage.getItem('token')) {
+      setIsLicenseCheckComplete(true)
+    }
   }, [])
 
   // Add/remove overlay when showBuyPlan changes
   useEffect(() => {
     console.log('showBuyPlan changed:', showBuyPlan)
     console.log('hasLicenseKey:', hasLicenseKey)
+    
+    // Preserve current scroll position
+    const currentScrollY = window.scrollY;
     
     // Only show overlay if user doesn't have license key and has exceeded 14 days
     if (showBuyPlan && !hasLicenseKey && daysSinceCreation > 14) {
@@ -188,7 +228,7 @@ export default function Sidebar() {
         existingOverlay.remove()
       }
       
-      // Create new overlay
+      // Create new overlay with better positioning
       const overlay = document.createElement('div')
       overlay.id = 'buy-plan-overlay'
       overlay.style.position = 'fixed'
@@ -196,22 +236,33 @@ export default function Sidebar() {
       overlay.style.left = isCollapsed ? '64px' : '256px'
       overlay.style.width = isCollapsed ? 'calc(100vw - 64px)' : 'calc(100vw - 256px)'
       overlay.style.height = '100vh'
-      overlay.style.backgroundColor = 'transparent'
+      overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.1)'
       overlay.style.zIndex = '9999'
-      overlay.style.pointerEvents = 'auto'
+      overlay.style.pointerEvents = 'none' // Changed to none to prevent interference
       overlay.style.display = 'block'
       overlay.style.visibility = 'visible'
       overlay.style.opacity = '1'
+      overlay.style.transition = 'opacity 0.3s ease-in-out'
       
       console.log('Adding overlay with styles:', overlay.style.cssText)
       document.body.appendChild(overlay)
       console.log('Overlay added to DOM')
+      
+      // Restore scroll position after overlay is added
+      requestAnimationFrame(() => {
+        window.scrollTo(0, currentScrollY);
+      });
     } else {
       // Remove overlay
       const overlay = document.getElementById('buy-plan-overlay')
       if (overlay) {
         overlay.remove()
         console.log('Overlay removed')
+        
+        // Restore scroll position after overlay is removed
+        requestAnimationFrame(() => {
+          window.scrollTo(0, currentScrollY);
+        });
       }
     }
 
@@ -234,6 +285,7 @@ export default function Sidebar() {
       const token = localStorage.getItem('token')
       if (token) {
         setIsCheckingLicense(true)
+        console.log('Refreshing license status for email:', userEmail)
         const response = await checkLicenseStatus()
         
         if (response.success && response.data) {
@@ -452,8 +504,8 @@ export default function Sidebar() {
       <div className="border-t border-gray-200 p-3">
         {!isCollapsed ? (
           <div className="space-y-2">
-            {/* Buy Plan Block - Show always until user has license */}
-            {!hasLicenseKey && (
+            {/* Buy Plan Block - Show only when data is loaded, license check is complete, and user has no license */}
+            {isDataLoaded && isLicenseCheckComplete && !hasLicenseKey && (
               <div 
                 onClick={() => router.push('/dashboard/pricing')}
                 className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl p-4 mb-3 text-white shadow-lg cursor-pointer hover:shadow-xl transition-all duration-200"
@@ -496,7 +548,7 @@ export default function Sidebar() {
         ) : (
           <div className="space-y-2">
             {/* Buy Plan Block for collapsed state */}
-            {!hasLicenseKey && (
+            {isDataLoaded && isLicenseCheckComplete && !hasLicenseKey && (
               <div 
                 onClick={() => router.push('/dashboard/pricing')}
                 className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg p-2 mb-2 text-white text-center cursor-pointer hover:shadow-lg transition-all duration-200"

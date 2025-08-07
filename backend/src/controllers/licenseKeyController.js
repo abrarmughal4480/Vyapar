@@ -142,7 +142,7 @@ export const getAllLicenseKeys = async (req, res) => {
 export const activateLicenseKey = async (req, res) => {
   try {
     const { key, deviceInfo } = req.body;
-    const userId = req.user.id;
+    const userEmail = req.user.email || req.user.userEmail;
 
     if (!key) {
       return res.status(400).json({
@@ -179,7 +179,7 @@ export const activateLicenseKey = async (req, res) => {
     }
 
     // Get user info
-    const user = await User.findById(userId);
+    const user = await User.findOne({ email: userEmail });
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -188,7 +188,7 @@ export const activateLicenseKey = async (req, res) => {
     }
 
     // Check if user already has an active license
-    const userWithLicense = await User.findById(userId).populate('activatedLicenseKey');
+    const userWithLicense = await User.findOne({ email: userEmail }).populate('activatedLicenseKey');
     
     if (userWithLicense && userWithLicense.activatedLicenseKey) {
       const existingLicense = userWithLicense.activatedLicenseKey;
@@ -204,14 +204,14 @@ export const activateLicenseKey = async (req, res) => {
 
     // Add device usage
     await licenseKey.addDeviceUsage(
-      userId,
+      user._id,
       user.email,
       user.name,
       deviceInfo || 'Unknown device'
     );
 
     // Update user's license information
-    await User.findByIdAndUpdate(userId, {
+    await User.findByIdAndUpdate(user._id, {
       activatedLicenseKey: licenseKey._id,
       licenseActivatedAt: new Date(),
       licenseExpiresAt: licenseKey.expiresAt
@@ -243,14 +243,43 @@ export const activateLicenseKey = async (req, res) => {
 // Check user's license status
 export const checkLicenseStatus = async (req, res) => {
   try {
-    const userId = req.user.id;
-    console.log('Checking license status for user:', userId);
+    const userEmail = req.user.email || req.user.userEmail;
+    const originalUserId = req.user.originalUserId;
+    console.log('🔍 Backend License Check - Full req.user:', req.user);
+    console.log('📧 Backend License Check - User email:', userEmail);
+    console.log('🆔 Backend License Check - User ID:', req.user.id);
+    console.log('🆔 Backend License Check - Original User ID:', originalUserId);
+    console.log('🏢 Backend License Check - Context:', req.user.context);
 
-    // Step 1: Check user's document for activatedLicenseKey ID
-    const user = await User.findById(userId);
-    console.log('User found:', user ? 'Yes' : 'No');
+    // Step 1: Find user by email
+    let user = await User.findOne({ email: userEmail });
+    console.log('Current user found by email:', user ? 'Yes' : 'No');
+    if (user) {
+      console.log('Current user email:', user.email);
+      console.log('Current user ID:', user._id);
+      console.log('Token user ID:', req.user.id);
+      console.log('IDs match:', user._id.toString() === req.user.id);
+      console.log('Current user has license:', user.activatedLicenseKey ? 'Yes' : 'No');
+    }
     
-    if (!user) {
+    // For license checking, we should check if the CURRENT user has a license
+    // Not the original user, because the current user is the one who needs to buy a license
+    let userForLicenseCheck = user;
+    
+    // Only check original user if current user doesn't exist
+    if (!user && originalUserId) {
+      console.log('Current user not found, checking original user...');
+      const originalUser = await User.findById(originalUserId);
+      if (originalUser) {
+        console.log('Found original user:', originalUser.email);
+        userForLicenseCheck = originalUser;
+      }
+    }
+    
+    console.log('Final user for license check:', userForLicenseCheck ? userForLicenseCheck.email : 'None');
+    console.log('This user needs to buy license:', userForLicenseCheck ? (userForLicenseCheck.activatedLicenseKey ? 'No' : 'Yes') : 'Unknown');
+    
+    if (!userForLicenseCheck) {
       return res.json({
         success: true,
         data: {
@@ -261,7 +290,7 @@ export const checkLicenseStatus = async (req, res) => {
     }
 
     // Check if user has activatedLicenseKey
-    if (!user.activatedLicenseKey) {
+    if (!userForLicenseCheck.activatedLicenseKey) {
       console.log('No activatedLicenseKey found in user document');
       return res.json({
         success: true,
@@ -272,10 +301,10 @@ export const checkLicenseStatus = async (req, res) => {
       });
     }
 
-    console.log('User has activatedLicenseKey ID:', user.activatedLicenseKey);
+    console.log('User has activatedLicenseKey ID:', userForLicenseCheck.activatedLicenseKey);
 
     // Step 2: Find the license key in LicenseKey collection
-    const licenseKey = await LicenseKey.findById(user.activatedLicenseKey);
+    const licenseKey = await LicenseKey.findById(userForLicenseCheck.activatedLicenseKey);
     console.log('License key found:', licenseKey ? 'Yes' : 'No');
     
     if (!licenseKey) {
@@ -289,11 +318,12 @@ export const checkLicenseStatus = async (req, res) => {
       });
     }
 
-    // Step 3: Check if user's ID exists in usedDevices array
+    // Step 3: Check if user's email exists in usedDevices array
     const userDeviceUsage = licenseKey.usedDevices.find(
-      device => device.userId.toString() === userId.toString()
+      device => device.userEmail === userForLicenseCheck.email
     );
     console.log('User device usage found:', userDeviceUsage ? 'Yes' : 'No');
+    console.log('Checking for email in license:', userForLicenseCheck.email);
 
     if (!userDeviceUsage) {
       console.log('User not found in license key usedDevices array');

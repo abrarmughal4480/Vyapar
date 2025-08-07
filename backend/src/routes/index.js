@@ -36,14 +36,18 @@ router.use('/quotations', authMiddleware, quotationRoutes);
 // Dashboard stats route
 router.get('/dashboard/stats', authMiddleware, getDashboardStats);
 
+// Add new routes for sales overview and recent activity (no user ID required)
+router.get('/dashboard/sales-overview', authMiddleware, getSalesOverview);
+router.get('/dashboard/recent-activity', authMiddleware, getRecentActivity);
+
 // Add the new route for receivables and payables
 router.get('/api/dashboard/receivables', authMiddleware, getReceivablesList);
 router.get('/api/dashboard/payables', authMiddleware, getPayablesList);
 
-// Add the new route for sales overview
+// Add the new route for sales overview (with user ID - keep for backward compatibility)
 router.get('/api/dashboard/sales-overview/:userId', authMiddleware, getSalesOverview);
 
-// Add the new route for recent activity
+// Add the new route for recent activity (with user ID - keep for backward compatibility)
 router.get('/dashboard/recent-activity/:userId', getRecentActivity);
 
 // Profile routes

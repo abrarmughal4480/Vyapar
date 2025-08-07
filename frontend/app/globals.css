@@ -246,11 +246,11 @@ html {
 
 /* Remove .no-scrollbar hiding for now so custom scrollbars show */
 .no-scrollbar::-webkit-scrollbar {
-  display: initial;
+  display: none;
 }
 .no-scrollbar {
-  scrollbar-width: thin;
-  -ms-overflow-style: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 @layer base {

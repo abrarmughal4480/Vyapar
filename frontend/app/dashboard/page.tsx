@@ -22,7 +22,7 @@ import {
   Zap,
   AlertTriangle
 } from 'lucide-react';
-import { fetchDashboardStats, fetchSalesOverview, fetchRecentActivity } from '@/http/api';
+import { fetchDashboardStats, fetchSalesOverviewForUser, fetchRecentActivityForUser } from '@/http/api';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import EnhancedModal from '../../components/EnhancedModal';
 import { getReceivables, getPayables } from '@/http/parties';
@@ -145,8 +145,29 @@ export default function Dashboard() {
   const [showStockSummaryModal, setShowStockSummaryModal] = useState(false);
   const [stockSummary, setStockSummary] = useState<any>({ items: [] });
   const [loadingStockSummary, setLoadingStockSummary] = useState(false);
+  const [showLicenseGenerator, setShowLicenseGenerator] = useState(false);
+  const [userRoleFromAPI, setUserRoleFromAPI] = useState<string>('');
+  const [userEmailFromAPI, setUserEmailFromAPI] = useState<string>('');
+  const [showSalesOverview, setShowSalesOverview] = useState(true);
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+  // Check license generator permission based on user email from API
+  useEffect(() => {
+    if (userRoleFromAPI === 'superadmin' && userEmailFromAPI) {
+      console.log('🔍 License Generator Check - User Email:', userEmailFromAPI);
+      
+      // Show license generator for the original superadmin email
+      // You can add specific email checks here if needed
+      const isOriginalSuperadmin = userEmailFromAPI === 'abrarmughal4481@gmail.com';
+      
+      setShowLicenseGenerator(isOriginalSuperadmin);
+      console.log('🔑 License Generator: Show button for', userEmailFromAPI, '=', isOriginalSuperadmin);
+    } else {
+      console.log('❌ User is not superadmin or no email, role:', userRoleFromAPI, 'email:', userEmailFromAPI);
+      setShowLicenseGenerator(false);
+    }
+  }, [userRoleFromAPI, userEmailFromAPI]);
 
   // Enhanced initialization with real auth check
   useEffect(() => {
@@ -168,7 +189,30 @@ export default function Dashboard() {
         }
         const user = JSON.parse(localStorage.getItem('user') || '{}');
         if (user && user._id) {
-          const data = await fetchSalesOverview(user._id, token);
+          // For users who joined a company, we need to use the joined company's ID
+          // For individual users, use their own _id
+          let dataId;
+          if (user.businessId && user.context === 'company') {
+            // User joined a company - use the joined company's ID
+            dataId = user.businessId;
+            setShowSalesOverview(false);
+            console.log('🚫 Hiding sales overview for company user');
+          } else {
+            // Individual user - use their own ID
+            dataId = user._id;
+            setShowSalesOverview(true);
+            console.log('✅ Showing sales overview for individual user');
+          }
+          
+          console.log('🔍 Fetching data for:', {
+            userId: user._id,
+            dataId: dataId,
+            userEmail: user.email,
+            context: user.context,
+            businessId: user.businessId
+          });
+          
+          const data = await fetchSalesOverviewForUser(token);
           if (data && data.success && data.overview && Array.isArray(data.overview)) {
             // Format for recharts: label as date, value as netSales
             const formatted = data.overview.map((item: any) => ({
@@ -179,8 +223,8 @@ export default function Dashboard() {
             }));
             setSalesOverview(formatted);
           }
-          // Fetch recent activity
-          const activityRes = await fetchRecentActivity(user._id, token);
+          // Fetch recent activity using the correct ID
+          const activityRes = await fetchRecentActivityForUser(token);
           if (activityRes && activityRes.success && Array.isArray(activityRes.activities)) {
             setRecentActivity(activityRes.activities);
           }
@@ -223,6 +267,8 @@ export default function Dashboard() {
           });
           
           setUserRole(role);
+          setUserRoleFromAPI(role); // Set this for license generator check
+          setUserEmailFromAPI(data.user?.email || ''); // Set user email from API
         }
       } catch (err) {
         console.error('Failed to fetch user:', err);
@@ -462,7 +508,7 @@ export default function Dashboard() {
 
           <div className="flex items-center space-x-4">
             {/* License Key Generator Button - Only for Superadmin */}
-            {userRole === 'superadmin' && (
+            {showLicenseGenerator && (
               <button
                 onClick={() => router.push('/dashboard/license-generator')}
                 className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl group"
@@ -642,33 +688,35 @@ export default function Dashboard() {
           </div>
 
           {/* Enhanced Chart placeholder (replace this with real area chart) */}
-          <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-6 flex flex-col justify-between">
-            <div className="flex items-center space-x-3 mb-5">
-              <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
-                <BarChart3 className="w-4 h-4 text-white" />
+          {showSalesOverview && (
+            <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-6 flex flex-col justify-between">
+              <div className="flex items-center space-x-3 mb-5">
+                <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                  <BarChart3 className="w-4 h-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">Sales Overview (Last 30 Days)</h3>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Sales Overview (Last 30 Days)</h3>
-            </div>
-            <div className="flex-1 flex items-center justify-center">
-              <div className="relative h-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-2xl flex items-center justify-center overflow-hidden">
-                <ResponsiveContainer width="100%" height={150}>
-                  <AreaChart data={salesOverview} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8} />
-                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} />
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <Tooltip formatter={(value: any) => `PKR ${value.toLocaleString()}`} />
-                    <Area type="monotone" dataKey="netSales" stroke="#6366f1" fillOpacity={1} fill="url(#colorSales)" name="Net Sales" />
-                  </AreaChart>
-                </ResponsiveContainer>
+              <div className="flex-1 flex items-center justify-center">
+                <div className="relative h-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-2xl flex items-center justify-center overflow-hidden">
+                  <ResponsiveContainer width="100%" height={150}>
+                    <AreaChart data={salesOverview} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8} />
+                          <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 12 }} />
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <Tooltip formatter={(value: any) => `PKR ${value.toLocaleString()}`} />
+                      <Area type="monotone" dataKey="netSales" stroke="#6366f1" fillOpacity={1} fill="url(#colorSales)" name="Net Sales" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Enhanced Welcome Banner */}

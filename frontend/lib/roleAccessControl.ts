@@ -73,6 +73,28 @@ export const getCurrentUserInfo = (): UserInfo | null => {
   }
 };
 
+// Get original user email for license checking
+export const getOriginalUserEmail = (): string | null => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+
+    const tokenPayload = JSON.parse(atob(token.split('.')[1]));
+    
+    // If user is in company context and has originalUserId, we need to get the original email
+    if (tokenPayload.context === 'company' && tokenPayload.originalUserId) {
+      // For now, return the current email, but in a real scenario, you might need to make an API call
+      // to get the original user's email based on originalUserId
+      return tokenPayload.email || tokenPayload.userEmail;
+    }
+    
+    return tokenPayload.email || tokenPayload.userEmail;
+  } catch (error) {
+    console.error('Error parsing token for original email:', error);
+    return null;
+  }
+};
+
 // Check if user has access to a specific page
 export const canAccessPage = (pageName: string): boolean => {
   const userInfo = getCurrentUserInfo();

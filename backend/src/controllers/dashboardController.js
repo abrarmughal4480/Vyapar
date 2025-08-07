@@ -275,7 +275,8 @@ export const getDashboardStats = async (req, res) => {
 
 export const getSalesOverview = async (req, res) => {
   try {
-    const userId = req.params.userId;
+    // Get userId from params or from authenticated user
+    const userId = req.params.userId || (req.user && (req.user._id || req.user.id));
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
     
     // Check cache first
@@ -293,12 +294,43 @@ export const getSalesOverview = async (req, res) => {
     } catch (e) {
       return res.json({ success: true, overview: [] });
     }
+
+    // Check if this is a businessId (company user) or userId (individual user)
+    const user = await User.findById(userId).select('businessId context');
+    let queryUserId = objectUserId;
+    
+    if (user && user.businessId && user.context === 'company') {
+      // This is a user who joined a company, use businessId for queries
+      queryUserId = new mongoose.Types.ObjectId(user.businessId);
+      console.log('🔍 Company user detected, using businessId for sales overview:', {
+        userId: userId,
+        businessId: user.businessId,
+        context: user.context
+      });
+    } else if (user && user.context === 'company') {
+      // This might be the businessId itself, use it directly
+      queryUserId = objectUserId;
+      console.log('🔍 Business ID passed directly, using for sales overview:', userId);
+    } else if (!user) {
+      // No user found with this ID, it might be a business ID itself
+      // Check if there are any users with this as their businessId
+      const companyUser = await User.findOne({ businessId: userId, context: 'company' });
+      if (companyUser) {
+        queryUserId = objectUserId;
+        console.log('🔍 Business ID confirmed, using for sales overview:', userId);
+      } else {
+        console.log('🔍 Individual user detected, using userId for sales overview:', userId);
+      }
+    } else {
+      console.log('🔍 Individual user detected, using userId for sales overview:', userId);
+    }
+
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Aggregate sales by day
+    // Aggregate sales by day using the correct ID
     const salesAgg = await Sale.aggregate([
-      { $match: { userId: objectUserId, createdAt: { $gte: thirtyDaysAgo } } },
+      { $match: { userId: queryUserId, createdAt: { $gte: thirtyDaysAgo } } },
       {
         $group: {
           _id: {
@@ -311,10 +343,10 @@ export const getSalesOverview = async (req, res) => {
       }
     ]);
 
-    // Aggregate credit notes by day
+    // Aggregate credit notes by day using the correct ID
     const CreditNote = (await import('../models/creditNote.js')).default;
     const creditAgg = await CreditNote.aggregate([
-      { $match: { userId: objectUserId, createdAt: { $gte: thirtyDaysAgo } } },
+      { $match: { userId: queryUserId, createdAt: { $gte: thirtyDaysAgo } } },
       {
         $group: {
           _id: {
@@ -363,7 +395,8 @@ export const getSalesOverview = async (req, res) => {
 
 export const getRecentActivity = async (req, res) => {
   try {
-    const userId = req.params.userId;
+    // Get userId from params or from authenticated user
+    const userId = req.params.userId || (req.user && (req.user._id || req.user.id));
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
     
     // Check cache first
@@ -510,10 +543,70 @@ export const getProfile = async (req, res) => {
   try {
     const userId = req.user && (req.user._id || req.user.id);
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    
     const user = await User.findById(userId).select('-password');
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    res.json({ success: true, user });
+    
+    console.log('🔍 Profile request for user:', {
+      userId: userId,
+      name: user.name,
+      email: user.email,
+      context: user.context,
+      businessId: user.businessId,
+      role: user.role
+    });
+    
+    // For users who joined a company, we want to show their personal info, not company info
+    let profileData = {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      address: user.address,
+      profileImage: user.profileImage,
+      role: user.role,
+      context: user.context || 'individual'
+    };
+    
+    // If user joined a company, show their personal business info, not the company's
+    if (user.businessId && user.context === 'company') {
+      // User joined a company - show their personal business info
+      // For company users, their businessName should be their personal business name
+      profileData = {
+        ...profileData,
+        businessName: user.businessName || `${user.name}'s Business`,
+        businessType: user.businessType || 'Individual',
+        gstNumber: user.gstNumber || '',
+        website: user.website || '',
+        joinedCompany: true,
+        companyId: user.businessId
+      };
+      
+      console.log('🔍 Company user profile data:', {
+        personalBusinessName: profileData.businessName,
+        personalBusinessType: profileData.businessType,
+        joinedCompanyId: user.businessId
+      });
+    } else {
+      // Individual user - show their business info
+      profileData = {
+        ...profileData,
+        businessName: user.businessName,
+        businessType: user.businessType,
+        gstNumber: user.gstNumber,
+        website: user.website,
+        joinedCompany: false
+      };
+      
+      console.log('🔍 Individual user profile data:', {
+        businessName: profileData.businessName,
+        businessType: profileData.businessType
+      });
+    }
+    
+    res.json({ success: true, user: profileData });
   } catch (err) {
+    console.error('Error fetching profile:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };

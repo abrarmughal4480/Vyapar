@@ -531,6 +531,7 @@ const CreateCreditNotePage = () => {
     tax: '',
     taxType: '%',
     reason: 'Return',
+    paid: '',
     editingId: null
   });
   const [showDescription, setShowDescription] = useState(false);
@@ -655,6 +656,7 @@ const CreateCreditNotePage = () => {
         imageUrl: uploadedImage || undefined,
         tax: newCreditNote.tax === 'NONE' || newCreditNote.tax === '' ? 0 : Number(newCreditNote.tax),
         discount: newCreditNote.discount === '' ? 0 : Number(newCreditNote.discount),
+        paid: newCreditNote.paid === '' ? 0 : Number(newCreditNote.paid),
       };
       const result = await createCreditNote(creditNoteData, token);
       if (result && result.success) {
@@ -1076,9 +1078,28 @@ const CreateCreditNotePage = () => {
                   </div>
                 </div>
               </div>
+              {/* Paid Amount */}
+              <div>
+                <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                  <span>💰</span> Paid Amount
+                </label>
+                <div className="flex flex-col">
+                  <input
+                    type="number"
+                    name="paid"
+                    value={newCreditNote.paid}
+                    onChange={handleInputChange}
+                    placeholder="Enter paid amount"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-900 placeholder-gray-400"
+                  />
+                  <div className="text-xs text-gray-500 min-h-[24px] mt-1">
+                    Amount already paid by customer
+                  </div>
+                </div>
+              </div>
               {/* Totals */}
-              <div className="md:col-span-1 flex flex-col items-end gap-2">
-                <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full min-w-[220px]">
+              <div className="md:col-span-1 md:col-start-4 flex flex-col items-end gap-2">
+                <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full min-w-[220px] ml-auto">
                   <div className="flex flex-col gap-1">
                     <div className="flex justify-between text-xs text-gray-600">
                       <span>Sub Total</span>

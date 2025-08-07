@@ -28,6 +28,7 @@ const CreditNoteSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   balance: { type: Number, default: 0 },
   received: { type: Number, default: 0 },
+  paid: { type: Number, default: 0 },
 });
 
 // Create compound index for userId + creditNoteNo to ensure uniqueness per user

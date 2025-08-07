@@ -20,6 +20,7 @@ export interface CreditNoteData {
   description?: string;
   imageUrl?: string;
   paymentType?: string;
+  paid?: number;
 }
 
 export const createCreditNote = async (creditNote: CreditNoteData, token: string) => {

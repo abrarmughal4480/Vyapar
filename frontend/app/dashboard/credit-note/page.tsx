@@ -29,6 +29,7 @@ interface CreditNote {
   taxAmount: number
   total: number
   received: number
+  paid: number
   balance: number
   reason: string
   notes: string
@@ -208,7 +209,8 @@ export default function CreditNotePage() {
             subtotal: note.subTotal || 0,
             taxAmount: note.taxValue || 0,
             total: note.grandTotal || 0,
-            received: note.received || 0,
+            received: note.paid || note.received || 0,
+            paid: note.paid || 0,
             balance: note.balance || 0,
             reason: note.reason || 'Credit Note',
             notes: note.description || '',
@@ -587,6 +589,14 @@ export default function CreditNotePage() {
                     <p className="text-sm text-gray-600">Reason:</p>
                     <p className="font-semibold text-gray-900">{selectedNote.reason}</p>
                   </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Paid Amount:</p>
+                    <p className="font-semibold text-green-600">₹{selectedNote.paid.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Balance:</p>
+                    <p className="font-semibold text-orange-600">₹{selectedNote.balance.toFixed(2)}</p>
+                  </div>
                 </div>
 
                 <div className="overflow-hidden rounded-lg border border-gray-200 mb-8">
@@ -626,9 +636,19 @@ export default function CreditNotePage() {
                         <span className="font-medium">₹{selectedNote.taxAmount.toFixed(2)}</span>
                       </div>
                       <div className="border-t border-red-200 pt-3">
-                        <div className="flex justify-between text-xl font-bold text-red-600">
+                        <div className="flex justify-between text-lg font-bold text-red-600">
                           <span>Total Credit:</span>
                           <span>₹{selectedNote.total.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Paid Amount:</span>
+                          <span className="font-medium text-green-600">₹{selectedNote.paid.toFixed(2)}</span>
+                        </div>
+                        <div className="border-t border-red-200 pt-3">
+                          <div className="flex justify-between text-lg font-bold text-orange-600">
+                            <span>Balance:</span>
+                            <span>₹{selectedNote.balance.toFixed(2)}</span>
+                          </div>
                         </div>
                       </div>
                     </div>

@@ -245,6 +245,9 @@ const partiesController = {
         return res.status(404).json({ success: false, message: 'Party not found' });
       }
       
+      // Import Purchase model
+      const Purchase = (await import('../models/purchase.js')).default;
+      
       // Calculate total due balance from all sales for this party (sum of balance field)
       const salesAgg = await Sale.aggregate([
         { $match: { partyName: party.name, userId: new mongoose.Types.ObjectId(userId) } },
@@ -257,20 +260,37 @@ const partiesController = {
         }
       ]);
       
+      // Calculate total due balance from all purchases for this party (sum of balance field)
+      const purchasesAgg = await Purchase.aggregate([
+        { $match: { supplierName: party.name, userId: new mongoose.Types.ObjectId(userId) } },
+        { $group: { 
+            _id: null, 
+            totalBalance: { $sum: "$balance" },
+            totalPaid: { $sum: "$paid" },
+            totalGrandTotal: { $sum: "$grandTotal" }
+          } 
+        }
+      ]);
+      
       const salesData = salesAgg[0] || { totalBalance: 0, totalReceived: 0, totalGrandTotal: 0 };
+      const purchasesData = purchasesAgg[0] || { totalBalance: 0, totalPaid: 0, totalGrandTotal: 0 };
       const partyOpeningBalance = party.openingBalance || 0;
       
-      // Total due = party's opening balance + sum of all sales balances
-      const totalDue = partyOpeningBalance + salesData.totalBalance;
+      // For customers: Total due = party's opening balance + sum of all sales balances
+      // For suppliers: Total due = party's opening balance + sum of all purchase balances
+      const totalDue = partyOpeningBalance + salesData.totalBalance + purchasesData.totalBalance;
       
       return res.json({ 
         success: true, 
         data: { 
           partyName: party.name,
           openingBalance: partyOpeningBalance,
-          salesBalance: salesData.totalBalance, // This is the sum of balance field from all sales
+          salesBalance: salesData.totalBalance,
           salesReceived: salesData.totalReceived,
           salesGrandTotal: salesData.totalGrandTotal,
+          purchasesBalance: purchasesData.totalBalance,
+          purchasesPaid: purchasesData.totalPaid,
+          purchasesGrandTotal: purchasesData.totalGrandTotal,
           totalDue: totalDue
         } 
       });

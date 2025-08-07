@@ -1,6 +1,7 @@
 import CreditNote from '../models/creditNote.js';
 import Item from '../models/items.js';
 import mongoose from 'mongoose';
+import { clearAllCacheForUser } from './dashboardController.js';
 
 export const createCreditNote = async (req, res) => {
   try {
@@ -42,6 +43,11 @@ export const createCreditNote = async (req, res) => {
     }
     // Calculate grandTotal
     const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
+    // Get paid amount from request body
+    const paidAmount = req.body.paid || 0;
+    // Calculate balance (grandTotal - paidAmount)
+    const balance = Math.max(0, grandTotal - paidAmount);
+    
     // Generate credit note number for this user
     let creditNoteNo = 'CN001';
     const lastNote = await CreditNote.findOne({ userId }).sort({ createdAt: -1 });
@@ -61,18 +67,35 @@ export const createCreditNote = async (req, res) => {
       taxValue,
       grandTotal,
       creditNoteNo,
-      balance: grandTotal,
-      received: 0
+      balance: balance,
+      received: paidAmount,
+      paid: paidAmount
     });
     await creditNote.save();
     console.log(`Credit note created: No=${creditNote.creditNoteNo}, Party=${creditNote.partyName}, User=${userId}, Amount=${creditNote.grandTotal}`);
-    // Update party openingBalance in DB (subtract grandTotal)
+    // Update party openingBalance in DB (subtract balance amount - grandTotal - paid)
     try {
       const Party = (await import('../models/parties.js')).default;
+      console.log(`Looking for party: ${creditNote.partyName}, userId: ${userId}`);
+      
       const partyDoc = await Party.findOne({ name: creditNote.partyName, user: userId });
+      console.log(`Party found:`, partyDoc ? 'Yes' : 'No');
+      
       if (partyDoc) {
-        partyDoc.openingBalance = (partyDoc.openingBalance || 0) - (creditNote.grandTotal || 0);
+        // Subtract only the remaining balance (grandTotal - paid) from party balance
+        const balanceAmount = creditNote.balance || 0;
+        const previousBalance = partyDoc.openingBalance || 0;
+        partyDoc.openingBalance = previousBalance - balanceAmount;
         await partyDoc.save();
+        console.log(`Updated party balance: ${creditNote.partyName}, Previous: ${previousBalance}, New: ${partyDoc.openingBalance}, Deducted: ${balanceAmount}`);
+        // Clear all cache for this user after party balance update
+        clearAllCacheForUser(userId);
+        console.log(`Cleared cache for user: ${userId}`);
+      } else {
+        console.log(`Party not found: ${creditNote.partyName} for user: ${userId}`);
+        // Try to find all parties for this user to debug
+        const allParties = await Party.find({ user: userId });
+        console.log(`All parties for user ${userId}:`, allParties.map(p => p.name));
       }
     } catch (err) {
       console.error('Failed to update party openingBalance:', err);

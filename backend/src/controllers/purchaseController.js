@@ -156,17 +156,21 @@ export const createPurchase = async (req, res) => {
     // Note: Purchase order status update is now handled in the frontend
     // to match the pattern used in sales conversion
     
-    // Update supplier openingBalance in DB (decrease only balance for purchase if paid is provided)
+    // Update supplier openingBalance in DB (only for credit payments)
     try {
       const Party = (await import('../models/parties.js')).default;
       const supplierDoc = await Party.findOne({ name: purchase.supplierName, user: userId });
       if (supplierDoc) {
-        if (req.body.paymentType === 'Cash' && req.body.paid !== undefined && req.body.paid !== null) {
-          supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) - balance;
+        // Only update balance for credit payments (cash payments are 100% paid, no balance change needed)
+        if (req.body.paymentType !== 'Cash') {
+          // For Credit payment: decrease by unpaid amount (grandTotal - paid)
+          const unpaidAmount = purchase.grandTotal - (purchase.paid || 0);
+          supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) - unpaidAmount;
+          await supplierDoc.save();
+          console.log(`Updated supplier ${purchase.supplierName} balance: -${unpaidAmount} (credit payment, unpaid amount)`);
         } else {
-          supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) - (purchase.grandTotal || 0);
+          console.log(`No balance update needed for ${purchase.supplierName} (cash payment - 100% paid)`);
         }
-        await supplierDoc.save();
       }
     } catch (err) {
       console.error('Failed to update supplier openingBalance:', err);
@@ -250,6 +254,20 @@ export const makePayment = async (req, res) => {
     });
     
     await payment.save();
+    
+    // Update supplier balance when payment is made
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      const supplierDoc = await Party.findOne({ name: purchase.supplierName, user: userId });
+      if (supplierDoc) {
+        // Decrease supplier balance by the payment amount (you're paying them more money)
+        supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) - amount;
+        await supplierDoc.save();
+        console.log(`Updated supplier ${purchase.supplierName} balance after payment: -${amount}`);
+      }
+    } catch (err) {
+      console.error('Failed to update supplier balance after payment:', err);
+    }
     
     console.log(`Payment processed for purchase ${purchaseId}: Amount=${amount}, New Paid=${purchase.paid}, New Balance=${purchase.balance}`);
     console.log('Payment record saved:', payment.toObject());

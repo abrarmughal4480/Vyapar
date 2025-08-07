@@ -339,6 +339,7 @@ export default function AddPurchasePage() {
 
   const [newPurchase, setNewPurchase] = useState({
     partyName: '',
+    partyId: '', // Add party ID to store the selected party's ID
     phoneNo: '',
     billDate: '',
     invoiceDate: new Date().toISOString().split('T')[0],
@@ -363,6 +364,7 @@ export default function AddPurchasePage() {
   const [imageUploading, setImageUploading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [parties, setParties] = useState<any[]>([]);
+  const [allParties, setAllParties] = useState<any[]>([]); // Store all parties for filtering
   const [showPartySuggestions, setShowPartySuggestions] = useState(false);
   const [showItemSuggestions, setShowItemSuggestions] = useState<{[id: number]: boolean}>({});
   const [itemSuggestions, setItemSuggestions] = useState<any[]>([]);
@@ -537,8 +539,16 @@ export default function AddPurchasePage() {
       setPartyBalance(null);
       return;
     }
-    fetchPartyBalance(newPurchase.partyName);
-  }, [newPurchase.partyName]);
+    // Use stored party ID if available, otherwise find by name
+    if (newPurchase.partyId) {
+      fetchPartyBalance(newPurchase.partyId);
+    } else {
+      const matchedParty = parties.find(p => p.name === newPurchase.partyName);
+      if (matchedParty) {
+        fetchPartyBalance(matchedParty._id);
+      }
+    }
+  }, [newPurchase.partyName, newPurchase.partyId, parties]);
 
   useEffect(() => {
     if (!newPurchase.partyName || !parties.length) return;
@@ -686,6 +696,7 @@ export default function AddPurchasePage() {
         try {
           const parsed = JSON.parse(cached);
           if (Array.isArray(parsed)) {
+            setAllParties(parsed);
             setParties(parsed);
           }
         } catch (e) { /* ignore parse error */ }
@@ -698,6 +709,7 @@ export default function AddPurchasePage() {
       }
       const response = await fetchPartiesByUserId(token);
       const partiesData = response.data || response || [];
+      setAllParties(partiesData);
       setParties(partiesData);
       localStorage.setItem('vyapar_parties', JSON.stringify(partiesData));
       // console.log('Fetched parties:', partiesData);
@@ -707,15 +719,36 @@ export default function AddPurchasePage() {
     }
   };
 
+  // Filter parties based on search input
+  const filterParties = (searchTerm: string) => {
+    if (!searchTerm.trim()) {
+      setParties(allParties);
+      return;
+    }
+    
+    const filtered = allParties.filter(party => 
+      party.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (party.phone && party.phone.includes(searchTerm))
+    );
+    setParties(filtered);
+  };
+
+  // Reset dropdown index when parties change
+  useEffect(() => {
+    if (showPartySuggestions) {
+      setSupplierDropdownIndex(0);
+    }
+  }, [parties, showPartySuggestions]);
+
   // Fetch party balance
-  const fetchPartyBalance = async (partyName: string) => {
+  const fetchPartyBalance = async (partyId: string) => {
     try {
       const token = getToken();
       if (!token) return;
-      const response = await getPartyBalance(partyName, token);
-      const balance = response.balance || response || 0;
+      const response = await getPartyBalance(partyId, token);
+      const balance = response.data?.totalDue || response.totalDue || 0;
       setPartyBalance(balance);
-      console.log('Party balance for', partyName, ':', balance);
+      console.log('Party balance for ID', partyId, ':', balance);
     } catch (error) {
       console.error('Error fetching party balance:', error);
       setPartyBalance(null);
@@ -1005,6 +1038,7 @@ export default function AddPurchasePage() {
                           value={newPurchase.partyName}
                           onChange={e => {
                             handleInputChange(e);
+                            filterParties(e.target.value);
                             setShowPartySuggestions(true);
                             setSupplierDropdownIndex(0);
                           }}
@@ -1029,17 +1063,16 @@ export default function AddPurchasePage() {
                             } else if (e.key === 'ArrowUp') {
                               setSupplierDropdownIndex(i => Math.max(i - 1, 0));
                             } else if (e.key === 'Enter') {
-                              if (supplierDropdownIndex < parties.length) {
-                                const party = parties[supplierDropdownIndex];
-                                setNewPurchase(prev => ({ ...prev, partyName: party.name, phoneNo: party.phone || '' }));
+                              if (supplierDropdownIndex === 0) {
+                                // Add Supplier option
+                                router.push('/dashboard/parties?addParty=1');
                                 setShowPartySuggestions(false);
-                                fetchPartyBalance(party.name);
-                              } else if (supplierDropdownIndex === parties.length) {
-                                setShowAddSupplierInput(true);
+                              } else if (supplierDropdownIndex > 0 && supplierDropdownIndex <= parties.length) {
+                                // Party selection (adjust index because Add Supplier is at index 0)
+                                const party = parties[supplierDropdownIndex - 1];
+                                setNewPurchase(prev => ({ ...prev, partyName: party.name, partyId: party._id, phoneNo: party.phone || '' }));
                                 setShowPartySuggestions(false);
-                                setTimeout(() => {
-                                  if (supplierInputRef.current) supplierInputRef.current.focus();
-                                }, 100);
+                                fetchPartyBalance(party._id);
                               }
                             } else if (e.key === 'Escape') {
                               setShowPartySuggestions(false);
@@ -1048,7 +1081,7 @@ export default function AddPurchasePage() {
                         />
                         {showPartySuggestions && (
                           <div className="absolute left-0 right-0 mt-1 w-full z-50">
-                            {parties.length > 0 || true ? (
+                            {parties.length > 0 ? (
                               <ul
                                 className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
                                 ref={supplierDropdownRef}
@@ -1077,9 +1110,9 @@ export default function AddPurchasePage() {
                                     onMouseDown={e => {
                                       e.preventDefault();
                                       e.stopPropagation();
-                                      setNewPurchase(prev => ({ ...prev, partyName: party.name, phoneNo: party.phone || '' }));
+                                      setNewPurchase(prev => ({ ...prev, partyName: party.name, partyId: party._id, phoneNo: party.phone || '' }));
                                       setShowPartySuggestions(false);
-                                      fetchPartyBalance(party.name);
+                                      fetchPartyBalance(party._id);
                                     }}
                                     ref={el => { if (supplierDropdownIndex === idx + 1 && el) el.scrollIntoView({ block: 'nearest' }); }}
                                     role="option"

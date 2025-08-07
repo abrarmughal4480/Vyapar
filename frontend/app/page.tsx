@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronRight, Shield, Zap, Users, TrendingUp, CheckCircle, Eye, EyeOff, ArrowRight, Star, Award, Globe, Lock, Smartphone, BarChart3, DollarSign, Clock, Menu, X } from 'lucide-react';
 import { register as registerApi, login as loginApi, forgotPassword as forgotPasswordApi, sendOTP, verifyOTPAndRegister } from '@/http/auth';
+import PlanAndPricing from './components/PlanAndPricing';
 
 // Type definitions for better TypeScript support
 interface FormData {
@@ -1594,179 +1595,13 @@ export default function Home() {
       </section>
 
       {/* Pricing Section */}
-      <section id="pricing" className="py-24 bg-white relative overflow-hidden min-h-screen">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-10 animate-fadeInUp">
-            <div className="inline-flex items-center bg-purple-100 rounded-full px-6 py-2 mb-6">
-              <DollarSign className="w-5 h-5 text-purple-600 mr-2" />
-              <span className="text-sm font-bold text-purple-600">TRANSPARENT PRICING</span>
-            </div>
-            <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-3">
-              Choose the Perfect
-              <span className="block bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent pb-2 leading-[1.15]">
-                Plan for You
-              </span>
-            </h2>
-            <p className="text-lg text-purple-700 mb-2 animate-fadeInUp delay-200">Start free and scale as you grow. No hidden fees, cancel anytime.</p>
-            <p className="text-base text-gray-600 animate-fadeInUp delay-400">Flexible plans for every business size. Upgrade or downgrade anytime.</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-12 gap-x-8">
-            {/* Starter Plan */}
-            <div className="w-full max-w-md mx-auto bg-white/80 backdrop-blur-lg rounded-3xl border-2 border-gray-200 p-10 shadow-xl transition-transform duration-300 hover:scale-105 hover:border-indigo-300 animate-fadeInUp" style={{ animationDelay: '400ms', animationFillMode: 'both' }}>
-              <div className="text-center mb-8">
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">Starter</h3>
-                <p className="text-gray-500 mb-6">Perfect for small businesses</p>
-                <div className="mb-6">
-                  <span className="text-4xl font-bold text-gray-900">PKR 0</span>
-                  <span className="text-gray-500">/month</span>
-                </div>
-                <button 
-                  onClick={() => {
+      <PlanAndPricing 
+        onGetStarted={() => {
                     setIsLogin(false);
                     setCurrentStep(1);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
-                  className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl hover:bg-gray-200 transition-colors font-semibold"
-                >
-                  Get Started Free
-                </button>
-              </div>
-              <ul className="space-y-3">
-                <li className="flex items-center text-gray-600">
-                  <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                  Up to 100 transactions
-                </li>
-                <li className="flex items-center text-gray-600">
-                  <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                  Basic invoicing
-                </li>
-                <li className="flex items-center text-gray-600">
-                  <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                  Inventory management
-                </li>
-                <li className="flex items-center text-gray-600">
-                  <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                  Email support
-                </li>
-                <li className="flex items-center text-gray-400">
-                  <X className="w-5 h-5 text-gray-300 mr-3" />
-                  Advanced analytics
-                </li>
-                <li className="flex items-center text-gray-400">
-                  <X className="w-5 h-5 text-gray-300 mr-3" />
-                  API access
-                </li>
-              </ul>
-            </div>
-            {/* Professional Plan */}
-            <div className="w-full max-w-lg mx-auto bg-gradient-to-br from-indigo-600 to-purple-600 rounded-3xl p-12 text-white relative shadow-2xl border-2 border-indigo-400 scale-105 animate-fadeInUp" style={{ animationDelay: '520ms', animationFillMode: 'both' }}>
-              <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-10">
-                <span className="bg-yellow-400 text-yellow-900 px-4 py-1 rounded-full text-sm font-bold shadow-md">
-                  MOST POPULAR
-                </span>
-              </div>
-              <div className="text-center mb-8">
-                <h3 className="text-2xl font-bold mb-2">Professional</h3>
-                <p className="text-indigo-100 mb-6">For growing businesses</p>
-                <div className="mb-6">
-                  <span className="text-4xl font-bold">PKR 999</span>
-                  <span className="text-indigo-200">/month</span>
-                </div>
-                <button 
-                  onClick={() => {
-                    setIsLogin(false);
-                    setCurrentStep(1);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="w-full bg-white text-indigo-600 py-3 rounded-xl hover:bg-gray-50 transition-colors font-semibold"
-                >
-                  Start Free Trial
-                </button>
-              </div>
-              <ul className="space-y-3">
-                <li className="flex items-center">
-                  <CheckCircle className="w-5 h-5 text-green-400 mr-3" />
-                  Unlimited transactions
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="w-5 h-5 text-green-400 mr-3" />
-                  Advanced invoicing
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="w-5 h-5 text-green-400 mr-3" />
-                  Full inventory management
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="w-5 h-5 text-green-400 mr-3" />
-                  Priority support
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="w-5 h-5 text-green-400 mr-3" />
-                  Advanced analytics
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="w-5 h-5 text-green-400 mr-3" />
-                  Multi-user access
-                </li>
-              </ul>
-            </div>
-            {/* Enterprise Plan */}
-            <div className="w-full max-w-md mx-auto bg-white/80 backdrop-blur-lg rounded-3xl border-2 border-gray-200 p-10 shadow-xl transition-transform duration-300 hover:scale-105 hover:border-purple-300 animate-fadeInUp" style={{ animationDelay: '640ms', animationFillMode: 'both' }}>
-              <div className="text-center mb-8">
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">Enterprise</h3>
-                <p className="text-gray-500 mb-6">For large organizations</p>
-                <div className="mb-6">
-                  <span className="text-4xl font-bold text-gray-900">PKR 2999</span>
-                  <span className="text-gray-500">/month</span>
-                </div>
-                <button 
-                  onClick={() => {
-                    setIsLogin(false);
-                    setCurrentStep(1);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-3 rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-colors font-semibold"
-                >
-                  Contact Sales
-                </button>
-              </div>
-              <ul className="space-y-3">
-                <li className="flex items-center text-gray-600">
-                  <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                  Everything in Professional
-                </li>
-                <li className="flex items-center text-gray-600">
-                  <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                  Custom integrations
-                </li>
-                <li className="flex items-center text-gray-600">
-                  <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                  Dedicated account manager
-                </li>
-                <li className="flex items-center text-gray-600">
-                  <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                  24/7 phone support
-                </li>
-                <li className="flex items-center text-gray-600">
-                  <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                  API access
-                </li>
-                <li className="flex items-center text-gray-600">
-                  <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                  Custom reports
-                </li>
-              </ul>
-            </div>
-          </div>
-          {/* Money Back Guarantee */}
-          <div className="text-center mt-16">
-            <div className="inline-flex items-center bg-green-50 border border-green-200 rounded-full px-6 py-3">
-              <Shield className="w-5 h-5 text-green-600 mr-2" />
-              <span className="text-green-700 font-medium">30-day money-back guarantee</span>
-            </div>
-          </div>
-        </div>
-      </section>
+      />
 
       {/* CTA Section */}
       <section className="py-24 bg-gradient-to-br from-gray-50 to-indigo-50 relative overflow-hidden">

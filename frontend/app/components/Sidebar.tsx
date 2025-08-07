@@ -8,6 +8,7 @@ import { SidebarContext } from '../contexts/SidebarContext'
 import { FiChevronRight } from 'react-icons/fi'
 import { performLogout } from '../../lib/logout'
 import { getCurrentUserInfo } from '../../lib/roleAccessControl'
+import { checkLicenseStatus } from '../../http/license-keys'
 
 // Define types for nav items
 interface NavSubItem {
@@ -111,6 +112,11 @@ export default function Sidebar() {
   const [businessName, setBusinessName] = useState('My Business')
   const [openDropdowns, setOpenDropdowns] = useState<{ [key: string]: boolean }>({})
   const [userInfo, setUserInfo] = useState<any>(null)
+  const [showBuyPlan, setShowBuyPlan] = useState(false)
+  const [daysSinceCreation, setDaysSinceCreation] = useState(0)
+  const [hasLicenseKey, setHasLicenseKey] = useState(false)
+  const [licenseDetails, setLicenseDetails] = useState<any>(null)
+  const [isCheckingLicense, setIsCheckingLicense] = useState(false)
 
   // Use SidebarContext for isCollapsed and setIsCollapsed
   const { isCollapsed, setIsCollapsed } = useContext(SidebarContext)
@@ -122,10 +128,129 @@ export default function Sidebar() {
     // Get current user info for role-based access
     const currentUserInfo = getCurrentUserInfo()
     setUserInfo(currentUserInfo)
+    
+    // Check license key status from database
+    const checkLicenseStatusFromDB = async () => {
+      try {
+        const token = localStorage.getItem('token')
+        if (token) {
+          setIsCheckingLicense(true)
+          console.log('Checking license status from database...')
+          const response = await checkLicenseStatus()
+          console.log('License status response:', response)
+          
+          if (response.success && response.data) {
+            setHasLicenseKey(response.data.hasValidLicense)
+            setLicenseDetails(response.data.license || null)
+          } else {
+            setHasLicenseKey(false)
+            setLicenseDetails(null)
+          }
+        } else {
+          setHasLicenseKey(false)
+          setLicenseDetails(null)
+        }
+      } catch (error) {
+        console.error('Error checking license status from database:', error)
+        setHasLicenseKey(false)
+        setLicenseDetails(null)
+      } finally {
+        setIsCheckingLicense(false)
+      }
+    }
+    
+    checkLicenseStatusFromDB()
+    
+    // Check if user has been logged in for more than 14 days
+    const user = JSON.parse(localStorage.getItem('user') || '{}')
+    if (user && user.createdAt) {
+      const userCreatedAt = new Date(user.createdAt)
+      const currentDate = new Date()
+      const days = Math.floor((currentDate.getTime() - userCreatedAt.getTime()) / (1000 * 60 * 60 * 24))
+      setDaysSinceCreation(days)
+      
+      if (days > 14) {
+        setShowBuyPlan(true)
+      }
+    }
   }, [])
+
+  // Add/remove overlay when showBuyPlan changes
+  useEffect(() => {
+    console.log('showBuyPlan changed:', showBuyPlan)
+    console.log('hasLicenseKey:', hasLicenseKey)
+    
+    // Only show overlay if user doesn't have license key and has exceeded 14 days
+    if (showBuyPlan && !hasLicenseKey && daysSinceCreation > 14) {
+      // Remove existing overlay first
+      const existingOverlay = document.getElementById('buy-plan-overlay')
+      if (existingOverlay) {
+        existingOverlay.remove()
+      }
+      
+      // Create new overlay
+      const overlay = document.createElement('div')
+      overlay.id = 'buy-plan-overlay'
+      overlay.style.position = 'fixed'
+      overlay.style.top = '0'
+      overlay.style.left = isCollapsed ? '64px' : '256px'
+      overlay.style.width = isCollapsed ? 'calc(100vw - 64px)' : 'calc(100vw - 256px)'
+      overlay.style.height = '100vh'
+      overlay.style.backgroundColor = 'transparent'
+      overlay.style.zIndex = '9999'
+      overlay.style.pointerEvents = 'auto'
+      overlay.style.display = 'block'
+      overlay.style.visibility = 'visible'
+      overlay.style.opacity = '1'
+      
+      console.log('Adding overlay with styles:', overlay.style.cssText)
+      document.body.appendChild(overlay)
+      console.log('Overlay added to DOM')
+    } else {
+      // Remove overlay
+      const overlay = document.getElementById('buy-plan-overlay')
+      if (overlay) {
+        overlay.remove()
+        console.log('Overlay removed')
+      }
+    }
+
+    // Cleanup on unmount
+    return () => {
+      const overlay = document.getElementById('buy-plan-overlay')
+      if (overlay) {
+        overlay.remove()
+      }
+    }
+  }, [showBuyPlan, hasLicenseKey, isCollapsed])
 
   const handleLogout = async () => {
     await performLogout();
+  }
+
+  // Function to refresh license status
+  const refreshLicenseStatus = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      if (token) {
+        setIsCheckingLicense(true)
+        const response = await checkLicenseStatus()
+        
+        if (response.success && response.data) {
+          setHasLicenseKey(response.data.hasValidLicense)
+          setLicenseDetails(response.data.license || null)
+        } else {
+          setHasLicenseKey(false)
+          setLicenseDetails(null)
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing license status:', error)
+      setHasLicenseKey(false)
+      setLicenseDetails(null)
+    } finally {
+      setIsCheckingLicense(false)
+    }
   }
 
   const toggleDropdown = (itemId: string) => {
@@ -172,6 +297,18 @@ export default function Sidebar() {
 
   const isActiveSubItem = (subItem: NavSubItem) => {
     return pathname === subItem.path
+  }
+
+  // Calculate progress percentage for the 14-day trial
+  const getTrialProgress = () => {
+    if (daysSinceCreation >= 14) return 100
+    return Math.round((daysSinceCreation / 14) * 100)
+  }
+
+  // Get remaining days
+  const getRemainingDays = () => {
+    const remaining = 14 - daysSinceCreation
+    return remaining > 0 ? remaining : 0
   }
 
   // Function to check if nav item should be visible based on user role
@@ -315,14 +452,38 @@ export default function Sidebar() {
       <div className="border-t border-gray-200 p-3">
         {!isCollapsed ? (
           <div className="space-y-2">
-            <button className="w-full flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label="Notifications">
-              <span>🔔</span>
-              <span className="text-sm">Notifications</span>
-            </button>
-            <button className="w-full flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label="Help & Support">
-              <span>❓</span>
-              <span className="text-sm">Help & Support</span>
-            </button>
+            {/* Buy Plan Block - Show always until user has license */}
+            {!hasLicenseKey && (
+              <div 
+                onClick={() => router.push('/dashboard/pricing')}
+                className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl p-4 mb-3 text-white shadow-lg cursor-pointer hover:shadow-xl transition-all duration-200"
+              > 
+                <h3 className="font-bold text-sm mb-1">Upgrade Your Plan</h3>
+                <p className="text-xs text-purple-100 mb-3">Unlock unlimited features and grow your business</p>
+                
+                {/* Progress Bar */}
+                <div className="mb-3">
+                  <div className="w-full bg-white/20 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full transition-all duration-500 ${
+                        getTrialProgress() >= 100 
+                          ? 'bg-red-400' 
+                          : getTrialProgress() >= 70 
+                          ? 'bg-yellow-400' 
+                          : 'bg-green-400'
+                      }`}
+                      style={{ width: `${getTrialProgress()}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between text-xs text-purple-100 mt-1">
+                    <span>Trial Progress</span>
+                    <span>{daysSinceCreation}/14 days</span>
+                  </div>
+                </div>
+                
+
+              </div>
+            )}
             <button
               onClick={handleLogout}
               className="w-full flex items-center space-x-3 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
@@ -334,8 +495,31 @@ export default function Sidebar() {
           </div>
         ) : (
           <div className="space-y-2">
-            <button className="w-full flex justify-center py-2 text-gray-600 hover:bg-gray-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label="Notifications">🔔</button>
-            <button className="w-full flex justify-center py-2 text-gray-600 hover:bg-gray-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label="Help & Support">❓</button>
+            {/* Buy Plan Block for collapsed state */}
+            {!hasLicenseKey && (
+              <div 
+                onClick={() => router.push('/dashboard/pricing')}
+                className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg p-2 mb-2 text-white text-center cursor-pointer hover:shadow-lg transition-all duration-200"
+              >
+                <div className="text-lg mb-1">💎</div>
+                <div className="text-xs text-purple-100 mb-2">
+                  {daysSinceCreation}/14
+                </div>
+                <div className="w-full bg-white/20 rounded-full h-1 mb-2">
+                  <div 
+                    className={`h-1 rounded-full transition-all duration-500 ${
+                      getTrialProgress() >= 100 
+                        ? 'bg-red-400' 
+                        : getTrialProgress() >= 70 
+                        ? 'bg-yellow-400' 
+                        : 'bg-green-400'
+                    }`}
+                    style={{ width: `${getTrialProgress()}%` }}
+                  ></div>
+                </div>
+
+              </div>
+            )}
             <button
               onClick={handleLogout}
               className="w-full flex justify-center py-2 text-red-600 hover:bg-red-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"

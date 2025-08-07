@@ -133,6 +133,7 @@ export default function Dashboard() {
     totalInvoices: 0
   });
   const [user, setUser] = useState<User | null>(null);
+  const [userRole, setUserRole] = useState<string>('user');
   const [salesOverview, setSalesOverview] = useState<any[]>([]);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [showReceivableModal, setShowReceivableModal] = useState(false);
@@ -203,6 +204,25 @@ export default function Dashboard() {
         if (res.ok) {
           const data = await res.json();
           setUser(data.user);
+          
+          // Get user role from the API response or localStorage
+          let role = 'user';
+          if (data.user && data.user.role) {
+            role = data.user.role;
+          } else {
+            // Fallback to localStorage
+            const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+            role = storedUser.role || 'user';
+          }
+          
+          console.log('🔐 Dashboard User Role:', {
+            email: data.user?.email,
+            role: role,
+            fromAPI: !!data.user?.role,
+            fromLocalStorage: !data.user?.role
+          });
+          
+          setUserRole(role);
         }
       } catch (err) {
         console.error('Failed to fetch user:', err);
@@ -441,6 +461,18 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center space-x-4">
+            {/* License Key Generator Button - Only for Superadmin */}
+            {userRole === 'superadmin' && (
+              <button
+                onClick={() => router.push('/dashboard/license-generator')}
+                className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl group"
+                title="License Key Generator"
+              >
+                <span className="text-lg">🔑</span>
+                <span className="hidden sm:block font-semibold">License Generator</span>
+              </button>
+            )}
+
             <div className="flex items-center space-x-3 bg-white/50 backdrop-blur-sm rounded-2xl px-4 py-2 border border-white/20">
               <div className="relative">
                 <div className="w-10 h-10 bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg cursor-pointer"

@@ -15,7 +15,15 @@ const userSchema = new mongoose.Schema({
   joinedCompanies: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // Array of company user IDs that this user has joined
   resetPasswordToken: { type: String },
   resetPasswordExpires: { type: Date },
-  emailVerified: { type: Boolean, default: false }
+  emailVerified: { type: Boolean, default: false },
+  role: { 
+    type: String, 
+    enum: ['user', 'superadmin'], 
+    default: 'user' 
+  },
+  // License key tracking
+  activatedLicenseKey: { type: mongoose.Schema.Types.ObjectId, ref: 'LicenseKey' },
+
 }, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);

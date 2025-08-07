@@ -98,30 +98,13 @@ function getCurrentStock(item: Item): number {
 function getStockDisplay(item: Item, value: number) {
   // Handle new unit structure (from bulk import)
   if (item.baseUnit) {
-    let result = `${value} ${item.baseUnit}`;
-    if (item.secondaryUnit && item.conversionRate) {
-      const secondaryQty = Math.floor(value / item.conversionRate);
-      const remainder = value % item.conversionRate;
-      result += ` (${secondaryQty} ${item.secondaryUnit}`;
-      if (remainder > 0) result += ` + ${remainder} ${item.baseUnit}`;
-      result += `; 1 ${item.secondaryUnit} = ${item.conversionRate} ${item.baseUnit})`;
-    }
-    return result;
+    return `${value} ${item.baseUnit}`;
   }
   
   // Handle old unit structure
   if (item.unit && item.unit.base) {
     const base = item.unit.base === 'custom' ? item.unit.customBase : item.unit.base;
-    let result = `${value} ${base}`;
-    if (item.unit.secondary && item.unit.secondary !== 'None' && item.unit.conversionFactor) {
-      const secondary = item.unit.secondary === 'custom' ? item.unit.customSecondary : item.unit.secondary;
-      const secondaryQty = Math.floor(value / item.unit.conversionFactor);
-      const remainder = value % item.unit.conversionFactor;
-      result += ` (${secondaryQty} ${secondary}`;
-      if (remainder > 0) result += ` + ${remainder} ${base}`;
-      result += `; 1 ${secondary} = ${item.unit.conversionFactor} ${base})`;
-    }
-    return result;
+    return `${value} ${base}`;
   }
   
   // Fallback: just show the number
@@ -522,39 +505,7 @@ export default function ItemsPage() {
         </div>
       </div>
 
-      {/* Category Pills */}
-      <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-4 md:p-6 mb-6 border border-gray-100 z-[1]">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Item Categories</h2>
-        <div className="flex flex-wrap gap-3 md:gap-4">
-          {categoryStats.map((category) => {
-            let bg = 'bg-gray-100', text = 'text-gray-800', iconBg = 'bg-gray-200';
-            switch (category.name) {
-              case 'Electronics': bg = 'bg-blue-50'; text = 'text-blue-800'; iconBg = 'bg-blue-100'; break;
-              case 'Clothing': bg = 'bg-pink-50'; text = 'text-pink-800'; iconBg = 'bg-pink-100'; break;
-              case 'Food': bg = 'bg-yellow-50'; text = 'text-yellow-800'; iconBg = 'bg-yellow-100'; break;
-              case 'Books': bg = 'bg-green-50'; text = 'text-green-800'; iconBg = 'bg-green-100'; break;
-              case 'Home': bg = 'bg-purple-50'; text = 'text-purple-800'; iconBg = 'bg-purple-100'; break;
-              default: bg = 'bg-gray-100'; text = 'text-gray-800'; iconBg = 'bg-gray-200';
-            }
-            return (
-              <div
-                key={category.id}
-                className={`flex items-center space-x-3 px-6 py-4 rounded-full shadow-sm border cursor-pointer transition-all
-                  ${bg} ${text} ${selectedCategory === category.name ? 'border-2 border-blue-500 shadow-lg scale-105' : 'border-gray-200 hover:shadow-md hover:scale-105'}
-                `}
-                onClick={() => setSelectedCategory(selectedCategory === category.name ? '' : category.name)}
-              >
-                <span className={`w-9 h-9 flex items-center justify-center rounded-full text-2xl font-bold ${iconBg}`}>{category.icon}</span>
-                <div className="flex flex-col">
-                  <span className="font-semibold text-base leading-tight">{category.name}</span>
-                  <span className="text-xs text-gray-500">{category.totalItems} items</span>
-                </div>
-                <span className={`ml-4 font-bold text-base`}>PKR {category.totalValue.toLocaleString()}</span>
-              </div>
-            )
-          })}
-        </div>
-      </div>
+
 
       {/* Filters and Tabs - modern underline, color */}
       <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow mb-6 border border-gray-100">
@@ -573,54 +524,7 @@ export default function ItemsPage() {
                   autoComplete="off"
                 />
               </div>
-              {/* Enhanced Category Dropdown */}
-              <div ref={dropdownRef} className="relative w-full sm:w-60">
-                <button
-                  ref={dropdownButtonRef}
-                  type="button"
-                  className="w-full flex items-center justify-between px-4 py-2.5 rounded-full bg-white/80 shadow border border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all group"
-                  onClick={() => setShowCategoryDropdown((v) => !v)}
-                  aria-haspopup="listbox"
-                  aria-expanded={showCategoryDropdown ? 'true' : 'false'}
-                >
-                  <span className="truncate">{selectedCategory ? selectedCategory : 'All Categories'}</span>
-                  <svg className={`w-5 h-5 ml-2 transition-transform ${showCategoryDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-                </button>
-                {showCategoryDropdown && typeof window !== 'undefined' && ReactDOM.createPortal(
-                  <ul
-                    className="absolute z-[9999] bg-white rounded-xl shadow-lg border border-gray-100 py-1 max-h-60 overflow-auto animate-fadeinup custom-dropdown-scrollbar"
-                    style={{
-                      top: dropdownPosition.top,
-                      left: dropdownPosition.left,
-                      width: dropdownPosition.width,
-                      position: 'absolute',
-                    }}
-                    tabIndex={-1}
-                    role="listbox"
-                  >
-                    <li
-                      className={`px-4 py-2 cursor-pointer rounded-lg transition-all hover:bg-blue-50 ${!selectedCategory ? 'font-semibold text-blue-600' : 'text-gray-700'}`}
-                      onClick={() => { setSelectedCategory(''); setShowCategoryDropdown(false); }}
-                      role="option"
-                      aria-selected={!selectedCategory}
-                    >
-                      All Categories
-                    </li>
-                    {categories.map((category) => (
-                      <li
-                        key={category.id}
-                        className={`px-4 py-2 cursor-pointer rounded-lg transition-all hover:bg-blue-50 ${selectedCategory === category.name ? 'font-semibold text-blue-600' : 'text-gray-700'}`}
-                        onClick={() => { setSelectedCategory(category.name); setShowCategoryDropdown(false); }}
-                        role="option"
-                        aria-selected={selectedCategory === category.name}
-                      >
-                        {category.name}
-                      </li>
-                    ))}
-                  </ul>,
-                  document.body
-                )}
-              </div>
+
             </div>
           </div>
         </div>
@@ -796,8 +700,7 @@ export default function ItemsPage() {
                 <table className="min-w-full divide-y divide-gray-100 table-fixed">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">Item</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Category</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3">Item</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Pricing</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Stock</th>
                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Status</th>
@@ -821,14 +724,11 @@ export default function ItemsPage() {
                             <div className="min-w-0 flex-1">
                               <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
                               <div className="text-xs text-gray-500 truncate">{item.sku} • {item.supplier}</div>
+                              <div className="text-xs text-gray-400 truncate">{item.category} • {item.subcategory}</div>
                               {item.hsn && (
                                 <div className="text-xs text-gray-400 truncate">HSN: {item.hsn}</div>
                               )}
                             </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900 truncate">{item.category}</div>
-                            <div className="text-sm text-gray-500 truncate">{item.subcategory}</div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">PKR {(item.salePrice ?? 0).toLocaleString()}</div>

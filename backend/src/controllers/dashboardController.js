@@ -31,6 +31,17 @@ export const getDashboardStats = async (req, res) => {
     const userId = req.user && (req.user._id || req.user.id);
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
 
+    // Get user role and log it
+    const user = await User.findById(userId).select('role name email');
+    if (user) {
+      console.log('🔐 User Role Check:', {
+        userId: userId,
+        name: user.name,
+        email: user.email,
+        role: user.role || 'user (default)'
+      });
+    }
+
     // Check cache first
     const cacheKey = _getDashboardCacheKey(userId, 'stats');
     const cachedResult = dashboardCache.get(cacheKey);
@@ -246,6 +257,7 @@ export const getDashboardStats = async (req, res) => {
         lowStockItems: totalStockIssues || 0,
         outOfStockItems: 0, // Will be calculated in detailed view
         negativeStockItems: 0, // Will be calculated in detailed view
+
       }
     };
 

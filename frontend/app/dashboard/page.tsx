@@ -152,19 +152,16 @@ export default function Dashboard() {
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-  // Check license generator permission based on user email from API
+  // Check license generator permission based on user role from API
   useEffect(() => {
-    if (userRoleFromAPI === 'superadmin' && userEmailFromAPI) {
+    if (userRoleFromAPI === 'superadmin') {
       console.log('🔍 License Generator Check - User Email:', userEmailFromAPI);
+      console.log('🔑 License Generator: Show button for superadmin user');
       
-      // Show license generator for the original superadmin email
-      // You can add specific email checks here if needed
-      const isOriginalSuperadmin = userEmailFromAPI === 'abrarmughal4481@gmail.com';
-      
-      setShowLicenseGenerator(isOriginalSuperadmin);
-      console.log('🔑 License Generator: Show button for', userEmailFromAPI, '=', isOriginalSuperadmin);
+      // Show license generator for any superadmin user
+      setShowLicenseGenerator(true);
     } else {
-      console.log('❌ User is not superadmin or no email, role:', userRoleFromAPI, 'email:', userEmailFromAPI);
+      console.log('❌ User is not superadmin, role:', userRoleFromAPI, 'email:', userEmailFromAPI);
       setShowLicenseGenerator(false);
     }
   }, [userRoleFromAPI, userEmailFromAPI]);

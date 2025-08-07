@@ -388,42 +388,73 @@ export const checkLicenseStatus = async (req, res) => {
   }
 };
 
-// Deactivate license key (superadmin only)
-export const deactivateLicenseKey = async (req, res) => {
+// Delete license key (superadmin only)
+export const deleteLicenseKey = async (req, res) => {
   try {
+    console.log('🔍 Delete License Key - Request received');
+    console.log('🔍 Method:', req.method);
+    console.log('🔍 URL:', req.url);
+    console.log('🔍 Params:', req.params);
+    console.log('🔍 User:', req.user);
+    
     const { key } = req.params;
     const userId = req.user.id;
+
+    console.log('🔍 License Key to delete:', key);
+    console.log('🔍 User ID:', userId);
 
     // Check if user is superadmin
     const user = await User.findById(userId);
     if (!user || user.role !== 'superadmin') {
+      console.log('❌ User is not superadmin:', user?.role);
       return res.status(403).json({
         success: false,
-        message: 'Only superadmins can deactivate license keys'
+        message: 'Only superadmins can delete license keys'
       });
     }
 
+    console.log('✅ User is superadmin, proceeding with deletion');
+
     const licenseKey = await LicenseKey.findOne({ key: key.toUpperCase() });
     if (!licenseKey) {
+      console.log('❌ License key not found:', key);
       return res.status(404).json({
         success: false,
         message: 'License key not found'
       });
     }
 
-    licenseKey.isActive = false;
-    await licenseKey.save();
+    console.log('✅ License key found, removing from users and deleting');
+
+    // Remove license key from all users who have it activated
+    const userUpdateResult = await User.updateMany(
+      { activatedLicenseKey: licenseKey._id },
+      { 
+        $unset: { 
+          activatedLicenseKey: 1,
+          licenseActivatedAt: 1,
+          licenseExpiresAt: 1
+        }
+      }
+    );
+
+    console.log('✅ Updated users:', userUpdateResult);
+
+    // Delete the license key document
+    const deleteResult = await LicenseKey.findByIdAndDelete(licenseKey._id);
+
+    console.log('✅ License key deleted:', deleteResult);
 
     res.json({
       success: true,
-      message: 'License key deactivated successfully'
+      message: 'License key deleted successfully'
     });
 
   } catch (error) {
-    console.error('Error deactivating license key:', error);
+    console.error('❌ Error deleting license key:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to deactivate license key',
+      message: 'Failed to delete license key',
       error: error.message
     });
   }

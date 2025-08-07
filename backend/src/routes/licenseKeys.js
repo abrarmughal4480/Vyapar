@@ -5,7 +5,7 @@ import {
   getAllLicenseKeys, 
   activateLicenseKey, 
   checkLicenseStatus, 
-  deactivateLicenseKey 
+  deleteLicenseKey 
 } from '../controllers/licenseKeyController.js';
 
 const router = express.Router();
@@ -22,7 +22,16 @@ router.post('/activate', authMiddleware, activateLicenseKey);
 // Check license status
 router.get('/status', authMiddleware, checkLicenseStatus);
 
-// Deactivate license key (superadmin only)
-router.put('/deactivate/:key', authMiddleware, deactivateLicenseKey);
+// Test route to verify routing
+router.get('/test', (req, res) => {
+  res.json({ success: true, message: 'License keys route is working' });
+});
+
+// Delete license key (superadmin only) - using POST method as fallback
+router.delete('/delete/:key', authMiddleware, deleteLicenseKey);
+router.post('/delete/:key', authMiddleware, deleteLicenseKey); // Fallback for DELETE issues
+
+// Alternative delete route using PUT method
+router.put('/remove/:key', authMiddleware, deleteLicenseKey);
 
 export default router; 

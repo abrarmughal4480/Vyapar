@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Copy, CheckCircle, RefreshCw, ChevronDown, Settings, Key, Users, Calendar, Trash2 } from 'lucide-react';
-import { generateLicenseKey, getAllLicenseKeys, deactivateLicenseKey, LicenseKey } from '@/http/license-keys';
+import { generateLicenseKey, getAllLicenseKeys, deleteLicenseKey, LicenseKey } from '@/http/license-keys';
 import Toast from '@/components/Toast';
 
 export default function LicenseGenerator() {
@@ -46,7 +46,11 @@ export default function LicenseGenerator() {
     try {
       setIsLoading(true);
       const response = await getAllLicenseKeys();
-      setGeneratedKeys(response.data);
+      // Sort license keys by generation date (newest first)
+      const sortedKeys = response.data.sort((a: LicenseKey, b: LicenseKey) => 
+        new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime()
+      );
+      setGeneratedKeys(sortedKeys);
     } catch (error: any) {
       showToastMessage(error.message, 'error');
     } finally {
@@ -87,17 +91,20 @@ export default function LicenseGenerator() {
     }
   };
 
-  // Deactivate license key
-  const handleDeactivateKey = async (key: string) => {
-    if (!confirm('Are you sure you want to deactivate this license key? This action cannot be undone.')) {
+  // Delete license key
+  const handleDeleteKey = async (key: string) => {
+    if (!confirm('Are you sure you want to delete this license key? This action cannot be undone and will remove the license from all users.')) {
       return;
     }
 
     try {
-      await deactivateLicenseKey(key);
-      showToastMessage('License key deactivated successfully!', 'success');
+      console.log('🗑️ Attempting to delete license key:', key);
+      const result = await deleteLicenseKey(key);
+      console.log('✅ Delete result:', result);
+      showToastMessage('License key deleted successfully!', 'success');
       await fetchLicenseKeys();
     } catch (error: any) {
+      console.error('❌ Delete error:', error);
       showToastMessage(error.message, 'error');
     }
   };
@@ -345,15 +352,13 @@ export default function LicenseGenerator() {
                             )}
                           </button>
                           
-                          {licenseKey.isActive && (
-                            <button
-                              onClick={() => handleDeactivateKey(licenseKey.key)}
-                              className="flex items-center space-x-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors duration-200"
-                              title="Deactivate Key"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleDeleteKey(licenseKey.key)}
+                            className="flex items-center space-x-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors duration-200"
+                            title="Delete Key"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
                     ))}

@@ -82,12 +82,19 @@ export const checkLicenseStatus = async (): Promise<{ success: boolean; data: Li
   }
 };
 
-// Deactivate a license key (superadmin only)
-export const deactivateLicenseKey = async (key: string): Promise<{ success: boolean; message: string }> => {
+// Delete a license key (superadmin only)
+export const deleteLicenseKey = async (key: string): Promise<{ success: boolean; message: string }> => {
   try {
-    const response = await api.put(`/api/license-keys/deactivate/${key}`);
+    // Try DELETE method first
+    const response = await api.delete(`/api/license-keys/delete/${key}`);
     return response.data;
   } catch (error: any) {
-    throw new Error(error.response?.data?.message || 'Failed to deactivate license key');
+    // If DELETE fails, try POST method as fallback
+    try {
+      const response = await api.post(`/api/license-keys/delete/${key}`);
+      return response.data;
+    } catch (postError: any) {
+      throw new Error(postError.response?.data?.message || 'Failed to delete license key');
+    }
   }
 }; 

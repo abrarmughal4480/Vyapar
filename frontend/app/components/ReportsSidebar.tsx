@@ -1,5 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+
 
 interface ReportsSidebarProps {
   activeTab: string;
@@ -7,129 +9,191 @@ interface ReportsSidebarProps {
 }
 
 const reportTabs = [
-  { id: 'sale', name: 'Sale' },
-  { id: 'purchase', name: 'Purchase' },
-  { id: 'daybook', name: 'Day Book' },
-  { id: 'alltransactions', name: 'All Transactions' },
-  { id: 'billwiseprofit', name: 'Bill Wise Profit' },
-  { id: 'profitandloss', name: 'Profit and Loss' },
-  { id: 'cashflow', name: 'Cash Flow' },
-  { id: 'balancesheet', name: 'Balance Sheet' },
+  { 
+    id: 'sale', 
+    name: 'Sale Report', 
+    description: 'Sales analysis and insights',
+    path: '/dashboard/reports/sale'
+  },
+  { 
+    id: 'purchase', 
+    name: 'Purchase Report', 
+    description: 'Purchase tracking and analysis',
+    path: '/dashboard/reports/purchase'
+  },
+  { 
+    id: 'daybook', 
+    name: 'Day Book', 
+    description: 'Daily transaction summary',
+    path: '/dashboard/reports/day-book'
+  },
+  { 
+    id: 'alltransactions', 
+    name: 'All Transactions', 
+    description: 'Complete transaction history',
+    path: '/dashboard/reports/all-transactions'
+  },
+  { 
+    id: 'billwiseprofit', 
+    name: 'Bill Wise Profit', 
+    description: 'Profit analysis by bill',
+    path: '/dashboard/reports/bill-wise-profit'
+  },
+  { 
+    id: 'profitandloss', 
+    name: 'Profit and Loss', 
+    description: 'Financial performance overview',
+    path: '/dashboard/reports/profit-and-loss'
+  },
+  { 
+    id: 'cashflow', 
+    name: 'Cash Flow', 
+    description: 'Cash flow analysis',
+    path: '/dashboard/reports/cash-flow'
+  },
+  { 
+    id: 'balancesheet', 
+    name: 'Balance Sheet', 
+    description: 'Financial position summary',
+    path: '/dashboard/reports/balance-sheet'
+  },
+];
+
+const partyReportTabs = [
+  {
+    id: 'party-statement',
+    name: 'Party Statement',
+    description: 'Individual party transactions',
+    path: '/dashboard/reports/party-statement'
+  },
+  {
+    id: 'party-wise-profit-and-loss',
+    name: 'Party Wise P&L',
+    description: 'Profit/loss by party',
+    path: '/dashboard/reports/party-wise-profit-and-loss'
+  },
+  {
+    id: 'all-parties',
+    name: 'All Parties',
+    description: 'Complete party overview',
+    path: '/dashboard/reports/all-parties'
+  },
+  {
+    id: 'party-report-by-item',
+    name: 'Party by Item',
+    description: 'Party analysis by items',
+    path: '/dashboard/reports/party-report-by-item'
+  },
+  {
+    id: 'sale-purchase-by-party',
+    name: 'Sale/Purchase by Party',
+    description: 'Transaction analysis by party',
+    path: '/dashboard/reports/sale-purchase-by-party'
+  },
+  {
+    id: 'sale-purchase-by-party-group',
+    name: 'Party Group Analysis',
+    description: 'Group-wise transaction analysis',
+    path: '/dashboard/reports/sale-purchase-by-party-group'
+  },
 ];
 
 const ReportsSidebar: React.FC<ReportsSidebarProps> = ({ activeTab, onTabChange }) => {
+  const pathname = usePathname();
+  
+  // Auto-detect active tab based on current pathname
+  React.useEffect(() => {
+    console.log('🔍 ReportsSidebar - Current pathname:', pathname);
+    
+    const allTabs = [...reportTabs, ...partyReportTabs];
+    const currentTab = allTabs.find(tab => {
+      const isMatch = pathname === tab.path || pathname.startsWith(tab.path + '/');
+      console.log(`  Checking ${tab.name}: ${tab.path} - Match: ${isMatch}`);
+      return isMatch;
+    });
+    
+    console.log('✅ Found active tab:', currentTab?.name);
+    
+    if (currentTab) {
+      console.log('🔄 Setting active tab to:', currentTab.id);
+      onTabChange(currentTab.id);
+    } else {
+      console.log('❌ No matching tab found for pathname:', pathname);
+    }
+  }, [pathname, onTabChange]);
+  
+  const renderNavItem = (item: any) => {
+    // Check if current pathname matches the item path or starts with it
+    const isActive = pathname === item.path || pathname.startsWith(item.path + '/');
+    
+    // Debug logging
+    console.log(`Checking tab: ${item.name}, path: ${item.path}, current: ${pathname}, isActive: ${isActive}`);
+    
+    return (
+      <Link
+        key={item.id}
+        href={item.path}
+        className={`group flex items-center space-x-3 px-4 py-3 text-sm transition-all duration-200 border-l-4 hover:bg-blue-50 hover:border-blue-200 ${
+          isActive 
+            ? 'bg-blue-50 border-blue-500 text-blue-700 font-semibold' 
+            : 'border-transparent text-gray-700 hover:text-gray-900'
+        }`}
+      >
+        <div className="flex-1 min-w-0">
+          <div className={`font-medium transition-colors duration-200 ${
+            isActive ? 'text-blue-700' : 'text-gray-900 group-hover:text-gray-700'
+          }`}>
+            {item.name}
+          </div>
+          <div className={`text-xs transition-colors duration-200 ${
+            isActive ? 'text-blue-600' : 'text-gray-500 group-hover:text-gray-600'
+          }`}>
+            {item.description}
+          </div>
+        </div>
+      </Link>
+    );
+  };
+
   return (
-    <aside className="w-48 min-h-full bg-white border-l border-gray-200 p-0 flex flex-col">
-      <div className="bg-[#f0f6ff] px-6 py-4 border-b border-gray-100">
-        <h2 className="text-base font-bold text-blue-800 tracking-wide">Transaction Report</h2>
+    <aside className="w-56 min-h-full bg-white border-r border-gray-200 shadow-sm flex flex-col">
+      {/* Navigation */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Transaction Reports Section */}
+        <div className="py-4">
+          <div className="px-4 mb-3">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Transaction Reports
+            </h3>
+          </div>
+          <nav className="space-y-1">
+            {reportTabs.map(renderNavItem)}
+          </nav>
+        </div>
+
+        {/* Party Reports Section */}
+        <div className="py-4 border-t border-gray-100">
+          <div className="px-4 mb-3">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Party Reports
+            </h3>
+          </div>
+          <nav className="space-y-1">
+            {partyReportTabs.map(renderNavItem)}
+          </nav>
+        </div>
       </div>
-      <nav className="flex flex-col">
-        {reportTabs.map(tab => (
-          tab.id === 'sale' ? (
-            <Link
-              key={tab.id}
-              href="/dashboard/reports/sale"
-              className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === tab.id ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-            >
-              {tab.name}
-            </Link>
-          ) : tab.id === 'purchase' ? (
-            <Link
-              key={tab.id}
-              href="/dashboard/reports/purchase"
-              className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === tab.id ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-            >
-              {tab.name}
-            </Link>
-          ) : tab.id === 'daybook' ? (
-            <Link
-              key={tab.id}
-              href="/dashboard/reports/day-book"
-              className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === tab.id ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-            >
-              {tab.name}
-            </Link>
-          ) : tab.id === 'alltransactions' ? (
-            <Link
-              key={tab.id}
-              href="/dashboard/reports/all-transactions"
-              className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === tab.id ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-            >
-              {tab.name}
-            </Link>
-          ) : tab.id === 'billwiseprofit' ? (
-            <Link
-              key={tab.id}
-              href="/dashboard/reports/bill-wise-profit"
-              className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === tab.id ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-            >
-              {tab.name}
-            </Link>
-          ) : tab.id === 'profitandloss' ? (
-            <Link
-              key={tab.id}
-              href="/dashboard/reports/profit-and-loss"
-              className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === tab.id ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-            >
-              {tab.name}
-            </Link>
-          ) : (
-          <button
-            key={tab.id}
-            onClick={() => onTabChange(tab.id)}
-            className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100
-              ${activeTab === tab.id
-                ? 'bg-gray-100 font-bold text-blue-700'
-                : 'bg-white text-gray-700 hover:bg-gray-50'}
-            `}
-          >
-            {tab.name}
-          </button>
-          )
-        ))}
-      </nav>
-      {/* Party Report Section */}
-      <div className="bg-[#f0f6ff] px-6 py-4 border-b border-gray-100">
-        <h2 className="text-base font-bold text-blue-800 tracking-wide">Party Report</h2>
+
+      {/* Footer */}
+      <div className="border-t border-gray-200 p-4">
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-3">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            <span className="text-xs font-medium text-green-700">Reports Updated</span>
+          </div>
+          <p className="text-xs text-green-600 mt-1">Real-time data synchronization</p>
+        </div>
       </div>
-      <nav className="flex flex-col">
-        <Link
-          href="/dashboard/reports/party-statement"
-          className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === 'party-statement' ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-        >
-          Party Statement
-        </Link>
-        <Link
-          href="/dashboard/reports/party-wise-profit-and-loss"
-          className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === 'party-wise-profit-and-loss' ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-        >
-          Party Wise Profit and Loss
-        </Link>
-        <Link
-          href="/dashboard/reports/all-parties"
-          className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === 'all-parties' ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-        >
-          All Parties
-        </Link>
-        <Link
-          href="/dashboard/reports/party-report-by-item"
-          className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === 'party-report-by-item' ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-        >
-          Party Report by Item
-        </Link>
-        <Link
-          href="/dashboard/reports/sale-purchase-by-party"
-          className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === 'sale-purchase-by-party' ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-        >
-          Sale Purchase by Party
-        </Link>
-        <Link
-          href="/dashboard/reports/sale-purchase-by-party-group"
-          className={`text-left px-6 py-3 text-sm transition-all duration-150 border-b border-gray-100 ${activeTab === 'sale-purchase-by-party-group' ? 'bg-gray-100 font-bold text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-        >
-          Sale Purchase by Party Group
-        </Link>
-      </nav>
     </aside>
   );
 };

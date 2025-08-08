@@ -20,12 +20,16 @@ import {
   ArrowDownRight,
   Activity,
   Zap,
-  AlertTriangle
+  AlertTriangle,
+  HelpCircle,
+  Mail,
+  Phone
 } from 'lucide-react';
 import { fetchDashboardStats, fetchSalesOverviewForUser, fetchRecentActivityForUser } from '@/http/api';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import EnhancedModal from '../../components/EnhancedModal';
 import { getReceivables, getPayables } from '@/http/parties';
+import { getCurrentUserInfo, canAccessDashboard } from '../../lib/roleAccessControl';
 
 // Define your types here
 type User = {
@@ -149,6 +153,8 @@ export default function Dashboard() {
   const [userRoleFromAPI, setUserRoleFromAPI] = useState<string>('');
   const [userEmailFromAPI, setUserEmailFromAPI] = useState<string>('');
   const [showSalesOverview, setShowSalesOverview] = useState(true);
+  const [isCheckingAccess, setIsCheckingAccess] = useState(true);
+  const [showSupportModal, setShowSupportModal] = useState(false);
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -394,6 +400,21 @@ export default function Dashboard() {
     setLoadingStockSummary(false);
   };
 
+  // Support functions
+  const openSupportModal = () => {
+    setShowSupportModal(true);
+  };
+
+  const handleEmailSupport = () => {
+    const subject = encodeURIComponent('Devease Digital Dashboard Support Request');
+    const body = encodeURIComponent(`Hello Devease Support Team,\n\nI need assistance with the Devease Digital Dashboard.\n\nBusiness Name: ${user?.businessName || 'N/A'}\nUser Email: ${user?.email || 'N/A'}\n\nIssue Description:\n\nBest regards,\n${user?.name || 'User'}`);
+    window.open(`mailto:deveasedigital@gmail.com?subject=${subject}&body=${body}`, '_blank');
+  };
+
+  const handleCallSupport = () => {
+    window.open('tel:+923326282035', '_blank');
+  };
+
 
 
   // Enhanced stats array with modern styling
@@ -476,6 +497,44 @@ export default function Dashboard() {
     'Party': 'from-orange-500 to-red-500',
   };
 
+  // Role-based access control for dashboard redirect
+  useEffect(() => {
+    const checkRoleAndRedirect = () => {
+      const userInfo = getCurrentUserInfo();
+      if (userInfo && userInfo.role) {
+        setUserRole(userInfo.role);
+        setUserRoleFromAPI(userInfo.role); // Set this for license generator check
+        setUserEmailFromAPI(userInfo.email || ''); // Set user email from API
+
+        // Check if user can access dashboard
+        if (!canAccessDashboard()) {
+          console.log(`🚫 Dashboard Access DENIED: Redirecting ${userInfo.role} (${userInfo.email}) to parties page.`);
+          router.push('/dashboard/parties');
+          return;
+        } else {
+          console.log(`✅ Dashboard Access GRANTED: ${userInfo.role} (${userInfo.email}) can access dashboard.`);
+        }
+      } else {
+        // If no user info available, allow access (fallback for Default Admin)
+        console.log('⚠️ No user info available, allowing dashboard access as fallback');
+      }
+      setIsCheckingAccess(false);
+    };
+    checkRoleAndRedirect();
+  }, [router]);
+
+  // Show loading while checking access
+  if (isCheckingAccess) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Checking access...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 relative overflow-hidden" style={{ zoom: '0.9' }}>
       {/* Background decoration */}
@@ -504,6 +563,16 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center space-x-4">
+            {/* Support Button */}
+            <button
+              onClick={openSupportModal}
+              className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-xl hover:from-blue-600 hover:to-cyan-700 transition-all duration-200 shadow-lg hover:shadow-xl group"
+              title="Get Support"
+            >
+              <HelpCircle className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+              <span className="hidden sm:block font-semibold">Support</span>
+            </button>
+
             {/* License Key Generator Button - Only for Superadmin */}
             {showLicenseGenerator && (
               <button
@@ -942,6 +1011,49 @@ export default function Dashboard() {
             )}
           </div>
         )}
+      </EnhancedModal>
+
+      {/* Support Modal */}
+      <EnhancedModal
+        isOpen={showSupportModal}
+        onClose={() => setShowSupportModal(false)}
+        title="Support"
+      >
+        <div className="space-y-4">
+          {/* Email Support */}
+          <button
+            onClick={handleEmailSupport}
+            className="w-full flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <Mail className="w-5 h-5 text-blue-600" />
+            <div className="text-left">
+              <div className="font-medium text-gray-900">Email Support</div>
+                              <div className="text-sm text-gray-600">deveasedigital@gmail.com</div>
+            </div>
+          </button>
+
+          {/* Phone Support */}
+          <button
+            onClick={handleCallSupport}
+            className="w-full flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <Phone className="w-5 h-5 text-green-600" />
+            <div className="text-left">
+              <div className="font-medium text-gray-900">Call Support</div>
+                              <div className="text-sm text-gray-600">+92 332 6282035</div>
+            </div>
+          </button>
+
+          {/* Support Hours */}
+          <div className="pt-2 border-t border-gray-200">
+            <div className="text-sm text-gray-600">
+              <div className="font-medium mb-1">Support Hours:</div>
+              <div>Mon-Fri: 9:00 AM - 6:00 PM (PKT)</div>
+              <div>Sat: 10:00 AM - 4:00 PM (PKT)</div>
+              <div>Sun: Closed</div>
+            </div>
+          </div>
+        </div>
       </EnhancedModal>
     </div>
   );

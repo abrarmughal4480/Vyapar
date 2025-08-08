@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { SidebarContext } from '../contexts/SidebarContext'
 import { FiChevronRight } from 'react-icons/fi'
 import { performLogout } from '../../lib/logout'
-import { getCurrentUserInfo } from '../../lib/roleAccessControl'
+import { getCurrentUserInfo, canAccessDashboard } from '../../lib/roleAccessControl'
 import { checkLicenseStatus } from '../../http/license-keys'
 
 // Define types for nav items
@@ -370,20 +370,25 @@ export default function Sidebar() {
     // If user is not in company context (Default Admin), show all items
     if (userInfo.context !== 'company') return true;
     
+    // Special check for dashboard access
+    if (item.id === 'dashboard') {
+      return canAccessDashboard();
+    }
+    
     const role = userInfo.role;
     
     // Role-based visibility rules
     switch (role) {
       case 'PURCHASER':
-        // PURCHASER can see: Dashboard, Parties, Items, Purchase, Cash & Bank, Barcode, Backup & Restore, Settings
-        return ['dashboard', 'parties', 'items', 'purchase', 'cash-bank', 'barcode', 'backup-restore', 'settings'].includes(item.id);
+        // PURCHASER can see: Parties, Items, Purchase, Cash & Bank, Barcode, Backup & Restore, Settings
+        return ['parties', 'items', 'purchase', 'cash-bank', 'barcode', 'backup-restore', 'settings'].includes(item.id);
       
       case 'SALESMAN':
-        // SALESMAN can only see: Dashboard, Parties, Items, Sale, Cash & Bank, Barcode, Backup & Restore, Settings
-        return ['dashboard', 'parties', 'items', 'sale', 'cash-bank', 'barcode', 'backup-restore', 'settings'].includes(item.id);
+        // SALESMAN can only see: Parties, Items, Sale, Cash & Bank, Barcode, Backup & Restore, Settings
+        return ['parties', 'items', 'sale', 'cash-bank', 'barcode', 'backup-restore', 'settings'].includes(item.id);
       
       case 'CA':
-        // CA can see all pages
+        // CA can see all pages except dashboard (handled above)
         return true;
       
       case 'SECONDARY ADMIN':

@@ -27,21 +27,21 @@ const PAGE_PERMISSIONS: Record<UserRole, {
     restrictedOperations: ['add-user', 'delete-user', 'edit-user-permissions']
   },
   'SALESMAN': {
-    pages: ['dashboard', 'parties', 'items', 'sales', 'payment-in', 'sale-order', 'credit-note', 'estimate', 'expense'],
+    pages: ['parties', 'items', 'sales', 'payment-in', 'sale-order', 'credit-note', 'estimate', 'expense'],
     operations: ['view', 'add', 'share', 'preview', 'convert'],
-    restrictedPages: ['add-user', 'purchases', 'payment-out', 'purchase-order', 'debit-note', 'purchase-estimate', 'purchase-expense'],
+    restrictedPages: ['add-user', 'purchases', 'payment-out', 'purchase-order', 'debit-note', 'purchase-estimate', 'purchase-expense', 'dashboard'],
     restrictedOperations: ['add-user', 'delete-user', 'edit-user-permissions', 'delete', 'edit']
   },
   'CA': {
-    pages: ['dashboard', 'parties', 'items', 'sales', 'purchases', 'reports', 'settings', 'cash-bank', 'barcode', 'backup-restore'],
+    pages: ['parties', 'items', 'sales', 'purchases', 'reports', 'settings', 'cash-bank', 'barcode', 'backup-restore'],
     operations: ['view'],
-    restrictedPages: ['add-user'],
+    restrictedPages: ['add-user', 'dashboard'],
     restrictedOperations: ['add-user', 'delete-user', 'edit-user-permissions', 'add', 'edit', 'delete', 'share', 'preview', 'reopen', 'convert']
   },
   'PURCHASER': {
-    pages: ['dashboard', 'purchases', 'payment-out', 'purchase-order', 'debit-note', 'purchase-estimate', 'purchase-expense'],
+    pages: ['parties', 'purchases', 'payment-out', 'purchase-order', 'debit-note', 'purchase-estimate', 'purchase-expense'],
     operations: ['view', 'add', 'share', 'preview'],
-    restrictedPages: ['add-user', 'sales', 'payment-in', 'sale-order', 'credit-note', 'estimate', 'expense'],
+    restrictedPages: ['add-user', 'sales', 'payment-in', 'sale-order', 'credit-note', 'estimate', 'expense', 'dashboard'],
     restrictedOperations: ['add-user', 'delete-user', 'edit-user-permissions', 'delete', 'edit']
   },
   'Default Admin': {
@@ -300,4 +300,24 @@ export const getAllowedPages = (): string[] => {
 
   const rolePermissions = PAGE_PERMISSIONS[userInfo.role];
   return rolePermissions ? rolePermissions.pages : [];
+}; 
+
+// Check if user can access dashboard specifically
+export const canAccessDashboard = (): boolean => {
+  const userInfo = getCurrentUserInfo();
+  if (!userInfo) return true; // Allow access if no user info (fallback)
+
+  // If user is not in company context (Default Admin), allow dashboard access
+  if (userInfo.context !== 'company') return true;
+
+  const role = userInfo.role;
+  
+  // SALESMAN, CA, and PURCHASER cannot access dashboard
+  if (role === 'SALESMAN' || role === 'CA' || role === 'PURCHASER') {
+    console.log(`🚫 Dashboard Access DENIED: ${userInfo.email} (${role}) cannot access dashboard`);
+    return false;
+  }
+
+  console.log(`✅ Dashboard Access GRANTED: ${userInfo.email} (${role}) can access dashboard`);
+  return true; // Allow access for other roles
 }; 

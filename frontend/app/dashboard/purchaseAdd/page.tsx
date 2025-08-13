@@ -432,7 +432,7 @@ export default function AddPurchasePage() {
         setPageType('purchase-bill');
         
         try {
-          const orderData = JSON.parse(orderDataParam);
+          const orderData = JSON.parse(decodeURIComponent(orderDataParam));
           setOriginalOrderId(orderData.sourceOrderId || orderData.sourceOrderId || orderData.id || null);
           setOriginalOrderDueDate(orderData.dueDate || null);
           setNewPurchase(prev => ({
@@ -471,6 +471,62 @@ export default function AddPurchasePage() {
 
   // Add edit mode state
   const [isEditMode, setIsEditMode] = useState(false);
+  const [hasProcessedNewSupplier, setHasProcessedNewSupplier] = useState(false);
+
+  // Handle new supplier from parties page
+  useEffect(() => {
+    if (!searchParams || hasProcessedNewSupplier) return;
+    
+    const newSupplier = searchParams.get('newSupplier');
+    const newSupplierId = searchParams.get('newSupplierId');
+    
+    if (newSupplier && newSupplierId) {
+      // Set the newly added supplier
+      setNewPurchase(prev => ({
+        ...prev,
+        partyName: newSupplier,
+        partyId: newSupplierId,
+        phoneNo: '' // Reset phone as it might be different
+      }));
+      
+      // Fetch party balance for the new supplier
+      fetchPartyBalance(newSupplierId);
+      
+      // Refresh parties list to include the new supplier
+      fetchPartySuggestions();
+      
+      // Restore the original page type and title
+      // Check if we're returning from a purchase order context
+      const currentUrlParams = new URLSearchParams(window.location.search);
+      const fromContext = currentUrlParams.get('from');
+      
+      if (fromContext === 'purchase-order') {
+        setPageType('purchase-order');
+        setPageTitle('Add Purchase Order');
+        setRedirectTo('/dashboard/purchase-order');
+      } else {
+        setPageType('purchase-bill');
+        setPageTitle('Add Purchase Bill');
+        setRedirectTo('/dashboard/purchase');
+      }
+      
+
+      
+      // Show success message
+      setToast({ message: `Supplier "${newSupplier}" added successfully and selected!`, type: 'success' });
+      
+      // Mark that we've processed the new supplier
+      setHasProcessedNewSupplier(true);
+      
+      // Clear the URL parameters after a delay to ensure the state is set
+      setTimeout(() => {
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.delete('newSupplier');
+        newUrl.searchParams.delete('newSupplierId');
+        window.history.replaceState({}, '', newUrl.toString());
+      }, 100);
+    }
+  }, [searchParams, hasProcessedNewSupplier]);
 
   // Fetch parties and items on component mount
   useEffect(() => {
@@ -481,6 +537,7 @@ export default function AddPurchasePage() {
       setLoading(false);
     };
     initializeData();
+    
   }, []);
 
   useEffect(() => {
@@ -748,7 +805,7 @@ export default function AddPurchasePage() {
       const response = await getPartyBalance(partyId, token);
       const balance = response.data?.totalDue || response.totalDue || 0;
       setPartyBalance(balance);
-      console.log('Party balance for ID', partyId, ':', balance);
+
     } catch (error) {
       console.error('Error fetching party balance:', error);
       setPartyBalance(null);
@@ -860,13 +917,7 @@ export default function AddPurchasePage() {
         sourceOrderId: originalOrderId // Include the source order ID for conversion
       };
 
-      console.log('Due date being sent:', {
-        originalDueDate: newPurchase.dueDate,
-        convertedDueDate: newPurchase.dueDate ? new Date(newPurchase.dueDate).toISOString() : null,
-        commonData: commonData
-      });
 
-      console.log('Submitting purchase:', { paid: paidValue, paymentType: newPurchase.paymentType, newPurchase, commonData });
 
       let response;
       let successMessage;
@@ -893,21 +944,8 @@ export default function AddPurchasePage() {
         // If this was a conversion from purchase order, update the original order status and invoice number
         if (originalOrderId) {
           try {
-            console.log('=== CONVERTING PURCHASE ORDER TO PURCHASE ===');
-            console.log('Source Order ID:', originalOrderId);
-            console.log('Purchase Bill No:', response?.purchase?.billNo || response?.billNo || response?.billNumber || '');
-            console.log('Token:', token ? 'Present' : 'Missing');
-            
             // Use the actual purchase bill number for invoiceNumber
             const billNumber = response?.purchase?.billNo || response?.billNo || response?.billNumber || response?.id || '';
-            console.log('=== CONVERT PURCHASE ORDER DEBUG ===');
-            console.log('Response:', response);
-            console.log('Purchase object:', response?.purchase);
-            console.log('Attempting to update purchase order with:', {
-              orderId: originalOrderId,
-              billNumber: billNumber,
-              purchaseId: response?.purchase?._id || response?._id
-            });
             
             try {
               const updateResult = await updatePurchaseOrder(token, originalOrderId, { 
@@ -917,26 +955,15 @@ export default function AddPurchasePage() {
                 dueDate: originalOrderDueDate ? new Date(originalOrderDueDate).toISOString() : (newPurchase.dueDate ? new Date(newPurchase.dueDate).toISOString() : null)
               });
               
-              console.log('Update result:', updateResult);
-              
               if (updateResult && updateResult.success) {
-                console.log('Purchase order update successful!');
                 successMessage = `Purchase bill created! Bill No: ${billNumber}. Purchase Order converted successfully.`;
               } else {
-                console.error('Update failed:', updateResult);
                 successMessage = `Purchase bill created! Bill No: ${billNumber}. Note: Could not update purchase order status.`;
               }
             } catch (updateError: any) {
-              console.error('Error updating purchase order:', updateError);
-              console.error('Update error details:', {
-                message: updateError.message,
-                response: updateError.response?.data,
-                status: updateError.response?.status
-              });
               successMessage = `Purchase bill created! Bill No: ${billNumber}. Note: Could not update purchase order status.`;
             }
           } catch (error) {
-            console.error('Error updating purchase order status:', error);
             successMessage = `Purchase bill created! Bill No: ${response?.purchase?.billNo || response?.billNo || response?.billNumber || ''}. Note: Could not update purchase order status.`;
           }
         }
@@ -1065,7 +1092,11 @@ export default function AddPurchasePage() {
                             } else if (e.key === 'Enter') {
                               if (supplierDropdownIndex === 0) {
                                 // Add Supplier option
-                                router.push('/dashboard/parties?addParty=1');
+                                // Create dynamic return URL based on current page type
+                                const returnUrl = pageType === 'purchase-order' 
+                                  ? '/dashboard/purchaseAdd?from=purchase-order'
+                                  : '/dashboard/purchaseAdd';
+                                router.push(`/dashboard/parties?addParty=1&returnUrl=${encodeURIComponent(returnUrl)}`);
                                 setShowPartySuggestions(false);
                               } else if (supplierDropdownIndex > 0 && supplierDropdownIndex <= parties.length) {
                                 // Party selection (adjust index because Add Supplier is at index 0)
@@ -1094,7 +1125,11 @@ export default function AddPurchasePage() {
                                   onMouseDown={e => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    router.push('/dashboard/parties?addParty=1');
+                                    // Create dynamic return URL based on current page type
+                                    const returnUrl = pageType === 'purchase-order' 
+                                      ? '/dashboard/purchaseAdd?from=purchase-order'
+                                      : '/dashboard/purchaseAdd';
+                                    router.push(`/dashboard/parties?addParty=1&returnUrl=${encodeURIComponent(returnUrl)}`);
                                     setShowPartySuggestions(false);
                                   }}
                                   ref={el => { if (supplierDropdownIndex === 0 && el) el.scrollIntoView({ block: 'nearest' }); }}
@@ -1206,9 +1241,7 @@ export default function AddPurchasePage() {
                     <tbody>
                       {newPurchase.items.map((item, index) => {
                         const handleFocus = async (event: React.FocusEvent<HTMLInputElement>) => {
-                          console.log('Item input focused, fetching suggestions...');
                           await fetchItemSuggestions();
-                          console.log('Setting showItemSuggestions to true for item:', item.id);
                           setShowItemSuggestions(prev => ({ ...prev, [item.id]: true }));
                           
                           const rect = event.target.getBoundingClientRect();
@@ -1221,7 +1254,6 @@ export default function AddPurchasePage() {
                             maxHeight: '200px',
                             overflowY: 'auto' as const
                           };
-                          console.log('Setting dropdown style:', style);
                           setDropdownStyle(style);
                         };
 

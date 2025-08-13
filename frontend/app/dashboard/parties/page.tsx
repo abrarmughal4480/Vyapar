@@ -37,6 +37,7 @@ function PartiesPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [showAddPartyModal, setShowAddPartyModal] = useState(false);
+  const [returnUrl, setReturnUrl] = useState<string | null>(null);
   // Remove direct useSearchParams usage from here
   // The following state will be controlled by the Suspense-wrapped client component if needed
   const [activeTab, setActiveTab] = useState('all');
@@ -188,12 +189,26 @@ function PartiesPageContent() {
 
   useEffect(() => {
     const addPartyParam = searchParams.get('addParty');
+    const returnUrlParam = searchParams.get('returnUrl');
+    
     if (addPartyParam === '1') {
       setShowAddPartyModal(true);
       setIsModalOpen(true); // Open the actual modal
-      // Remove the parameter from URL without page reload
+      
+      // Store return URL if provided
+      if (returnUrlParam) {
+        setReturnUrl(returnUrlParam);
+        
+        // If coming from purchase add page, set type to Supplier
+        if (returnUrlParam.includes('purchaseAdd')) {
+          setNewParty(prev => ({ ...prev, type: 'Supplier' }));
+        }
+      }
+      
+      // Remove the parameters from URL without page reload
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.delete('addParty');
+      newUrl.searchParams.delete('returnUrl');
       window.history.replaceState({}, '', newUrl.toString());
     }
   }, [searchParams]);
@@ -306,7 +321,20 @@ function PartiesPageContent() {
           }]);
           setIsModalOpen(false);
           resetForm();
-          setToast({ message: 'Party added successfully!', type: 'success' });
+          
+          if (returnUrl && !editingParty) {
+            setToast({ message: 'Party added successfully! Redirecting back...', type: 'success' });
+            // Redirect back to return URL if provided (for new parties only)
+            setTimeout(() => {
+              // Add the newly created supplier info to the return URL
+              const url = new URL(returnUrl, window.location.origin);
+              url.searchParams.set('newSupplier', result.data.name);
+              url.searchParams.set('newSupplierId', result.data._id || result.data.id);
+              router.push(url.toString());
+            }, 1000); // Small delay to show success message
+          } else {
+            setToast({ message: 'Party added successfully!', type: 'success' });
+          }
         }
       } else {
         setToast({ message: editingParty ? 'Failed to update party' : 'Failed to add party', type: 'error' });

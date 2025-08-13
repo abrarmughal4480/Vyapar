@@ -81,9 +81,7 @@ const InvoiceHeader: React.FC<{
       <div className="text-center border-b border-dashed border-gray-400 pb-2 mb-2">
         <h1 className="text-sm font-bold tracking-wider uppercase">{data.business.name}</h1>
         <div className="text-xs mt-1">
-          <div>Invoice: {data.invoiceNumber}</div>
-          <div>Date: {data.invoiceDate}</div>
-          <div>Customer: {data.customer.name}</div>
+          {data.invoiceNumber && <div>Invoice: {data.invoiceNumber}</div>}
         </div>
       </div>
     );
@@ -93,7 +91,7 @@ const InvoiceHeader: React.FC<{
     <div className="flex justify-between items-start border-b-2 border-gray-200 pb-6 mb-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">{data.business.name}</h1>
-        <p className="text-sm text-gray-600">Invoice #{data.invoiceNumber}</p>
+        {data.invoiceNumber && <p className="text-sm text-gray-600">Invoice #{data.invoiceNumber}</p>}
         {data.business.address && (
           <p className="text-sm text-gray-500">{data.business.address}</p>
         )}
@@ -121,6 +119,12 @@ const CustomerDetails: React.FC<{
         <div className="text-center font-bold mb-1">CUSTOMER</div>
         <div>Name: {data.customer.name}</div>
         <div>Phone: {data.customer.phone}</div>
+        <div className="border-t border-dashed border-gray-300 mt-1 pt-1">
+          <div className="text-center font-bold mb-1">INVOICE DETAILS</div>
+          <div>Date & Time: {data.invoiceDate}</div>
+          <div>Payment: {data.paymentType}</div>
+          <div>Status: {totals.balance <= 0 ? 'Paid' : 'Pending'}</div>
+        </div>
       </div>
     );
   }
@@ -138,12 +142,8 @@ const CustomerDetails: React.FC<{
         <h3 className="font-semibold text-gray-900 mb-2">Invoice Details</h3>
         <div className="bg-gray-50 p-3 rounded-lg space-y-1">
           <div className="flex justify-between text-sm">
-            <span>Date:</span>
+            <span>Date & Time:</span>
             <span>{data.invoiceDate}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span>Due Date:</span>
-            <span>{data.dueDate}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span>Payment:</span>
@@ -571,9 +571,29 @@ const InvoicePageContent: React.FC = () => {
             
             // Transform sale data to invoice format
             const transformedData = {
-              invoiceNumber: sale.invoiceNo || sale.invoiceNumber || "INV-0001",
-              invoiceDate: sale.invoiceDate || sale.createdAt ? new Date(sale.createdAt).toLocaleDateString('en-GB') : "21/06/2024",
-              dueDate: sale.dueDate || "28/06/2024",
+              invoiceNumber: sale.invoiceNo || sale.invoiceNumber || "",
+              invoiceDate: (() => {
+                // Use actual creation date and time
+                if (sale.createdAt) {
+                  const date = new Date(sale.createdAt);
+                  return date.toLocaleDateString('en-GB') + ' ' + date.toLocaleTimeString('en-GB', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  });
+                } else if (sale.invoiceDate) {
+                  return sale.invoiceDate;
+                } else if (sale.date) {
+                  return sale.date;
+                } else {
+                  // Use current date and time if no creation date available
+                  const now = new Date();
+                  return now.toLocaleDateString('en-GB') + ' ' + now.toLocaleTimeString('en-GB', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  });
+                }
+              })(),
+              dueDate: sale.dueDate || "",
               status: (() => {
                 // Auto-determine status based on payment type and received amount
                 const paymentType = sale.paymentType || "Cash";
@@ -594,9 +614,9 @@ const InvoicePageContent: React.FC = () => {
                 return sale.status || "Pending";
               })(),
               customer: {
-                name: sale.customerName || sale.customer?.name || "Customer",
-                phone: sale.customerPhone || sale.customer?.phone || "+92 300 1234567",
-                address: sale.customerAddress || sale.customer?.address || "Address",
+                name: sale.partyName || sale.customerName || sale.customer?.name || sale.customer || "N/A",
+                phone: sale.phoneNo || sale.customerPhone || sale.customer?.phone || sale.phone || "N/A",
+                address: sale.address || sale.customerAddress || sale.customer?.address || "N/A",
               },
               business: {
                 name: businessInfo.name,
@@ -627,8 +647,8 @@ const InvoicePageContent: React.FC = () => {
                 }
                 return "0";
               })(),
-              description: sale.description || "Thank you for your business! Please pay by the due date.",
-              qrUrl: `https://deveasedigital.com/invoice/${sale.invoiceNo || sale.invoiceNumber}`,
+              description: sale.description || "",
+              qrUrl: sale.invoiceNo || sale.invoiceNumber ? `https://deveasedigital.com/invoice/${sale.invoiceNo || sale.invoiceNumber}` : "",
             };
             
             setInvoiceData(transformedData);

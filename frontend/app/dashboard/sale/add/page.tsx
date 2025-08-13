@@ -1610,6 +1610,13 @@ const AddSalePage = () => {
           {/* Submit Button */}
           <div className="flex justify-end gap-4 px-6 py-6 bg-gray-50 border-t border-gray-200 w-full">
             <button
+              type="button"
+              onClick={() => router.push('/dashboard/sale')}
+              className="px-6 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 bg-gray-600 text-white hover:bg-gray-700"
+            >
+              <span>Add Sale</span>
+            </button>
+            <button
               type="submit"
               disabled={loading}
               className={`px-6 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
@@ -1628,10 +1635,7 @@ const AddSalePage = () => {
                 </>
               ) : (
                 <>
-                  <span>Add Sale</span>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+                  <span>Add Sale & Print</span>
                 </>
               )}
             </button>

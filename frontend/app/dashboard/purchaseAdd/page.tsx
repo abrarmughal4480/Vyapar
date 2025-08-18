@@ -1167,7 +1167,14 @@ export default function AddPurchasePage() {
               <h1 className="text-xl md:text-2xl font-bold text-gray-900">{pageTitle}</h1>
               <button
                 type="button"
-                onClick={() => router.push(redirectTo)}
+                onClick={() => {
+                  // If came from expenses, redirect back to expenses page
+                  if (isFromExpenses) {
+                    router.push('/dashboard/expenses');
+                  } else {
+                    router.push(redirectTo);
+                  }
+                }}
                 className="text-gray-400 hover:text-gray-600 text-2xl"
                 aria-label="Cancel"
               >

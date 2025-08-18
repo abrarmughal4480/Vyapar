@@ -9,6 +9,7 @@ import { fetchPartiesByUserId, getPartyBalance } from '../../../http/parties';
 import { getUserItems } from '../../../http/items';
 import { createPurchase } from '../../../http/purchases';
 import { createPurchaseOrder, updatePurchaseOrder } from '../../../http/purchaseOrders';
+import { createExpense } from '../../../http/expenses';
 import { jwtDecode } from 'jwt-decode';
 import { useSearchParams } from 'next/navigation';
 import { getPurchaseById } from '../../../http/purchases';
@@ -372,6 +373,7 @@ export default function AddPurchasePage() {
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null);
   const [formErrors, setFormErrors] = useState<any>({});
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  const [expenseDropdownStyles, setExpenseDropdownStyles] = useState<{[id: number]: React.CSSProperties}>({});
   const itemInputRefs = useRef<{[id: number]: HTMLInputElement | null}>({});
   const [redirectTo, setRedirectTo] = useState('/dashboard/purchase');
   
@@ -382,10 +384,71 @@ export default function AddPurchasePage() {
   const supplierInputRef = useRef<HTMLInputElement>(null);
   const supplierDropdownRef = useRef<HTMLUListElement>(null);
   
+  // Expense category state
+  const [expenseCategory, setExpenseCategory] = useState('');
+  const [isFromExpenses, setIsFromExpenses] = useState(false);
+  const [expenseItemSuggestions, setExpenseItemSuggestions] = useState<string[]>([]);
+  const [showExpenseSuggestions, setShowExpenseSuggestions] = useState<{[id: number]: boolean}>({});
+  const [showExpenseCategorySuggestions, setShowExpenseCategorySuggestions] = useState(false);
+  const [expenseCategoryDropdownStyle, setExpenseCategoryDropdownStyle] = useState<React.CSSProperties>({});
+  
+  // Expense categories data - will be populated from database + defaults
+  const [expenseCategories, setExpenseCategories] = useState<string[]>([
+    'Petrol',
+    'Rent',
+    'Salary',
+    'Tea',
+    'Transport',
+    'Office Supplies',
+    'Utilities',
+    'Marketing',
+    'Travel',
+    'Maintenance',
+    'Insurance',
+    'Legal Fees'
+  ]);
+  
   // 1. Add state for item and unit dropdown keyboard navigation
   const [itemDropdownIndex, setItemDropdownIndex] = useState<{[id: number]: number}>({});
   const [unitDropdownIndex, setUnitDropdownIndex] = useState<{[id: number]: number}>({});
   
+  // Fetch expense items and categories from database for suggestions
+  const fetchExpenseItemsForSuggestions = async () => {
+    try {
+      const token = getToken();
+      if (!token) return;
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/expenses`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const expenses = data.data || [];
+        
+        // Extract unique item names from all expenses
+        const uniqueItems = [...new Set(expenses.flatMap((expense: any) => 
+          expense.items.map((item: any) => item.item)
+        ))].filter((item: any) => item && typeof item === 'string' && item.trim() !== '');
+        
+        // Extract unique categories from all expenses
+        const uniqueCategories = [...new Set(expenses.map((expense: any) => 
+          expense.expenseCategory
+        ))].filter((category: any) => category && typeof category === 'string' && category.trim() !== '');
+        
+        setExpenseItemSuggestions(uniqueItems as string[]);
+        
+        // Combine database categories with default categories, removing duplicates
+        const allCategories = [...new Set([...expenseCategories, ...uniqueCategories])] as string[];
+        setExpenseCategories(allCategories);
+      }
+    } catch (error) {
+      console.error('Error fetching expense items:', error);
+    }
+  };
+
   // Check if opened from different contexts
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -394,7 +457,12 @@ export default function AddPurchasePage() {
       const orderDataParam = urlParams.get('orderData');
       const convertFromOrder = urlParams.get('convertFromOrder');
       
-      if (fromContext === 'purchase-order') {
+      if (fromContext === 'expenses') {
+        setIsFromExpenses(true);
+        setPageTitle('Add Expense');
+        // Fetch expense items from database for suggestions
+        fetchExpenseItemsForSuggestions();
+      } else if (fromContext === 'purchase-order') {
         setPageTitle('Add Purchase Order');
         setPageType('purchase-order');
         setRedirectTo('/dashboard/purchase-order');
@@ -528,17 +596,30 @@ export default function AddPurchasePage() {
     }
   }, [searchParams, hasProcessedNewSupplier]);
 
+  // Cleanup expense dropdown styles when component unmounts
+  useEffect(() => {
+    return () => {
+      setExpenseDropdownStyles({});
+      setShowExpenseSuggestions({});
+      setShowExpenseCategorySuggestions(false);
+      setExpenseCategoryDropdownStyle({});
+    };
+  }, []);
+
   // Fetch parties and items on component mount
   useEffect(() => {
     const initializeData = async () => {
       setLoading(true);
       await fetchPartySuggestions();
-      await fetchItemSuggestions();
+      // Only fetch items if not from expenses page
+      if (!isFromExpenses) {
+        await fetchItemSuggestions();
+      }
       setLoading(false);
     };
     initializeData();
     
-  }, []);
+  }, [isFromExpenses]);
 
   useEffect(() => {
     if (editId) {
@@ -687,9 +768,17 @@ export default function AddPurchasePage() {
   // Validation
   const validateForm = () => {
     const errors: any = {};
-    if (!newPurchase.partyName) errors.partyName = 'Supplier is required';
-    const validItems = newPurchase.items.filter(item => item.item && parseFloat(item.qty) > 0 && parseFloat(item.price) > 0);
-    if (validItems.length === 0) errors.items = 'At least one valid item is required';
+    if (isFromExpenses) {
+      // For expenses, validate expense category and items
+      if (!expenseCategory) errors.expenseCategory = 'Expense category is required';
+      const validItems = newPurchase.items.filter(item => item.item && parseFloat(item.price) > 0);
+      if (validItems.length === 0) errors.items = 'At least one valid expense item is required';
+    } else {
+      // For purchases, validate supplier and items
+      if (!newPurchase.partyName) errors.partyName = 'Supplier is required';
+      const validItems = newPurchase.items.filter(item => item.item && parseFloat(item.qty) > 0 && parseFloat(item.price) > 0);
+      if (validItems.length === 0) errors.items = 'At least one valid item is required';
+    }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -712,9 +801,16 @@ export default function AddPurchasePage() {
           
           // Always recalculate amount when qty, price, or unit changes
           if (field === 'qty' || field === 'price' || field === 'unit') {
-            const qty = parseFloat(field === 'qty' ? value : item.qty) || 0;
-            const price = parseFloat(field === 'price' ? value : item.price) || 0;
-            updated.amount = qty * price;
+            if (isFromExpenses) {
+              // For expenses, amount is just the price (no quantity)
+              const price = parseFloat(field === 'price' ? value : item.price) || 0;
+              updated.amount = price;
+            } else {
+              // For purchases, amount is qty * price
+              const qty = parseFloat(field === 'qty' ? value : item.qty) || 0;
+              const price = parseFloat(field === 'price' ? value : item.price) || 0;
+              updated.amount = qty * price;
+            }
           }
           
           return updated;
@@ -726,9 +822,18 @@ export default function AddPurchasePage() {
 
   const addNewRow = () => {
     const lastItem = newPurchase.items[newPurchase.items.length - 1];
-    if (!lastItem.item || !lastItem.qty || !lastItem.price) {
-      setToast({ message: 'Please fill the last row before adding a new one.', type: 'error' });
-      return;
+    if (isFromExpenses) {
+      // For expenses, only check item and price
+      if (!lastItem.item || !lastItem.price) {
+        setToast({ message: 'Please fill the last row before adding a new one.', type: 'error' });
+        return;
+      }
+    } else {
+      // For purchases, check item, qty, and price
+      if (!lastItem.item || !lastItem.qty || !lastItem.price) {
+        setToast({ message: 'Please fill the last row before adding a new one.', type: 'error' });
+        return;
+      }
     }
     setNewPurchase(prev => ({
       ...prev,
@@ -923,7 +1028,31 @@ export default function AddPurchasePage() {
       let successMessage;
       let redirectPath;
 
-      if (pageType === 'purchase-order') {
+      if (isFromExpenses) {
+        // Create expense
+        const expenseData = {
+          expenseCategory: expenseCategory,
+          party: newPurchase.partyName || 'Unknown',
+          items: newPurchase.items
+            .filter(item => 
+              item.item &&
+              item.price &&
+              !isNaN(Number(item.price))
+            )
+            .map(item => ({
+              item: item.item,
+              amount: Number(item.price)
+            })),
+          totalAmount: grandTotal,
+          paymentType: newPurchase.paymentType || 'Cash',
+          expenseDate: newPurchase.billDate || new Date().toISOString().split('T')[0],
+          description: newPurchase.description || ''
+        };
+
+        response = await createExpense(expenseData);
+        successMessage = 'Expense created successfully!';
+        redirectPath = '/dashboard/expenses';
+      } else if (pageType === 'purchase-order') {
         // Create purchase order
         const orderData = {
           ...commonData,
@@ -1055,133 +1184,257 @@ export default function AddPurchasePage() {
               <div className="bg-gray-50 px-6 py-6 w-full">
                 <div className={`grid gap-6 ${pageType === 'purchase-order' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
                   {/* Supplier and Phone - Full width for purchase bills */}
-                  <div className={`grid gap-4 ${pageType === 'purchase-order' ? 'grid-cols-2' : 'grid-cols-1 md:grid-cols-2'}`}>
-                    <div>
-                      <label className="block text-sm font-medium text-blue-600 mb-2">Supplier *</label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          name="partyName"
-                          value={newPurchase.partyName}
-                          onChange={e => {
-                            handleInputChange(e);
-                            filterParties(e.target.value);
-                            setShowPartySuggestions(true);
-                            setSupplierDropdownIndex(0);
-                          }}
-                          onFocus={() => {
-                            fetchPartySuggestions();
-                            setShowPartySuggestions(true);
-                          }}
-                          onBlur={() => setTimeout(() => setShowPartySuggestions(false), 200)}
-                          className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${formErrors.partyName ? 'border-red-300 bg-red-50' : 'border-blue-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-200 focus:outline-none`}
-                          placeholder="Search or enter supplier name"
-                          autoComplete="off"
-                          ref={supplierInputRef}
-                          onKeyDown={e => {
-                            if (!showPartySuggestions) return;
-                            const optionsCount = parties.length + 1; // +1 for Add Supplier
-                            if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
-                              e.preventDefault();
-                              e.stopPropagation();
-                            }
-                            if (e.key === 'ArrowDown') {
-                              setSupplierDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
-                            } else if (e.key === 'ArrowUp') {
-                              setSupplierDropdownIndex(i => Math.max(i - 1, 0));
-                            } else if (e.key === 'Enter') {
-                              if (supplierDropdownIndex === 0) {
-                                // Add Supplier option
-                                // Create dynamic return URL based on current page type
-                                const returnUrl = pageType === 'purchase-order' 
-                                  ? '/dashboard/purchaseAdd?from=purchase-order'
-                                  : '/dashboard/purchaseAdd';
-                                router.push(`/dashboard/parties?addParty=1&returnUrl=${encodeURIComponent(returnUrl)}`);
-                                setShowPartySuggestions(false);
-                              } else if (supplierDropdownIndex > 0 && supplierDropdownIndex <= parties.length) {
-                                // Party selection (adjust index because Add Supplier is at index 0)
-                                const party = parties[supplierDropdownIndex - 1];
-                                setNewPurchase(prev => ({ ...prev, partyName: party.name, partyId: party._id, phoneNo: party.phone || '' }));
-                                setShowPartySuggestions(false);
-                                fetchPartyBalance(party._id);
+                  {isFromExpenses ? (
+                    // Expense Category Field for Expenses Page
+                    <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
+                      <div>
+                        <label className="block text-sm font-medium text-blue-600 mb-2">Expense Category *</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            name="expenseCategory"
+                            value={expenseCategory}
+                            onChange={(e) => {
+                              setExpenseCategory(e.target.value);
+                              // Show suggestions when typing
+                              if (e.target.value.trim()) {
+                                setShowExpenseCategorySuggestions(true);
                               }
-                            } else if (e.key === 'Escape') {
-                              setShowPartySuggestions(false);
-                            }
-                          }}
-                        />
-                        {showPartySuggestions && (
-                          <div className="absolute left-0 right-0 mt-1 w-full z-50">
-                            {parties.length > 0 ? (
-                              <ul
-                                className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
-                                ref={supplierDropdownRef}
-                                tabIndex={-1}
-                                role="listbox"
-                              >
-                                {/* Add Supplier option at the top */}
-                                <li
-                                  className={`px-4 py-2 cursor-pointer text-blue-600 font-semibold hover:bg-blue-50 rounded-t-lg ${supplierDropdownIndex === 0 ? 'bg-blue-100 text-blue-700' : ''}`}
-                                  onMouseDown={e => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    // Create dynamic return URL based on current page type
-                                    const returnUrl = pageType === 'purchase-order' 
-                                      ? '/dashboard/purchaseAdd?from=purchase-order'
-                                      : '/dashboard/purchaseAdd';
-                                    router.push(`/dashboard/parties?addParty=1&returnUrl=${encodeURIComponent(returnUrl)}`);
-                                    setShowPartySuggestions(false);
-                                  }}
-                                  ref={el => { if (supplierDropdownIndex === 0 && el) el.scrollIntoView({ block: 'nearest' }); }}
-                                  role="option"
-                                  aria-selected={supplierDropdownIndex === 0}
-                                >
-                                  + Add Supplier
+                            }}
+                            onFocus={(event) => {
+                              setShowExpenseCategorySuggestions(true);
+                              // Set dropdown position
+                              const rect = event.target.getBoundingClientRect();
+                              const style: React.CSSProperties = {
+                                position: 'absolute',
+                                top: rect.bottom + window.scrollY + 4,
+                                left: rect.left + window.scrollX,
+                                width: rect.width,
+                                zIndex: 9999,
+                                maxHeight: '200px',
+                                overflowY: 'auto' as const
+                              };
+                              setExpenseCategoryDropdownStyle(style);
+                            }}
+                            onBlur={() => setTimeout(() => {
+                              setShowExpenseCategorySuggestions(false);
+                              // Clean up dropdown style
+                              setExpenseCategoryDropdownStyle({});
+                            }, 200)}
+                            className="w-full px-4 py-3 border-2 border-blue-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
+                            placeholder="Select expense category"
+                            autoComplete="off"
+                            onKeyDown={e => {
+                              if (!showExpenseCategorySuggestions) return;
+                              const optionsCount = expenseCategories.length;
+                              if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }
+                              if (e.key === 'ArrowDown') {
+                                setSupplierDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
+                              } else if (e.key === 'ArrowUp') {
+                                setSupplierDropdownIndex(i => Math.max(i - 1, 0));
+                              } else if (e.key === 'Enter') {
+                                if (supplierDropdownIndex >= 0 && supplierDropdownIndex < expenseCategories.length) {
+                                  setExpenseCategory(expenseCategories[supplierDropdownIndex]);
+                                  setShowExpenseCategorySuggestions(false);
+                                }
+                              } else if (e.key === 'Escape') {
+                                setShowExpenseCategorySuggestions(false);
+                              }
+                            }}
+                          />
+                          {showExpenseCategorySuggestions && typeof window !== 'undefined' && ReactDOM.createPortal(
+                            <ul
+                              style={expenseCategoryDropdownStyle}
+                              className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                              tabIndex={-1}
+                              role="listbox"
+                            >
+                              {expenseCategories.length > 0 ? (
+                                expenseCategories
+                                  .filter(category => category.toLowerCase().includes(expenseCategory.toLowerCase()))
+                                  .map((category, idx) => (
+                                    <li
+                                      key={idx}
+                                      className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors ${supplierDropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+                                      onMouseDown={e => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setExpenseCategory(category);
+                                        setShowExpenseCategorySuggestions(false);
+                                        // Clean up dropdown style
+                                        setExpenseCategoryDropdownStyle({});
+                                      }}
+                                      ref={el => { if (supplierDropdownIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
+                                      role="option"
+                                      aria-selected={supplierDropdownIndex === idx}
+                                    >
+                                      <div className="flex justify-between items-center">
+                                        <span className="font-medium text-gray-800">{category}</span>
+                                        <span className="text-xs text-gray-500 text-blue-600">Category</span>
+                                      </div>
+                                    </li>
+                                  ))
+                              ) : (
+                                <li className="px-4 py-3 text-center">
+                                  <div className="text-gray-500 text-sm">
+                                    <div className="text-gray-400 mb-1">📂</div>
+                                    <div>No categories found</div>
+                                    <div className="text-xs text-gray-400 mt-1">Create some expenses first</div>
+                                  </div>
                                 </li>
-                                {parties.map((party, idx) => (
+                              )}
+                            </ul>,
+                            document.body
+                          )}
+                        </div>
+                      </div>
+                      {/* Right: Date Field for Expenses */}
+                      <div className="flex flex-col gap-4 items-end justify-start">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
+                          <input
+                            type="date"
+                            name="billDate"
+                            value={newPurchase.billDate || new Date().toISOString().split('T')[0]}
+                            onChange={handleInputChange}
+                            className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    // Original Supplier and Phone Fields
+                    <div className={`grid gap-4 ${pageType === 'purchase-order' ? 'grid-cols-2' : 'grid-cols-1 md:grid-cols-2'}`}>
+                      <div>
+                        <label className="block text-sm font-medium text-blue-600 mb-2">Supplier *</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            name="partyName"
+                            value={newPurchase.partyName}
+                            onChange={e => {
+                              handleInputChange(e);
+                              filterParties(e.target.value);
+                              setShowPartySuggestions(true);
+                              setSupplierDropdownIndex(0);
+                            }}
+                            onFocus={() => {
+                              fetchPartySuggestions();
+                              setShowPartySuggestions(true);
+                            }}
+                            onBlur={() => setTimeout(() => setShowPartySuggestions(false), 200)}
+                            className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${formErrors.partyName ? 'border-red-300 bg-red-50' : 'border-blue-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-200 focus:outline-none`}
+                            placeholder="Search or enter supplier name"
+                            autoComplete="off"
+                            ref={supplierInputRef}
+                            onKeyDown={e => {
+                              if (!showPartySuggestions) return;
+                              const optionsCount = parties.length + 1; // +1 for Add Supplier
+                              if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }
+                              if (e.key === 'ArrowDown') {
+                                setSupplierDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
+                              } else if (e.key === 'ArrowUp') {
+                                setSupplierDropdownIndex(i => Math.max(i - 1, 0));
+                              } else if (e.key === 'Enter') {
+                                if (supplierDropdownIndex === 0) {
+                                  // Add Supplier option
+                                  // Create dynamic return URL based on current page type
+                                  const returnUrl = pageType === 'purchase-order' 
+                                    ? '/dashboard/purchaseAdd?from=purchase-order'
+                                    : '/dashboard/purchaseAdd';
+                                  router.push(`/dashboard/parties?addParty=1&returnUrl=${encodeURIComponent(returnUrl)}`);
+                                  setShowPartySuggestions(false);
+                                } else if (supplierDropdownIndex > 0 && supplierDropdownIndex <= parties.length) {
+                                  // Party selection (adjust index because Add Supplier is at index 0)
+                                  const party = parties[supplierDropdownIndex - 1];
+                                  setNewPurchase(prev => ({ ...prev, partyName: party.name, partyId: party._id, phoneNo: party.phone || '' }));
+                                  setShowPartySuggestions(false);
+                                  fetchPartyBalance(party._id);
+                                }
+                              } else if (e.key === 'Escape') {
+                                setShowPartySuggestions(false);
+                              }
+                            }}
+                          />
+                          {showPartySuggestions && (
+                            <div className="absolute left-0 right-0 mt-1 w-full z-50">
+                              {parties.length > 0 ? (
+                                <ul
+                                  className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                                  ref={supplierDropdownRef}
+                                  tabIndex={-1}
+                                  role="listbox"
+                                >
+                                  {/* Add Supplier option at the top */}
                                   <li
-                                    key={party._id}
-                                    className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors ${supplierDropdownIndex === idx + 1 ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+                                    className={`px-4 py-2 cursor-pointer text-blue-600 font-semibold hover:bg-blue-50 rounded-t-lg ${supplierDropdownIndex === 0 ? 'bg-blue-100 text-blue-700' : ''}`}
                                     onMouseDown={e => {
                                       e.preventDefault();
                                       e.stopPropagation();
-                                      setNewPurchase(prev => ({ ...prev, partyName: party.name, partyId: party._id, phoneNo: party.phone || '' }));
+                                      // Create dynamic return URL based on current page type
+                                      const returnUrl = pageType === 'purchase-order' 
+                                        ? '/dashboard/purchaseAdd?from=purchase-order'
+                                        : '/dashboard/purchaseAdd';
+                                      router.push(`/dashboard/parties?addParty=1&returnUrl=${encodeURIComponent(returnUrl)}`);
                                       setShowPartySuggestions(false);
-                                      fetchPartyBalance(party._id);
                                     }}
-                                    ref={el => { if (supplierDropdownIndex === idx + 1 && el) el.scrollIntoView({ block: 'nearest' }); }}
+                                    ref={el => { if (supplierDropdownIndex === 0 && el) el.scrollIntoView({ block: 'nearest' }); }}
                                     role="option"
-                                    aria-selected={supplierDropdownIndex === idx + 1}
+                                    aria-selected={supplierDropdownIndex === 0}
                                   >
-                                    {party.name} {party.phone && <span className="text-xs text-gray-400">({party.phone})</span>}
+                                    + Add Supplier
                                   </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <div className="bg-white border border-blue-200 rounded-lg shadow-lg px-4 py-2 text-gray-400">No suppliers found.</div>
-                            )}
+                                  {parties.map((party, idx) => (
+                                    <li
+                                      key={party._id}
+                                      className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors ${supplierDropdownIndex === idx + 1 ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+                                      onMouseDown={e => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setNewPurchase(prev => ({ ...prev, partyName: party.name, partyId: party._id, phoneNo: party.phone || '' }));
+                                        setShowPartySuggestions(false);
+                                        fetchPartyBalance(party._id);
+                                      }}
+                                      ref={el => { if (supplierDropdownIndex === idx + 1 && el) el.scrollIntoView({ block: 'nearest' }); }}
+                                      role="option"
+                                      aria-selected={supplierDropdownIndex === idx + 1}
+                                    >
+                                      {party.name} {party.phone && <span className="text-xs text-gray-400">({party.phone})</span>}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <div className="bg-white border border-blue-200 rounded-lg shadow-lg px-4 py-2 text-gray-400">No suppliers found.</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        {partyBalance !== null && (
+                          <div className={`text-xs mt-1 font-semibold ${partyBalance < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            Balance: PKR {Math.abs(partyBalance).toLocaleString()}
                           </div>
                         )}
+                        {formErrors.partyName && <p className="text-xs text-red-500 mt-1">{formErrors.partyName}</p>}
                       </div>
-                      {partyBalance !== null && (
-                        <div className={`text-xs mt-1 font-semibold ${partyBalance < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                          Balance: PKR {Math.abs(partyBalance).toLocaleString()}
-                        </div>
-                      )}
-                      {formErrors.partyName && <p className="text-xs text-red-500 mt-1">{formErrors.partyName}</p>}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                        <input
+                          type="text"
+                          name="phoneNo"
+                          value={newPurchase.phoneNo}
+                          onChange={handleInputChange}
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
+                          placeholder="Phone number"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
-                      <input
-                        type="text"
-                        name="phoneNo"
-                        value={newPurchase.phoneNo}
-                        onChange={handleInputChange}
-                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
-                        placeholder="Phone number"
-                      />
-                    </div>
-                  </div>
+                  )}
                   {/* Right: Invoice Date and Due Date - Only for Purchase Orders */}
                   {pageType === 'purchase-order' && (
                     <div className="flex flex-col gap-4 items-end justify-start">
@@ -1231,9 +1484,9 @@ export default function AddPurchasePage() {
                       <tr className="border-b border-gray-200 bg-blue-100">
                         <th className="text-left py-3 px-2 font-semibold text-gray-700 w-8">#</th>
                         <th className="text-left py-3 px-2 font-semibold text-gray-700">ITEM</th>
-                        <th className="text-left py-3 px-2 font-semibold text-gray-700 w-20">QTY</th>
-                        <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">UNIT</th>
-                        <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">PRICE/UNIT</th>
+                        {!isFromExpenses && <th className="text-left py-3 px-2 font-semibold text-gray-700 w-20">QTY</th>}
+                        {!isFromExpenses && <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">UNIT</th>}
+                        <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">{isFromExpenses ? 'PRICE' : 'PRICE/UNIT'}</th>
                         <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">AMOUNT</th>
                         <th className="text-left py-3 px-2 font-semibold text-gray-700 w-8"></th>
                       </tr>
@@ -1334,13 +1587,39 @@ export default function AddPurchasePage() {
                                 value={item.item}
                                 onChange={e => {
                                   handleItemChange(item.id, 'item', e.target.value);
-                                  setItemDropdownIndex(idx => ({ ...idx, [item.id]: 0 }));
+                                  if (!isFromExpenses) {
+                                    setItemDropdownIndex(idx => ({ ...idx, [item.id]: 0 }));
+                                  }
                                 }}
-                                onFocus={handleFocus}
-                                onBlur={() => setTimeout(() => setShowItemSuggestions(prev => ({ ...prev, [item.id]: false })), 200)}
-                                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-                                placeholder="Enter item name..."
-                                onKeyDown={e => {
+                                onFocus={!isFromExpenses ? handleFocus : (event: React.FocusEvent<HTMLInputElement>) => {
+                                  // For expenses, show expense suggestions with proper positioning
+                                  setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: true }));
+                                  
+                                  // Set dropdown position like purchase items
+                                  const rect = event.target.getBoundingClientRect();
+                                  const style: React.CSSProperties = {
+                                    position: 'absolute',
+                                    top: rect.bottom + window.scrollY + 4,
+                                    left: rect.left + window.scrollX,
+                                    width: rect.width,
+                                    zIndex: 9999,
+                                    maxHeight: '200px',
+                                    overflowY: 'auto' as const
+                                  };
+                                  setExpenseDropdownStyles(prev => ({ ...prev, [item.id]: style }));
+                                }}
+                                onBlur={!isFromExpenses ? () => setTimeout(() => setShowItemSuggestions(prev => ({ ...prev, [item.id]: false })), 200) : () => setTimeout(() => {
+                                  setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: false }));
+                                  // Clean up dropdown style
+                                  setExpenseDropdownStyles(prev => {
+                                    const newStyles = { ...prev };
+                                    delete newStyles[item.id];
+                                    return newStyles;
+                                  });
+                                }, 200)}
+                                className="w-full px-3 py-3 border-2 border-gray-200 rounded-lg focus :outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                                placeholder={isFromExpenses ? "Enter expense item..." : "Enter item name..."}
+                                onKeyDown={!isFromExpenses ? (e => {
                                   if (!showItemSuggestions[item.id]) return;
                                   const filtered = itemSuggestions.filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
                                   const optionsCount = filtered.length;
@@ -1366,9 +1645,38 @@ export default function AddPurchasePage() {
                                   } else if (e.key === 'Escape') {
                                     setShowItemSuggestions(prev => ({ ...prev, [item.id]: false }));
                                   }
-                                }}
+                                }) : (e => {
+                                  // Handle expense item suggestions keyboard navigation
+                                  if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }
+                                  if (e.key === 'Enter') {
+                                    // Auto-complete with first matching suggestion
+                                    const filtered = expenseItemSuggestions.filter(i => i.toLowerCase().includes(item.item.toLowerCase()));
+                                    if (filtered.length > 0) {
+                                      handleItemChange(item.id, 'item', filtered[0]);
+                                      setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: false }));
+                                      // Clean up dropdown style
+                                      setExpenseDropdownStyles(prev => {
+                                        const newStyles = { ...prev };
+                                        delete newStyles[item.id];
+                                        return newStyles;
+                                      });
+                                    }
+                                  } else if (e.key === 'Escape') {
+                                    // Clear suggestions
+                                    setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: false }));
+                                    // Clean up dropdown style
+                                    setExpenseDropdownStyles(prev => {
+                                      const newStyles = { ...prev };
+                                      delete newStyles[item.id];
+                                      return newStyles;
+                                    });
+                                  }
+                                })}
                               />
-                              {showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
+                              {!isFromExpenses && showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
                                 <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                                   
                                   {itemSuggestions.length > 0 ? (
@@ -1420,62 +1728,110 @@ export default function AddPurchasePage() {
                                 </ul>,
                                 document.body
                               )}
-                            </td>
-                            <td className="py-2 px-2">
-                              <input
-                                type="number"
-                                value={item.qty}
-                                min={0}
-                                onChange={e => {
-                                  handleItemChange(item.id, 'qty', e.target.value);
-                                  // If this is the last row and qty is not empty, add a new row
-                                  if (
-                                    index === newPurchase.items.length - 1 &&
-                                    e.target.value &&
-                                    !newPurchase.items.some((row: { qty?: string }, idx: number) => idx > index && !row.qty)
-                                  ) {
-                                    // Add a new row
-                                    addNewRow();
-                                  }
-                                }}
-                                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-                              />
-                            </td>
-                            <td className="py-2 px-2">
-                              <CustomDropdown
-                                options={unitOptions}
-                                value={getCurrentUnitValue()}
-                                onChange={val => {
-                                  // Get the selected item data for conversion
-                                  const selectedItem = itemSuggestions.find(i => i.name === item.item);
-                                  if (selectedItem) {
-                                    // Convert quantity based on unit change
-                                    if (item.qty) {
-                                      const convertedQty = convertQuantity(item.qty, getCurrentUnitValue(), val, selectedItem);
-                                      handleItemChange(item.id, 'qty', convertedQty);
-                                    }
-                                    // Convert price based on unit change
-                                    if (item.price) {
-                                      const convertedPrice = convertPrice(item.price, getCurrentUnitValue(), val, selectedItem);
-                                      handleItemChange(item.id, 'price', convertedPrice);
-                                    }
-                                  }
-                                  handleItemChange(item.id, 'unit', val);
-                                }}
-                                dropdownIndex={0}
-                                setDropdownIndex={()=>{}}
-                                optionsCount={unitOptions.length}
-                              />
-                              {item.unit === 'Custom' && (
-                                <input
-                                  type="text"
-                                  value={item.customUnit}
-                                  onChange={e => handleItemChange(item.id, 'customUnit', e.target.value)}
-                                  className="mt-2 w-full px-3 py-2 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
-                                  placeholder="Enter custom unit"
-                                />
+                              
+                              {/* Expense Item Suggestions */}
+                              {isFromExpenses && showExpenseSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
+                                <ul style={expenseDropdownStyles[item.id] || {}} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                  {expenseItemSuggestions.length > 0 ? (
+                                    // Show filtered suggestions
+                                    expenseItemSuggestions
+                                      .filter(suggestion => suggestion.toLowerCase().includes(item.item.toLowerCase()))
+                                      .map((suggestion, idx) => (
+                                        <li
+                                          key={idx}
+                                          className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
+                                                                                      onMouseDown={e => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              handleItemChange(item.id, 'item', suggestion);
+                                              setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: false }));
+                                              // Clean up dropdown style
+                                              setExpenseDropdownStyles(prev => {
+                                                const newStyles = { ...prev };
+                                                delete newStyles[item.id];
+                                                return newStyles;
+                                              });
+                                            }}
+                                        >
+                                          <div className="flex justify-between items-center">
+                                            <span className="font-medium text-gray-800">{suggestion}</span>
+                                            <span className="text-xs text-gray-500 text-blue-600">Expense Item</span>
+                                          </div>
+                                        </li>
+                                      ))
+                                  ) : (
+                                    // Show "No items found" message
+                                    <li className="px-4 py-3 text-center">
+                                      <div className="text-gray-500 text-sm">
+                                        <div className="text-gray-400 mb-1">📦</div>
+                                        <div>No expense items found</div>
+                                        <div className="text-xs text-gray-400 mt-1">Create some expenses first</div>
+                                      </div>
+                                    </li>
+                                  )}
+                                </ul>,
+                                document.body
                               )}
                             </td>
+                            {!isFromExpenses && (
+                              <td className="py-2 px-2">
+                                <input
+                                  type="number"
+                                  value={item.qty}
+                                  min={0}
+                                  onChange={e => {
+                                    handleItemChange(item.id, 'qty', e.target.value);
+                                    // If this is the last row and qty is not empty, add a new row
+                                    if (
+                                      index === newPurchase.items.length - 1 &&
+                                      e.target.value &&
+                                      !newPurchase.items.some((row: { qty?: string }, idx: number) => idx > index && !row.qty)
+                                    ) {
+                                      // Add a new row
+                                      addNewRow();
+                                    }
+                                  }}
+                                  className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                                />
+                              </td>
+                            )}
+                            {!isFromExpenses && (
+                              <td className="py-2 px-2">
+                                <CustomDropdown
+                                  options={unitOptions}
+                                  value={getCurrentUnitValue()}
+                                  onChange={val => {
+                                    // Get the selected item data for conversion
+                                    const selectedItem = itemSuggestions.find(i => i.name === item.item);
+                                    if (selectedItem) {
+                                      // Convert quantity based on unit change
+                                      if (item.qty) {
+                                        const convertedQty = convertQuantity(item.qty, getCurrentUnitValue(), val, selectedItem);
+                                        handleItemChange(item.id, 'qty', convertedQty);
+                                      }
+                                      // Convert price based on unit change
+                                      if (item.price) {
+                                        const convertedPrice = convertPrice(item.price, getCurrentUnitValue(), val, selectedItem);
+                                        handleItemChange(item.id, 'price', convertedPrice);
+                                      }
+                                    }
+                                    handleItemChange(item.id, 'unit', val);
+                                  }}
+                                  dropdownIndex={0}
+                                  setDropdownIndex={()=>{}}
+                                  optionsCount={unitOptions.length}
+                                />
+                                {item.unit === 'Custom' && (
+                                  <input
+                                    type="text"
+                                    value={item.customUnit}
+                                    onChange={e => handleItemChange(item.id, 'customUnit', e.target.value)}
+                                    className="mt-2 w-full px-3 py-2 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                    placeholder="Enter custom unit"
+                                  />
+                                )}
+                              </td>
+                            )}
                             <td className="py-2 px-2">
                               <input
                                 type="number"
@@ -1486,7 +1842,10 @@ export default function AddPurchasePage() {
                               />
                             </td>
                             <td className="py-2 px-2">
-                              <span className="text-gray-900 font-semibold">{isNaN(item.amount) ? '0.00' : item.amount.toFixed(2)} {item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? item.unit : ''}</span>
+                              <span className="text-gray-900 font-semibold">
+                                {isNaN(item.amount) ? '0.00' : item.amount.toFixed(2)}
+                                {!isFromExpenses && (item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? item.unit : '')}
+                              </span>
                             </td>
                             <td className="py-2 px-2 flex gap-1">
                               {newPurchase.items.length > 1 && (
@@ -1509,83 +1868,129 @@ export default function AddPurchasePage() {
                 {formErrors.items && <p className="text-xs text-red-500 mt-2">{formErrors.items}</p>}
               </div>
               {/* Image Upload & Description Section (match sale) */}
-              <div className="bg-gray-50 px-6 py-6 w-full">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Add Image</label>
-                    <div className="flex items-center gap-4">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        className="hidden"
-                        id="imageUpload"
-                        disabled={imageUploading}
-                      />
-                      <label
-                        htmlFor="imageUpload"
-                        className={`flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-200 ${
-                          imageUploading
-                            ? 'border-blue-300 bg-blue-50 text-blue-700 cursor-not-allowed'
-                            : uploadedImage 
-                            ? 'border-green-500 bg-green-50 text-green-700' 
-                            : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50'
-                        }`}
-                      >
-                        <span>{imageUploading ? '⏳' : uploadedImage ? '✅' : '🖼️'}</span>
-                        <span className="font-medium">
-                          {imageUploading ? 'Uploading...' : uploadedImage ? 'Image Added' : 'Add Image'}
-                        </span>
-                      </label>
-                      {uploadedImage && (
-                        <button
-                          type="button"
-                          onClick={removeImage}
-                          className="flex items-center gap-2 px-3 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-all duration-200"
+              {!isFromExpenses && (
+                <div className="bg-gray-50 px-6 py-6 w-full">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Add Image</label>
+                      <div className="flex items-center gap-4">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                          id="imageUpload"
+                          disabled={imageUploading}
+                        />
+                        <label
+                          htmlFor="imageUpload"
+                          className={`flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-200 ${
+                            imageUploading
+                              ? 'border-blue-300 bg-blue-50 text-blue-700 cursor-not-allowed'
+                              : uploadedImage 
+                              ? 'border-green-500 bg-green-50 text-green-700' 
+                              : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50'
+                          }`}
                         >
-                          <span>🗑️</span>
-                          <span className="font-medium">Remove</span>
-                        </button>
+                          <span>{imageUploading ? '⏳' : uploadedImage ? '✅' : '🖼️'}</span>
+                          <span className="font-medium">
+                            {imageUploading ? 'Uploading...' : uploadedImage ? 'Image Added' : 'Add Image'}
+                          </span>
+                        </label>
+                        {uploadedImage && (
+                          <button
+                            type="button"
+                            onClick={removeImage}
+                            className="flex items-center gap-2 px-3 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-all duration-200"
+                          >
+                            <span>🗑️</span>
+                            <span className="font-medium">Remove</span>
+                          </button>
+                        )}
+                      </div>
+                      {uploadedImage && (
+                        <div className="mt-4">
+                          <img
+                            src={uploadedImage}
+                            alt="Uploaded preview"
+                            className="max-w-full sm:max-w-xs max-h-32 object-cover border border-gray-300 rounded-lg shadow-sm"
+                          />
+                        </div>
                       )}
                     </div>
-                    {uploadedImage && (
-                      <div className="mt-4">
-                        <img
-                          src={uploadedImage}
-                          alt="Uploaded preview"
-                          className="max-w-full sm:max-w-xs max-h-32 object-cover border border-gray-300 rounded-lg shadow-sm"
-                        />
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Description / Notes</label>
-                    <textarea
-                      value={newPurchase.description}
-                      onChange={e => setNewPurchase({...newPurchase, description: e.target.value})}
-                      placeholder="Add any additional notes or description for this purchase..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                      rows={4}
-                    />
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Description / Notes</label>
+                      <textarea
+                        value={newPurchase.description}
+                        onChange={e => setNewPurchase({...newPurchase, description: e.target.value})}
+                        placeholder="Add any additional notes or description for this purchase..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                        rows={4}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
               {/* Summary Section (match sale) */}
               <div className="bg-white px-6 py-8 w-full rounded-xl shadow-sm mt-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-                  {/* Discount */}
-                  <div>
-                    <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                      <span>💸</span> Discount
-                    </label>
-                    <div className="flex flex-row items-center gap-2">
-                      <div className="flex flex-col flex-1">
-                        <div className="flex flex-row gap-2">
+                <div className="flex flex-col md:flex-row justify-between items-end gap-6">
+                  {/* Left Side - Discount and Tax */}
+                  <div className="flex flex-col md:flex-row gap-6">
+                    {/* Discount */}
+                    {!isFromExpenses && (
+                      <div>
+                        <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                          <span>💸</span> Discount
+                        </label>
+                        <div className="flex flex-row items-center gap-2">
+                          <div className="flex flex-col flex-1">
+                            <div className="flex flex-row gap-2">
+                              <input
+                                type="number"
+                                name="discount"
+                                value={newPurchase.discount}
+                                onChange={e => setNewPurchase({ ...newPurchase, discount: e.target.value })}
+                                className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                              />
+                              <CustomDropdown
+                                options={[
+                                  { value: '%', label: '%' },
+                                  { value: 'PKR', label: 'PKR' }
+                                ]}
+                                value={newPurchase.discountType}
+                                onChange={val => setNewPurchase({ ...newPurchase, discountType: val })}
+                                className="w-28 min-w-[72px] mb-1 h-11"
+                                dropdownIndex={discountTypeDropdownIndex}
+                                setDropdownIndex={setDiscountTypeDropdownIndex}
+                                optionsCount={2}
+                              />
+                            </div>
+                            <div className="text-xs text-gray-500 min-h-[24px] mt-1">
+                              {newPurchase.discount && !isNaN(Number(newPurchase.discount)) ? (
+                                <>
+                                  Discount: 
+                                  {newPurchase.discountType === '%'
+                                    ? `${newPurchase.discount}% = PKR${discountValue.toFixed(2)}`
+                                    : `PKR${discountValue.toFixed(2)}`}
+                                </>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {/* Tax */}
+                    {!isFromExpenses && (
+                      <div>
+                        <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                          <span>🧾</span> Tax
+                        </label>
+                        <div className="flex flex-row items-center gap-2">
                           <input
                             type="number"
-                            name="discount"
-                            value={newPurchase.discount}
-                            onChange={e => setNewPurchase({ ...newPurchase, discount: e.target.value })}
+                            name="tax"
+                            value={newPurchase.tax}
+                            onChange={e => setNewPurchase({ ...newPurchase, tax: e.target.value })}
                             className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
                           />
                           <CustomDropdown
@@ -1593,73 +1998,37 @@ export default function AddPurchasePage() {
                               { value: '%', label: '%' },
                               { value: 'PKR', label: 'PKR' }
                             ]}
-                            value={newPurchase.discountType}
-                            onChange={val => setNewPurchase({ ...newPurchase, discountType: val })}
+                            value={newPurchase.taxType}
+                            onChange={val => setNewPurchase({ ...newPurchase, taxType: val })}
                             className="w-28 min-w-[72px] mb-1 h-11"
-                            dropdownIndex={discountTypeDropdownIndex}
-                            setDropdownIndex={setDiscountTypeDropdownIndex}
+                            dropdownIndex={taxTypeDropdownIndex}
+                            setDropdownIndex={setTaxTypeDropdownIndex}
                             optionsCount={2}
                           />
                         </div>
                         <div className="text-xs text-gray-500 min-h-[24px] mt-1">
-                          {newPurchase.discount && !isNaN(Number(newPurchase.discount)) ? (
+                          {newPurchase.tax && !isNaN(Number(newPurchase.tax)) ? (
                             <>
-                              Discount: 
-                              {newPurchase.discountType === '%'
-                                ? `${newPurchase.discount}% = PKR${discountValue.toFixed(2)}`
-                                : `PKR${discountValue.toFixed(2)}`}
+                              Tax: {newPurchase.taxType === '%'
+                                ? `${newPurchase.tax}% = PKR${taxValue.toFixed(2)}`
+                                : `PKR${taxValue.toFixed(2)}`}
                             </>
                           ) : null}
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
-                  {/* Tax */}
-                  <div>
-                    <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                      <span>🧾</span> Tax
-                    </label>
-                    <div className="flex flex-row items-center gap-2">
-                      <input
-                        type="number"
-                        name="tax"
-                        value={newPurchase.tax}
-                        onChange={e => setNewPurchase({ ...newPurchase, tax: e.target.value })}
-                        className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
-                      />
-                      <CustomDropdown
-                        options={[
-                          { value: '%', label: '%' },
-                          { value: 'PKR', label: 'PKR' }
-                        ]}
-                        value={newPurchase.taxType}
-                        onChange={val => setNewPurchase({ ...newPurchase, taxType: val })}
-                        className="w-28 min-w-[72px] mb-1 h-11"
-                        dropdownIndex={taxTypeDropdownIndex}
-                        setDropdownIndex={setTaxTypeDropdownIndex}
-                        optionsCount={2}
-                      />
-                    </div>
-                    <div className="text-xs text-gray-500 min-h-[24px] mt-1">
-                      {newPurchase.tax && !isNaN(Number(newPurchase.tax)) ? (
-                        <>
-                          Tax: {newPurchase.taxType === '%'
-                            ? `${newPurchase.tax}% = PKR${taxValue.toFixed(2)}`
-                            : `PKR${taxValue.toFixed(2)}`}
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                  {/* Payment Type */}
-                  <div>
-                    <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                      <span>💳</span> Payment Type
-                    </label>
-                    <div className="flex flex-col">
+                  
+                  {/* Right Side - Payment Type and Totals */}
+                  <div className="flex flex-row items-center gap-6">
+                    {/* Payment Type */}
+                    <div>
+                      <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                        <span>💳</span> Payment Type
+                      </label>
                       <CustomDropdown
                         options={[
                           { value: 'Cash', label: 'Cash' },
-                          { value: 'Credit', label: 'Credit' },
                           { value: 'Card', label: 'Card' },
                           { value: 'UPI', label: 'UPI' },
                           { value: 'Cheque', label: 'Cheque' }
@@ -1669,47 +2038,18 @@ export default function AddPurchasePage() {
                         className="mb-1"
                         dropdownIndex={paymentTypeDropdownIndex}
                         setDropdownIndex={setPaymentTypeDropdownIndex}
-                        optionsCount={5}
+                        optionsCount={4}
                       />
-                      {newPurchase.paymentType === 'Credit' && (
-                        <div className="mt-2">
-                          <label className="block text-xs font-medium text-green-700 mb-1">Paid Amount</label>
-                          <input
-                            type="number"
-                            name="paid"
-                            value={newPurchase.paid}
-                            min={0}
-                            max={grandTotal}
-                            onChange={e => setNewPurchase(prev => ({ ...prev, paid: e.target.value }))}
-                            className="w-full px-3 py-2 border-2 border-green-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-200"
-                            placeholder={`Enter amount paid (max PKR ${grandTotal.toFixed(2)})`}
-                            autoComplete="off"
-                          />
-                        </div>
-                      )}
-                      <div className="text-xs text-gray-500 min-h-[24px] mt-1"></div>
                     </div>
-                  </div>
-                  {/* Totals */}
-                  <div className="md:col-span-1 flex flex-col items-end gap-2">
-                    <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full min-w-[220px]">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex justify-between text-xs text-gray-600">
-                          <span>Sub Total</span>
-                          <span>PKR{subTotal.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between text-xs text-gray-600">
-                          <span>Discount</span>
-                          <span>- PKR{discountValue.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between text-xs text-gray-600">
-                          <span>Tax</span>
-                          <span>+ PKR{taxValue.toFixed(2)}</span>
-                        </div>
-                        <div className="border-t border-blue-200 my-2"></div>
-                        <div className="flex justify-between text-lg font-bold text-blue-900">
-                          <span>Grand Total</span>
-                          <span>PKR{grandTotal.toFixed(2)}</span>
+                    
+                    {/* Totals */}
+                    <div>
+                      <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                        <span>💰</span> Total
+                      </label>
+                      <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-6 py-3 text-center shadow min-w-[180px]">
+                        <div className="text-lg font-bold text-blue-900">
+                          PKR {subTotal.toFixed(2)}
                         </div>
                       </div>
                     </div>
@@ -1737,7 +2077,7 @@ export default function AddPurchasePage() {
                     </>
                   ) : (
                     <>
-                      <span>Add Purchase</span>
+                      <span>{isFromExpenses ? 'Add Expense' : 'Add Purchase'}</span>
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>

@@ -14,6 +14,8 @@ import paymentOutRoutes from './paymentOut.js';
 import profitAndLossController from '../controllers/profitAndLossController.js';
 import creditNoteRoutes from './creditNote.js';
 import licenseKeyRoutes from './licenseKeys.js';
+import expenseRoutes from './expense.js';
+import cashBankRoutes from './cashBank.js';
 import { getDashboardStats, getSalesOverview, getRecentActivity, getProfile, updateProfile, getReceivablesList, getPayablesList, getDashboardPerformanceStats, testStockValue, getStockSummary } from '../controllers/dashboardController.js';
 import sessionCheckRoutes from './sessionCheck.js';
 import { sendUserInvite, getUserInvites, getInvitesForMe, respondToInvite } from '../controllers/userInviteController.js';
@@ -31,6 +33,8 @@ router.use('/api/delivery-challan', deliveryChallanRoutes);
 router.use('/api/payment-out', paymentOutRoutes);
 router.use('/api/credit-notes', creditNoteRoutes);
 router.use('/api/license-keys', licenseKeyRoutes);
+router.use('/api/expenses', expenseRoutes);
+router.use('/api/cash-bank', cashBankRoutes);
 router.use('/quotations', authMiddleware, quotationRoutes);
 
 // Dashboard stats route

@@ -23,6 +23,40 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.className} ${roboto.variable}`}>
         {children}
+        
+        {/* Global script to remove overlay on pricing page */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                function removeOverlayOnPricing() {
+                  if (window.location.pathname === '/dashboard/pricing') {
+                    const overlay = document.getElementById('buy-plan-overlay');
+                    if (overlay) {
+                      overlay.remove();
+                      console.log('Root layout: Overlay removed from pricing page');
+                    }
+                  }
+                }
+                
+                // Remove immediately
+                removeOverlayOnPricing();
+                
+                // Check every 100ms
+                setInterval(removeOverlayOnPricing, 100);
+                
+                // Also check on route changes
+                let currentPath = window.location.pathname;
+                setInterval(function() {
+                  if (window.location.pathname !== currentPath) {
+                    currentPath = window.location.pathname;
+                    removeOverlayOnPricing();
+                  }
+                }, 100);
+              })();
+            `
+          }}
+        />
       </body>
     </html>
   )

@@ -62,7 +62,7 @@ const navItems: NavItem[] = [
       { id: 'expenses', label: 'Expenses', icon: '💸', path: '/dashboard/expenses' }
     ]
   },
-  { id: 'cash-bank', label: 'Cash & Bank', icon: '🏦', path: '/dashboard/cash-bank', description: 'Payment Records' },
+  { id: 'cash-bank', label: 'Cash in Hand', icon: '🏦', path: '/dashboard/cash-bank', description: 'Payment Records' },
   { id: 'reports', label: 'Reports', icon: '📈', path: '/dashboard/reports', description: 'Business Analytics' },
   { id: 'barcode', label: 'Barcode', icon: '📱', path: '/dashboard/barcode', description: 'Barcode Scanner' },
   { id: 'backup-restore', label: 'Backup & Restore', icon: '💾', path: '/dashboard/backup-restore', description: 'Data Management' },
@@ -210,18 +210,54 @@ export default function Sidebar() {
     if (!localStorage.getItem('token')) {
       setIsLicenseCheckComplete(true)
     }
+    
+    // Check if we're on pricing page and remove any existing overlay
+    if (window.location.pathname === '/dashboard/pricing') {
+      const existingOverlay = document.getElementById('buy-plan-overlay')
+      if (existingOverlay) {
+        existingOverlay.remove()
+        console.log('Removed existing overlay on pricing page mount')
+      }
+    }
   }, [])
 
-  // Add/remove overlay when showBuyPlan changes
+  // Add/remove overlay when showBuyPlan changes - Only after data is fully loaded
   useEffect(() => {
     console.log('showBuyPlan changed:', showBuyPlan)
     console.log('hasLicenseKey:', hasLicenseKey)
+    console.log('isDataLoaded:', isDataLoaded)
+    console.log('isLicenseCheckComplete:', isLicenseCheckComplete)
+    
+    // Only proceed if all data is loaded and license check is complete
+    if (!isDataLoaded || !isLicenseCheckComplete) {
+      console.log('Data not fully loaded yet, skipping overlay logic')
+      return;
+    }
+    
+    // Don't show overlay on pricing page
+    const currentPath = window.location.pathname;
+    if (currentPath === '/dashboard/pricing' || 
+        currentPath === '/dashboard/pricing/' ||
+        currentPath.includes('/dashboard/pricing') ||
+        currentPath.includes('pricing')) {
+      console.log('On pricing page, not showing overlay - Path:', currentPath)
+      removeOverlayOnPricing();
+      return;
+    }
     
     // Preserve current scroll position
     const currentScrollY = window.scrollY;
     
     // Only show overlay if user doesn't have license key and has exceeded 14 days
     if (showBuyPlan && !hasLicenseKey && daysSinceCreation > 14) {
+      // Double check - don't create overlay on pricing page
+      if (window.location.pathname === '/dashboard/pricing') {
+        console.log('Pricing page detected, not creating overlay')
+        return;
+      }
+      
+      console.log('Showing trial expiration overlay')
+      
       // Remove existing overlay first
       const existingOverlay = document.getElementById('buy-plan-overlay')
       if (existingOverlay) {
@@ -231,33 +267,99 @@ export default function Sidebar() {
       // Create new overlay with better positioning
       const overlay = document.createElement('div')
       overlay.id = 'buy-plan-overlay'
+      overlay.className = 'trial-expired-overlay'
       overlay.style.position = 'fixed'
       overlay.style.top = '0'
       overlay.style.left = isCollapsed ? '64px' : '256px'
       overlay.style.width = isCollapsed ? 'calc(100vw - 64px)' : 'calc(100vw - 256px)'
       overlay.style.height = '100vh'
-      overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.1)'
+      overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.3)' // Lighter overlay for better visibility
       overlay.style.zIndex = '9999'
-      overlay.style.pointerEvents = 'none' // Changed to none to prevent interference
+      overlay.style.pointerEvents = 'auto' // Changed to auto to prevent clicks
       overlay.style.display = 'block'
       overlay.style.visibility = 'visible'
       overlay.style.opacity = '1'
       overlay.style.transition = 'opacity 0.3s ease-in-out'
+      overlay.style.cursor = 'not-allowed'
+      overlay.style.userSelect = 'none' // Prevent text selection
+      
+      // Add click handler to prevent any clicks
+      overlay.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      });
+      
+      // Add mousedown handler to prevent any interactions
+      overlay.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      });
+      
+      // Add message to overlay
+      const messageDiv = document.createElement('div')
+      messageDiv.style.position = 'absolute'
+      messageDiv.style.top = '50%'
+      messageDiv.style.left = '50%'
+      messageDiv.style.transform = 'translate(-50%, -50%)'
+      messageDiv.style.textAlign = 'center'
+      messageDiv.style.color = 'white'
+      messageDiv.style.fontSize = '24px'
+      messageDiv.style.fontWeight = 'bold'
+      messageDiv.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)'
+      messageDiv.innerHTML = `
+        <div style="margin-bottom: 20px;">⏰</div>
+        <div>Trial Period Expired</div>
+        <div style="font-size: 16px; margin-top: 10px; opacity: 0.9;">
+          Please upgrade your plan to continue using the application
+        </div>
+        <button 
+          onclick="window.location.href='/dashboard/pricing'"
+          style="
+            margin-top: 20px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+          "
+          onmouseover="this.style.transform='scale(1.05)'"
+          onmouseout="this.style.transform='scale(1)'"
+        >
+          Upgrade Now
+        </button>
+      `
+      
+      overlay.appendChild(messageDiv)
       
       console.log('Adding overlay with styles:', overlay.style.cssText)
-      document.body.appendChild(overlay)
-      console.log('Overlay added to DOM')
+      
+      // Try to append to overlay container first, fallback to body
+      const overlayContainer = document.getElementById('overlay-container')
+      if (overlayContainer) {
+        overlayContainer.appendChild(overlay)
+        console.log('Overlay added to overlay container')
+      } else {
+        document.body.appendChild(overlay)
+        console.log('Overlay added to body (fallback)')
+      }
       
       // Restore scroll position after overlay is added
       requestAnimationFrame(() => {
         window.scrollTo(0, currentScrollY);
       });
     } else {
-      // Remove overlay
+      // Remove overlay if conditions are not met
       const overlay = document.getElementById('buy-plan-overlay')
       if (overlay) {
         overlay.remove()
-        console.log('Overlay removed')
+        console.log('Overlay removed - conditions not met')
         
         // Restore scroll position after overlay is removed
         requestAnimationFrame(() => {
@@ -273,7 +375,76 @@ export default function Sidebar() {
         overlay.remove()
       }
     }
-  }, [showBuyPlan, hasLicenseKey, isCollapsed])
+  }, [showBuyPlan, hasLicenseKey, isCollapsed, isDataLoaded, isLicenseCheckComplete])
+
+  // Quick fix: Function to remove overlay on pricing page
+  const removeOverlayOnPricing = () => {
+    const currentPath = window.location.pathname;
+    if (currentPath === '/dashboard/pricing' || 
+        currentPath === '/dashboard/pricing/' ||
+        currentPath.includes('/dashboard/pricing') ||
+        currentPath.includes('pricing')) {
+      
+      const overlay = document.getElementById('buy-plan-overlay');
+      if (overlay) {
+        overlay.remove();
+        console.log('Quick fix: Overlay removed from pricing page - Path:', currentPath);
+      }
+      
+      // Also remove any overlay with similar ID
+      const allOverlays = document.querySelectorAll('[id*="overlay"], [id*="Overlay"]');
+      allOverlays.forEach(function(el) {
+        if (el.id.includes('buy-plan') || el.id.includes('overlay')) {
+          el.remove();
+          console.log('Removed additional overlay:', el.id);
+        }
+      });
+    }
+  };
+
+
+
+  // Make function globally available for immediate access
+  if (typeof window !== 'undefined') {
+    (window as any).removeOverlayOnPricing = removeOverlayOnPricing;
+  }
+
+  // Simple and direct overlay management
+  useEffect(() => {
+    const checkAndManageOverlay = () => {
+      const currentPath = window.location.pathname;
+      const isOnPricingPage = currentPath === '/dashboard/pricing' || 
+                              currentPath === '/dashboard/pricing/' ||
+                              currentPath.includes('/dashboard/pricing') ||
+                              currentPath.includes('pricing');
+      
+      if (isOnPricingPage) {
+        // Remove overlay on pricing page
+        removeOverlayOnPricing();
+      } else {
+        // On other pages, ensure overlay is visible if conditions are met
+        if (showBuyPlan && !hasLicenseKey && daysSinceCreation > 14) {
+          const existingOverlay = document.getElementById('buy-plan-overlay');
+          if (!existingOverlay) {
+            // Force overlay creation by triggering a re-render
+            console.log('Forcing overlay creation on non-pricing page');
+            setTimeout(() => {
+              setShowBuyPlan(prev => !prev);
+              setTimeout(() => setShowBuyPlan(prev => !prev), 100);
+            }, 100);
+          }
+        }
+      }
+    };
+    
+    // Check immediately
+    checkAndManageOverlay();
+    
+    // Check every 200ms
+    const interval = setInterval(checkAndManageOverlay, 200);
+    
+    return () => clearInterval(interval);
+  }, [showBuyPlan, hasLicenseKey, daysSinceCreation, pathname]);
 
   const handleLogout = async () => {
     await performLogout();

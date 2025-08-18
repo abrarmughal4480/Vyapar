@@ -91,6 +91,9 @@ export default function DashboardLayout({
           <main className={`pb-20 lg:pb-0 transition-opacity duration-300 ${isScrollRestored ? 'opacity-100' : 'opacity-0'}`}>
             {children}
           </main>
+          
+          {/* Overlay container for trial expiration */}
+          <div id="overlay-container" className="relative z-50"></div>
         </div>
         
         {/* Bottom navigation for mobile */}
@@ -98,6 +101,60 @@ export default function DashboardLayout({
           <BottomNavigation />
         </div>
       </div>
+      
+      {/* Global overlay removal script - Only on pricing page */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            (function() {
+              function removeOverlayOnPricing() {
+                // Check multiple possible paths for pricing page
+                const currentPath = window.location.pathname;
+                if (currentPath === '/dashboard/pricing' || 
+                    currentPath === '/dashboard/pricing/' ||
+                    currentPath.includes('/dashboard/pricing') ||
+                    currentPath.includes('pricing')) {
+                  
+                  const overlay = document.getElementById('buy-plan-overlay');
+                  if (overlay) {
+                    overlay.remove();
+                    console.log('Dashboard layout: Overlay removed from pricing page - Path:', currentPath);
+                  }
+                  
+                  // Also remove any overlay with similar ID
+                  const allOverlays = document.querySelectorAll('[id*="overlay"], [id*="Overlay"]');
+                  allOverlays.forEach(function(el) {
+                    if (el.id.includes('buy-plan') || el.id.includes('overlay')) {
+                      el.remove();
+                      console.log('Removed additional overlay:', el.id);
+                    }
+                  });
+                }
+              }
+              
+              // Check immediately
+              removeOverlayOnPricing();
+              
+              // Check every 50ms for faster response
+              setInterval(removeOverlayOnPricing, 50);
+              
+              // Also check on route changes
+              let currentPath = window.location.pathname;
+              setInterval(function() {
+                if (window.location.pathname !== currentPath) {
+                  currentPath = window.location.pathname;
+                  removeOverlayOnPricing();
+                }
+              }, 50);
+              
+              // Force check on window focus and load
+              window.addEventListener('focus', removeOverlayOnPricing);
+              window.addEventListener('load', removeOverlayOnPricing);
+              document.addEventListener('DOMContentLoaded', removeOverlayOnPricing);
+            })();
+          `
+        }}
+      />
     </SidebarContext.Provider>
   )
 }

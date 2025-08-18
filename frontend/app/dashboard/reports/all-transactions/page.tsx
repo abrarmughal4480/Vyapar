@@ -7,7 +7,6 @@ import { getSalesByUser } from '../../../../http/sales';
 import { getPurchasesByUser, getPayments, getPaymentOutsByUser } from '../../../../http/purchases';
 import { getCreditNotesByUser } from '../../../../http/credit-notes';
 import { getDeliveryChallans } from '../../../../http/deliveryChallan';
-import { getCustomerParties } from '../../../../http/parties';
 
 export default function AllTransactionsPage() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,12 +33,13 @@ export default function AllTransactionsPage() {
           throw new Error('User ID not found in token. Please login again.');
         }
         // Fetch all data with error handling
-        const [salesRes, purchasesRes, creditNotesRes, deliveryChallansRes, paymentsRes] = await Promise.allSettled([
+        const [salesRes, purchasesRes, creditNotesRes, deliveryChallansRes, paymentsRes, paymentOutsRes] = await Promise.allSettled([
           getSalesByUser(userId, token),
           getPurchasesByUser(userId, token),
           getCreditNotesByUser(userId, token),
           getDeliveryChallans(token),
           getPayments(token),
+          getPaymentOutsByUser(userId, token),
         ]);
         
         // Log any failed requests for debugging
@@ -48,49 +48,87 @@ export default function AllTransactionsPage() {
         if (creditNotesRes.status === 'rejected') console.error('Credit notes fetch failed:', creditNotesRes.reason);
         if (deliveryChallansRes.status === 'rejected') console.error('Delivery challans fetch failed:', deliveryChallansRes.reason);
         if (paymentsRes.status === 'rejected') console.error('Payments fetch failed:', paymentsRes.reason);
+        if (paymentOutsRes.status === 'rejected') console.error('Payment outs fetch failed:', paymentOutsRes.reason);
         // Map all to unified format
-        const sales = (salesRes.status === 'fulfilled' ? (salesRes.value.sales || []) : []).map((s: any) => ({
-          id: s._id,
-          date: s.createdAt?.slice(0, 10) || '',
-          ref: s.invoiceNo || s._id,
-          partyName: s.partyName,
-          type: 'Sale',
-          paymentType: s.paymentType || (s.received === s.grandTotal ? 'Cash' : 'Credit'),
-          amount: s.grandTotal,
-          paid: s.received,
-          balance: s.balance,
-          status: s.balance === 0 ? 'Paid' : (s.received > 0 ? 'Partial' : 'Unpaid'),
-          firm: s.firmName || 'Vyapar Pvt Ltd',
-        }));
-        // Add Payment In for each sale with received > 0
-        const paymentIns = (salesRes.status === 'fulfilled' ? (salesRes.value.sales || []) : [])
-          .filter((s: any) => s.received && s.received > 0)
-          .map((s: any) => ({
-            id: s._id + '-paymentin',
-            date: s.updatedAt?.slice(0, 10) || s.createdAt?.slice(0, 10) || '',
+        const sales = (salesRes.status === 'fulfilled' ? (salesRes.value.sales || []) : []).map((s: any) => {
+          const paymentType = s.paymentType || (s.received === s.grandTotal ? 'Cash' : 'Credit');
+          return {
+            id: s._id,
+            date: s.createdAt?.slice(0, 10) || '',
             ref: s.invoiceNo || s._id,
             partyName: s.partyName,
-            type: 'Payment In',
-            paymentType: s.paymentType || (s.received === s.grandTotal ? 'Cash' : 'Credit'),
-            amount: s.received,
+            type: 'Sale',
+            paymentType: paymentType,
+            amount: s.grandTotal,
             paid: s.received,
             balance: s.balance,
             status: s.balance === 0 ? 'Paid' : (s.received > 0 ? 'Partial' : 'Unpaid'),
             firm: s.firmName || 'Vyapar Pvt Ltd',
-          }));
-        const purchases = (purchasesRes.status === 'fulfilled' ? (purchasesRes.value.purchases || []) : []).map((p: any) => ({
-          id: p._id,
-          date: p.createdAt?.slice(0, 10) || '',
-          ref: p.billNo || p._id,
-          partyName: p.supplierName,
-          type: 'Purchase',
-          paymentType: p.paymentType || (p.paid === p.grandTotal ? 'Cash' : 'Credit'),
-          amount: p.grandTotal,
-          paid: p.paid,
-          balance: p.balance,
-          status: p.balance === 0 ? 'Paid' : (p.paid > 0 ? 'Partial' : 'Unpaid'),
-          firm: p.firmName || 'Vyapar Pvt Ltd',
-        }));
+          };
+        });
+        // Add Payment In for each sale with received > 0, but only if payment type is NOT cash
+        // This prevents duplicate entries when invoice number is same and type is cash
+        const paymentIns = (salesRes.status === 'fulfilled' ? (salesRes.value.sales || []) : [])
+          .filter((s: any) => {
+            const paymentType = s.paymentType || (s.received === s.grandTotal ? 'Cash' : 'Credit');
+            return s.received && s.received > 0 && paymentType !== 'Cash';
+          })
+          .map((s: any) => {
+            const paymentType = s.paymentType || (s.received === s.grandTotal ? 'Cash' : 'Credit');
+            return {
+              id: s._id + '-paymentin',
+              date: s.updatedAt?.slice(0, 10) || s.createdAt?.slice(0, 10) || '',
+              ref: s.invoiceNo || s._id,
+              partyName: s.partyName,
+              type: 'Payment In',
+              paymentType: paymentType,
+              amount: s.received,
+              paid: s.received,
+              balance: s.balance,
+              status: s.balance === 0 ? 'Paid' : (s.received > 0 ? 'Partial' : 'Unpaid'),
+              firm: s.firmName || 'Vyapar Pvt Ltd',
+            };
+          });
+        const purchases = (purchasesRes.status === 'fulfilled' ? (purchasesRes.value.purchases || []) : []).map((p: any) => {
+          const paymentType = p.paymentType || (p.paid === p.grandTotal ? 'Cash' : 'Credit');
+          return {
+            id: p._id,
+            date: p.createdAt?.slice(0, 10) || '',
+            ref: p.billNo || p._id,
+            partyName: p.supplierName,
+            type: 'Purchase',
+            paymentType: paymentType,
+            amount: p.grandTotal,
+            paid: p.paid,
+            balance: p.balance,
+            status: p.balance === 0 ? 'Paid' : (p.paid > 0 ? 'Partial' : 'Unpaid'),
+            firm: p.firmName || 'Vyapar Pvt Ltd',
+          };
+        });
+        
+        // Add Payment Out for each purchase with paid > 0, but only if payment type is NOT cash
+        // This prevents duplicate entries when bill number is same and type is cash
+        const purchasePaymentOuts = (purchasesRes.status === 'fulfilled' ? (purchasesRes.value.purchases || []) : [])
+          .filter((p: any) => {
+            const paymentType = p.paymentType || (p.paid === p.grandTotal ? 'Cash' : 'Credit');
+            return p.paid && p.paid > 0 && paymentType !== 'Cash';
+          })
+          .map((p: any) => {
+            const paymentType = p.paymentType || (p.paid === p.grandTotal ? 'Cash' : 'Credit');
+            return {
+              id: p._id + '-paymentout',
+              date: p.updatedAt?.slice(0, 10) || p.createdAt?.slice(0, 10) || '',
+              ref: p.billNo || p._id,
+              partyName: p.supplierName,
+              type: 'Payment Out',
+              paymentType: paymentType,
+              amount: p.paid,
+              paid: p.paid,
+              balance: p.balance,
+              status: p.balance === 0 ? 'Paid' : (p.paid > 0 ? 'Partial' : 'Unpaid'),
+              firm: p.firmName || 'Vyapar Pvt Ltd',
+            };
+          });
         const creditNotes = (creditNotesRes.status === 'fulfilled' ? (creditNotesRes.value.data || []) : []).map((c: any) => ({
           id: c._id,
           date: c.createdAt?.slice(0, 10) || '',
@@ -117,27 +155,51 @@ export default function AllTransactionsPage() {
           status: '-',
           firm: d.firmName || 'Vyapar Pvt Ltd',
         }));
-        const payments = (paymentsRes.status === 'fulfilled' ? (paymentsRes.value.payments || []) : []).map((p: any) => ({
-          id: p._id,
-          date: p.paymentDate?.slice(0, 10) || '',
-          ref: p.billNo || p._id,
-          partyName: p.supplierName,
-          type: 'Payment Out',
-          paymentType: p.paymentType || 'Cash',
-          amount: p.amount,
-          paid: p.amount,
-          balance: p.remainingBalance,
-          status: p.status || '-',
-          firm: p.firmName || 'Vyapar Pvt Ltd',
-        }));
+        // Filter out Payment Out entries when payment type is cash to avoid duplicates
+        const payments = (paymentsRes.status === 'fulfilled' ? (paymentsRes.value.payments || []) : [])
+          .filter((p: any) => p.paymentType !== 'Cash')
+          .map((p: any) => ({
+            id: p._id,
+            date: p.paymentDate?.slice(0, 10) || '',
+            ref: p.billNo || p._id,
+            partyName: p.supplierName,
+            type: 'Payment Out',
+            paymentType: p.paymentType || 'Cash',
+            amount: p.amount,
+            paid: p.amount,
+            balance: p.remainingBalance,
+            status: p.status || '-',
+            firm: p.firmName || 'Vyapar Pvt Ltd',
+          }));
+          
+        // Get standalone payment outs (not linked to purchases)
+        // Filter out cash payments to avoid duplicates with cash purchases
+        const standalonePaymentOuts = (paymentOutsRes.status === 'fulfilled' ? (paymentOutsRes.value.payments || []) : [])
+          .filter((p: any) => p.paymentType !== 'Cash')
+          .map((p: any) => ({
+            id: p._id,
+            date: p.paymentDate?.slice(0, 10) || '',
+            ref: p.billNo || p._id,
+            partyName: p.supplierName,
+            type: 'Payment Out',
+            paymentType: p.paymentType || 'Cash',
+            amount: p.amount,
+            paid: p.amount,
+            balance: p.remainingBalance,
+            status: p.status || '-',
+            firm: p.firmName || 'Vyapar Pvt Ltd',
+          }));
+          
         // Combine all
         let all = [
           ...sales,
           ...paymentIns,
           ...purchases,
+          ...purchasePaymentOuts,
           ...creditNotes,
           ...deliveryChallans,
-          ...payments
+          ...payments,
+          ...standalonePaymentOuts
         ];
         // Sort by date descending (latest first)
         all = all.sort((a, b) => {

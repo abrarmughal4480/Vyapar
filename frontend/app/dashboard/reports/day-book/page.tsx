@@ -15,6 +15,7 @@ interface TransactionEntry {
   totalIn: number;
   out: number;
   date: string;
+  paymentType?: string;
 }
 
 export default function DayBookPage() {
@@ -44,50 +45,73 @@ export default function DayBookPage() {
           getPayments(token),
           getPaymentOutsByUser(userId, token)
         ]);
-        // Map to unified format
-        const sales = (salesRes.sales || []).map((s: any) => ({
-          id: s._id,
-          name: s.partyName,
-          ref: s.invoiceNo || s._id,
-          type: 'Sale',
-          total: s.grandTotal,
-          totalIn: s.grandTotal, // Full sale amount is money in
-          out: 0,
-          date: s.createdAt?.slice(0, 10) || '',
-        }));
-        const purchases = (purchasesRes.purchases || []).map((p: any) => ({
-          id: p._id,
-          name: p.supplierName,
-          ref: p.billNo || p._id,
-          type: 'Purchase',
-          total: p.grandTotal,
-          totalIn: 0,
-          out: p.grandTotal,
-          date: p.createdAt?.slice(0, 10) || '',
-        }));
-        // Include separate payment entries for detailed cash flow tracking
-        const paymentIns: TransactionEntry[] = (paymentsRes.payments || []).map((p: any) => ({
-          id: p._id,
-          name: p.partyName || 'Payment Received',
-          ref: p.paymentRef || p._id,
-          type: 'Payment In',
-          total: p.amount,
-          totalIn: p.amount,
-          out: 0,
-          date: p.paymentDate?.slice(0, 10) || p.createdAt?.slice(0, 10) || '',
-        }));
+        // Map to unified format with proper payment in/out calculation
+        const sales = (salesRes.sales || []).map((s: any) => {
+          const paymentType = s.paymentType || (s.received === s.grandTotal ? 'Cash' : 'Credit');
+          const moneyIn = s.received || 0;
+          const moneyOut = 0;
+          
+          return {
+            id: s._id,
+            name: s.partyName,
+            ref: s.invoiceNo || s._id,
+            type: 'Sale',
+            total: s.grandTotal,
+            totalIn: moneyIn,
+            out: moneyOut,
+            date: s.createdAt?.slice(0, 10) || '',
+            paymentType: paymentType,
+          };
+        });
         
-        // Include separate payment out entries for detailed cash flow tracking
-        const paymentOuts: TransactionEntry[] = (paymentOutsRes.paymentOuts || []).map((p: any) => ({
-          id: p._id,
-          name: p.supplierName || 'Payment Made',
-          ref: p.paymentRef || p._id,
-          type: 'Payment Out',
-          total: p.amount,
-          totalIn: 0,
-          out: p.amount,
-          date: p.paymentDate?.slice(0, 10) || p.createdAt?.slice(0, 10) || '',
-        }));
+        const purchases = (purchasesRes.purchases || []).map((p: any) => {
+          const paymentType = p.paymentType || (p.paid === p.grandTotal ? 'Cash' : 'Credit');
+          const moneyIn = 0;
+          const moneyOut = p.paid || 0;
+          
+          return {
+            id: p._id,
+            name: p.supplierName,
+            ref: p.billNo || p._id,
+            type: 'Purchase',
+            total: p.grandTotal,
+            totalIn: moneyIn,
+            out: moneyOut,
+            date: p.createdAt?.slice(0, 10) || '',
+            paymentType: paymentType,
+          };
+        });
+        
+        // Only include separate payment entries for NON-cash transactions to avoid duplicates
+        const paymentIns: TransactionEntry[] = (paymentsRes.payments || [])
+          .filter((p: any) => p.paymentType !== 'Cash')
+          .map((p: any) => ({
+            id: p._id,
+            name: p.partyName || 'Payment Received',
+            ref: p.paymentRef || p._id,
+            type: 'Payment In',
+            total: p.amount,
+            totalIn: p.amount,
+            out: 0,
+            date: p.paymentDate?.slice(0, 10) || p.createdAt?.slice(0, 10) || '',
+            paymentType: p.paymentType || 'Credit',
+          }));
+        
+        // Only include separate payment out entries for NON-cash transactions to avoid duplicates
+        const paymentOuts: TransactionEntry[] = (paymentOutsRes.paymentOuts || [])
+          .filter((p: any) => p.paymentType !== 'Cash')
+          .map((p: any) => ({
+            id: p._id,
+            name: p.supplierName || 'Payment Made',
+            ref: p.paymentRef || p._id,
+            type: 'Payment Out',
+            total: p.amount,
+            totalIn: 0,
+            out: p.amount,
+            date: p.paymentDate?.slice(0, 10) || p.createdAt?.slice(0, 10) || '',
+            paymentType: p.paymentType || 'Credit',
+          }));
+        
         let all: TransactionEntry[] = [...sales, ...purchases, ...paymentIns, ...paymentOuts];
         
         // Debug logging
@@ -99,7 +123,8 @@ export default function DayBookPage() {
           totalIn: all.reduce((sum, entry) => sum + (entry.totalIn || 0), 0),
           totalOut: all.reduce((sum, entry) => sum + (entry.out || 0), 0),
           sampleSales: sales.slice(0, 2),
-          samplePayments: paymentIns.slice(0, 2)
+          samplePayments: paymentIns.slice(0, 2),
+          note: 'Cash transactions show only main entry, Credit transactions show both main entry and payment entry'
         });
         
         // Sort by date descending
@@ -157,6 +182,9 @@ export default function DayBookPage() {
           <div className="text-center md:text-left">
             <h1 className="text-xl md:text-2xl font-bold text-gray-900">Day Book</h1>
             <p className="text-sm text-gray-500 mt-1">View all daily transactions in one place</p>
+            <p className="text-xs text-blue-600 mt-1">
+              💡 Cash transactions show only main entry, Credit transactions show both main entry and payment entry
+            </p>
           </div>
         </div>
       </div>
@@ -227,6 +255,7 @@ export default function DayBookPage() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ref</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Money In</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Money Out</th>
@@ -237,7 +266,7 @@ export default function DayBookPage() {
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredData.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center py-8 text-gray-400">No records found.</td>
+                <td colSpan={9} className="text-center py-8 text-gray-400">No records found.</td>
               </tr>
             ) : (
               filteredData.map(entry => (
@@ -245,6 +274,17 @@ export default function DayBookPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{entry.name}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{entry.ref}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-indigo-700 font-semibold">{entry.type}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    {entry.paymentType ? (
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        entry.paymentType === 'Cash' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-orange-100 text-orange-800'
+                      }`}>
+                        {entry.paymentType}
+                      </span>
+                    ) : '-'}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">{entry.total ? entry.total.toLocaleString() : '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-emerald-700 font-bold">{entry.totalIn ? entry.totalIn.toLocaleString() : '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-red-700 font-bold">{entry.out ? entry.out.toLocaleString() : '-'}</td>

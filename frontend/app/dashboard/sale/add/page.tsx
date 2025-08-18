@@ -623,6 +623,7 @@ const AddSalePage = () => {
   });
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [addSaleLoading, setAddSaleLoading] = useState(false);
   const [customers, setCustomers] = useState<any[]>([]);
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
   const [showItemSuggestions, setShowItemSuggestions] = useState<{[id: number]: boolean}>({});
@@ -1014,6 +1015,74 @@ const AddSalePage = () => {
     } catch (err: any) {
       setToast({ message: err.message || 'Failed to save sale', type: 'error' });
       setLoading(false);
+    }
+  };
+
+  // Separate function for Add Sale button (without invoice redirect)
+  const handleAddSale = async () => {
+    if (!validateForm()) return;
+    setAddSaleLoading(true);
+    try {
+      const token =
+        (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+      // Filter out incomplete items
+      const filteredItems = newSale.items.filter(
+        item =>
+          item.item &&
+          item.qty &&
+          item.price &&
+          !isNaN(Number(item.qty)) &&
+          !isNaN(Number(item.price))
+      );
+      const subTotal = calculateTotal();
+      let discountValue = 0;
+      if (newSale.discount && !isNaN(Number(newSale.discount))) {
+        if (newSale.discountType === '%') {
+          discountValue = subTotal * Number(newSale.discount) / 100;
+        } else {
+          discountValue = Number(newSale.discount);
+        }
+      }
+      // Tax calculation
+      let taxValue = 0;
+      if (newSale.tax && !isNaN(Number(newSale.tax))) {
+        if (newSale.taxType === '%') {
+          taxValue = (subTotal - discountValue) * Number(newSale.tax) / 100;
+        } else if (newSale.taxType === 'PKR') {
+          taxValue = Number(newSale.tax);
+        }
+      }
+      const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
+
+      const saleData = {
+        ...newSale,
+        items: filteredItems,
+        description,
+        imageUrl: uploadedImage,
+        tax: newSale.tax === 'NONE' || newSale.tax === '' ? 0 : newSale.tax,
+        receivedAmount: newSale.paymentType === 'Cash' ? grandTotal : newSale.receivedAmount,
+        sourceOrderId,
+        sourceOrderNumber
+      };
+      
+      let result;
+      if (newSale.editingId) {
+        result = await updateSale(newSale.editingId, saleData, token);
+      } else {
+        result = await createSale(saleData, token);
+      }
+      
+      if (result.success && result.sale && result.sale._id) {
+        setToast({ message: `Sale saved successfully! Invoice No: ${result.sale.invoiceNo || ''}`, type: 'success' });
+        // Redirect to sale page instead of invoices
+        setTimeout(() => router.push('/dashboard/sale'), 1500);
+      } else {
+        setToast({ message: result.message || 'Failed to save sale', type: 'error' });
+      }
+    } catch (err: any) {
+      setToast({ message: err.message || 'Failed to save sale', type: 'error' });
+    } finally {
+      setAddSaleLoading(false);
     }
   };
 
@@ -1601,6 +1670,21 @@ const AddSalePage = () => {
                       <span>Grand Total</span>
                       <span>PKR {grandTotal.toFixed(2)}</span>
                     </div>
+                    
+                    {/* Credit Information - Grand Total se minus nahi hoti */}
+                    {newSale.paymentType === 'Credit' && newSale.receivedAmount && Number(newSale.receivedAmount) > 0 && (
+                      <>
+                        <div className="border-t border-blue-200 my-2"></div>
+                        <div className="flex justify-between text-sm text-green-700">
+                          <span>Amount Received</span>
+                          <span>PKR {Number(newSale.receivedAmount).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm text-red-700 font-semibold">
+                          <span>Credit Amount</span>
+                          <span>PKR {(grandTotal - Number(newSale.receivedAmount)).toFixed(2)}</span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1614,7 +1698,7 @@ const AddSalePage = () => {
               onClick={() => router.push('/dashboard/sale')}
               className="px-6 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 bg-gray-600 text-white hover:bg-gray-700"
             >
-              <span>Add Sale</span>
+              <span>Cancel</span>
             </button>
             <button
               type="submit"
@@ -1636,6 +1720,30 @@ const AddSalePage = () => {
               ) : (
                 <>
                   <span>Add Sale & Print</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={handleAddSale}
+              disabled={addSaleLoading}
+              className={`px-6 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
+                addSaleLoading 
+                  ? 'bg-gray-400 text-white cursor-not-allowed' 
+                  : 'bg-green-600 text-white hover:bg-green-700'
+              }`}
+            >
+              {addSaleLoading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <>
+                  <span>Add Sale</span>
                 </>
               )}
             </button>

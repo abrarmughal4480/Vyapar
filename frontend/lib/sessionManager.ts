@@ -104,6 +104,9 @@ class SessionManager {
         // Token was cleared, logout immediately
         this.stopMonitoring();
         window.location.href = '/';
+      } else if (event.key === 'token' && event.newValue) {
+        // Token was updated (possibly company context change), just continue monitoring
+        console.log('Token updated, continuing session monitoring');
       }
     }
   }
@@ -144,13 +147,20 @@ class SessionManager {
             
             this.stopMonitoring();
             await performLogout();
+          } else {
+            // For other 401 errors, don't stop monitoring - might be temporary
+            console.log('Session check failed with 401, but continuing monitoring');
           }
         }
       } else {
-        console.log();
+        // Session is valid, log occasionally to avoid spam
+        if (Math.random() < 0.01) { // Log only 1% of successful checks
+          console.log('Session check successful');
+        }
       }
     } catch (error) {
       console.error('Session check failed:', error);
+      // Don't stop monitoring on network errors - might be temporary
     }
   }
 

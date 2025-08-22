@@ -164,6 +164,10 @@ export const deleteUserInvite = async (req, res) => {
     const { inviteId } = req.params;
     const requestedBy = req.user && (req.user._id || req.user.id);
     
+    console.log('=== DELETE INVITE START ===');
+    console.log('Invite ID:', inviteId);
+    console.log('Requested by user:', requestedBy);
+    
     if (!inviteId || !requestedBy) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
@@ -171,11 +175,21 @@ export const deleteUserInvite = async (req, res) => {
     // Find the invite and verify ownership
     const invite = await UserInvite.findById(inviteId);
     if (!invite) {
+      console.log('Invite not found');
       return res.status(404).json({ success: false, message: 'Invite not found' });
     }
 
+    console.log('Found invite:', {
+      id: invite._id,
+      email: invite.email,
+      status: invite.status,
+      requestedTo: invite.requestedTo,
+      requestedBy: invite.requestedBy
+    });
+
     // Only the person who sent the invite can delete it
     if (invite.requestedBy.toString() !== requestedBy.toString()) {
+      console.log('Authorization failed: User not authorized to delete this invite');
       return res.status(403).json({ success: false, message: 'Not authorized to delete this invite' });
     }
 
@@ -184,40 +198,116 @@ export const deleteUserInvite = async (req, res) => {
 
     // If the invite was for a specific user (has requestedTo), invalidate their token
     if (invite.requestedTo) {
+      console.log('=== TOKEN INVALIDATION FOR SPECIFIC USER ===');
+      console.log('User ID to invalidate:', invite.requestedTo);
+      
       try {
+        // Get user's current state BEFORE invalidation
+        const userBefore = await User.findById(invite.requestedTo);
+        console.log('User BEFORE token invalidation:', {
+          id: userBefore?._id,
+          email: userBefore?.email,
+          currentToken: userBefore?.currentToken ? 'EXISTS' : 'NONE',
+          tokenLength: userBefore?.currentToken?.length || 0
+        });
+
         // Clear the user's currentToken to force logout
-        await User.findByIdAndUpdate(
+        const updateResult = await User.findByIdAndUpdate(
           invite.requestedTo,
-          { $unset: { currentToken: 1 } }
+          { $unset: { currentToken: 1 } },
+          { new: true }
         );
-        console.log(`Token invalidated for user ${invite.requestedTo} after invite deletion`);
+        
+        console.log('Update result:', updateResult);
+        
+        // Get user's state AFTER invalidation
+        const userAfter = await User.findById(invite.requestedTo);
+        console.log('User AFTER token invalidation:', {
+          id: userAfter?._id,
+          email: userAfter?.email,
+          currentToken: userAfter?.currentToken ? 'EXISTS' : 'NONE',
+          tokenLength: userAfter?.currentToken?.length || 0
+        });
+        
+        // Compare before and after
+        const tokenChanged = userBefore?.currentToken !== userAfter?.currentToken;
+        console.log('Token changed:', tokenChanged);
+        console.log('Token invalidation successful for user:', invite.requestedTo);
+        
       } catch (tokenError) {
+        console.error('=== ERROR DURING TOKEN INVALIDATION ===');
         console.error('Error invalidating user token:', tokenError);
+        console.error('Error stack:', tokenError.stack);
         // Continue with invite deletion even if token invalidation fails
       }
-      } else {
+    } else {
+      console.log('=== TOKEN INVALIDATION BY EMAIL ===');
+      console.log('No specific user ID, searching by email:', invite.email);
+      
       // If no specific user ID, try to find user by email and invalidate their token
       try {
         const userByEmail = await User.findOne({ email: invite.email });
         if (userByEmail) {
-          await User.findByIdAndUpdate(
+          console.log('Found user by email:', {
+            id: userByEmail._id,
+            email: userByEmail.email,
+            currentToken: userByEmail.currentToken ? 'EXISTS' : 'NONE',
+            tokenLength: userByEmail.currentToken?.length || 0
+          });
+          
+          // Get user's current state BEFORE invalidation
+          const userBefore = await User.findById(userByEmail._id);
+          console.log('User BEFORE token invalidation (by email):', {
+            id: userBefore?._id,
+            email: userBefore?.email,
+            currentToken: userBefore?.currentToken ? 'EXISTS' : 'NONE',
+            tokenLength: userBefore?.currentToken?.length || 0
+          });
+
+          const updateResult = await User.findByIdAndUpdate(
             userByEmail._id,
-            { $unset: { currentToken: 1 } }
+            { $unset: { currentToken: 1 } },
+            { new: true }
           );
-          console.log(`Token invalidated for user ${userByEmail._id} (${invite.email}) after invite deletion`);
+          
+          console.log('Update result (by email):', updateResult);
+          
+          // Get user's state AFTER invalidation
+          const userAfter = await User.findById(userByEmail._id);
+          console.log('User AFTER token invalidation (by email):', {
+            id: userAfter?._id,
+            email: userAfter?.email,
+            currentToken: userAfter?.currentToken ? 'EXISTS' : 'NONE',
+            tokenLength: userAfter?.currentToken?.length || 0
+          });
+          
+          // Compare before and after
+          const tokenChanged = userBefore?.currentToken !== userAfter?.currentToken;
+          console.log('Token changed (by email):', tokenChanged);
+          console.log('Token invalidation successful for user (by email):', userByEmail._id);
+          
+        } else {
+          console.log('No user found with email:', invite.email);
         }
       } catch (emailTokenError) {
+        console.error('=== ERROR DURING EMAIL TOKEN INVALIDATION ===');
         console.error('Error invalidating user token by email:', emailTokenError);
+        console.error('Error stack:', emailTokenError.stack);
         // Continue with invite deletion even if token invalidation fails
       }
     }
 
+    console.log('=== DELETING INVITE ===');
     // Delete the invite
-    await UserInvite.findByIdAndDelete(inviteId);
+    const deleteResult = await UserInvite.findByIdAndDelete(inviteId);
+    console.log('Invite deletion result:', deleteResult);
 
+    console.log('=== DELETE INVITE COMPLETE ===');
     res.json({ success: true, message: 'Invite deleted successfully' });
   } catch (err) {
+    console.error('=== ERROR IN DELETE INVITE ===');
     console.error('Error deleting user invite:', err);
+    console.error('Error stack:', err.stack);
     res.status(500).json({ success: false, message: err.message });
   }
 }; 

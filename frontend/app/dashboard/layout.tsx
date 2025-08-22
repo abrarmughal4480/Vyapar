@@ -64,7 +64,8 @@ export default function DashboardLayout({
     
     // Cleanup on unmount
     return () => {
-      sessionManager.stopMonitoring();
+      // Don't stop session monitoring as it should continue running
+      // sessionManager.stopMonitoring();
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.body.style.overflow = '';
       document.body.classList.remove('no-scrollbar');

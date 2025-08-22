@@ -98,6 +98,25 @@ export const addItem = async (req, res) => {
       // Process bulk import data if it contains bulk import fields
       processedData = processBulkImportData({ ...data, userId });
     } else {
+      // Process unit data to handle custom units
+      let processedUnit = data.unit || {
+        base: 'Piece',
+        secondary: 'None',
+        conversionFactor: 1,
+        customBase: '',
+        customSecondary: ''
+      };
+
+      // If base unit is "custom", replace it with the actual custom value
+      if (processedUnit.base === 'custom' && processedUnit.customBase) {
+        processedUnit.base = processedUnit.customBase;
+      }
+
+      // If secondary unit is "custom", replace it with the actual custom value
+      if (processedUnit.secondary === 'custom' && processedUnit.customSecondary) {
+        processedUnit.secondary = processedUnit.customSecondary;
+      }
+
       // Regular item creation - preserve the unit object structure
       processedData = {
         userId: data.userId,
@@ -120,14 +139,8 @@ export const addItem = async (req, res) => {
         // Tax related fields
         taxRate: data.taxRate,
         inclusiveOfTax: data.inclusiveOfTax || false,
-        // Unit conversion fields - preserve the original unit object
-        unit: data.unit || {
-          base: 'Piece',
-          secondary: 'None',
-          conversionFactor: 1,
-          customBase: '',
-          customSecondary: ''
-        },
+        // Unit conversion fields - use processed unit data
+        unit: processedUnit,
         conversionRate: data.conversionRate,
         // Additional fields
         sku: data.itemCode || data.sku,
@@ -429,6 +442,25 @@ export const updateItem = async (req, res) => {
       // Process bulk import data if it contains bulk import fields
       processedData = processBulkImportData({ ...data, userId, itemId });
     } else {
+      // Process unit data to handle custom units
+      let processedUnit = data.unit || {
+        base: 'Piece',
+        secondary: 'None',
+        conversionFactor: 1,
+        customBase: '',
+        customSecondary: ''
+      };
+
+      // If base unit is "custom", replace it with the actual custom value
+      if (processedUnit.base === 'custom' && processedUnit.customBase) {
+        processedUnit.base = processedUnit.customBase;
+      }
+
+      // If secondary unit is "custom", replace it with the actual custom value
+      if (processedUnit.secondary === 'custom' && processedUnit.customSecondary) {
+        processedUnit.secondary = processedUnit.customSecondary;
+      }
+
       // Regular item update - preserve the unit object structure
       processedData = {
         userId: data.userId,
@@ -451,14 +483,8 @@ export const updateItem = async (req, res) => {
         // Tax related fields
         taxRate: data.taxRate,
         inclusiveOfTax: data.inclusiveOfTax || false,
-        // Unit conversion fields - preserve the original unit object
-        unit: data.unit || {
-          base: 'Piece',
-          secondary: 'None',
-          conversionFactor: 1,
-          customBase: '',
-          customSecondary: ''
-        },
+        // Unit conversion fields - use processed unit data
+        unit: processedUnit,
         conversionRate: data.conversionRate,
         // Additional fields
         sku: data.itemCode || data.sku,

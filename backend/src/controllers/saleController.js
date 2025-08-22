@@ -163,18 +163,24 @@ export const createSale = async (req, res) => {
       }
     }
     
-    // Update party openingBalance in DB (add only balance, not full grandTotal, if receivedAmount is provided)
+    // Update party openingBalance in DB based on payment type
+    // balance = grandTotal - received (remaining amount to be paid)
     try {
       const Party = (await import('../models/parties.js')).default;
       const partyDoc = await Party.findOne({ name: sale.partyName, user: userId });
-      if (partyDoc) {
-        if (req.body.paymentType === 'Cash' && req.body.receivedAmount !== undefined && req.body.receivedAmount !== null) {
-          partyDoc.openingBalance = (partyDoc.openingBalance || 0) + balance;
-        } else {
-          partyDoc.openingBalance = (partyDoc.openingBalance || 0) + (sale.grandTotal || 0);
+              if (partyDoc) {
+          if (req.body.paymentType === 'Credit') {
+            // For credit sales, add the remaining balance (credit amount) to party balance
+            // balance = grandTotal - received
+            partyDoc.openingBalance = (partyDoc.openingBalance || 0) + balance;
+          } else if (req.body.paymentType === 'Cash') {
+            // For cash sales, only add remaining balance if there's any unpaid amount
+            if (balance > 0) {
+              partyDoc.openingBalance = (partyDoc.openingBalance || 0) + balance;
+            }
+          }
+          await partyDoc.save();
         }
-        await partyDoc.save();
-      }
     } catch (err) {
       console.error('Failed to update party openingBalance:', err);
     }
@@ -418,6 +424,21 @@ export const deleteSale = async (req, res) => {
       }
     }
     
+    // Update party balance if this was a credit sale
+    try {
+      if (sale.paymentType === 'Credit' && sale.balance > 0) {
+        const Party = (await import('../models/parties.js')).default;
+        const partyDoc = await Party.findOne({ name: sale.partyName, user: userId });
+        if (partyDoc) {
+          partyDoc.openingBalance = (partyDoc.openingBalance || 0) - sale.balance;
+          await partyDoc.save();
+          console.log(`Updated party balance for deleted credit sale: -${sale.balance}`);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to update party balance on sale deletion:', err);
+    }
+    
     await Sale.deleteOne({ _id: saleId });
     res.json({ success: true, message: 'Sale deleted successfully' });
     clearAllCacheForUser(userId); // Invalidate all related caches
@@ -531,26 +552,31 @@ export const updateSale = async (req, res) => {
     }
     const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
 
-    // 3. Update party balances
+    // 3. Update party balances based on payment type
     const Party = (await import('../models/parties.js')).default;
+    
+    // Calculate old and new credit amounts
+    const oldCreditAmount = oldSale.paymentType === 'Credit' ? (oldSale.balance || 0) : 0;
+    const newCreditAmount = updateData.paymentType === 'Credit' ? balance : 0;
+    
     if (oldSale.partyName !== updateData.partyName) {
-      // Old party: minus old grandTotal
+      // Old party: minus old credit amount
       const oldParty = await Party.findOne({ name: oldSale.partyName, user: userId });
       if (oldParty) {
-        oldParty.openingBalance = (oldParty.openingBalance || 0) - (oldSale.grandTotal || 0);
+        oldParty.openingBalance = (oldParty.openingBalance || 0) - oldCreditAmount;
         await oldParty.save();
       }
-      // New party: plus new grandTotal
+      // New party: plus new credit amount
       const newParty = await Party.findOne({ name: updateData.partyName, user: userId });
       if (newParty) {
-        newParty.openingBalance = (newParty.openingBalance || 0) + grandTotal;
+        newParty.openingBalance = (newParty.openingBalance || 0) + newCreditAmount;
         await newParty.save();
       }
     } else {
-      // Same party: adjust by difference
+      // Same party: adjust by credit amount difference
       const party = await Party.findOne({ name: updateData.partyName, user: userId });
       if (party) {
-        party.openingBalance = (party.openingBalance || 0) - (oldSale.grandTotal || 0) + grandTotal;
+        party.openingBalance = (party.openingBalance || 0) - oldCreditAmount + newCreditAmount;
         await party.save();
       }
     }

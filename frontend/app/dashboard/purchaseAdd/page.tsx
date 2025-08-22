@@ -321,7 +321,7 @@ export default function AddPurchasePage() {
     billDate: '19/06/2025',
     party: '',
     phoneNo: '',
-    paymentType: 'Cash',
+    paymentType: 'Credit',
     discount: { percentage: '', amount: '' },
     tax: 'NONE',
     taxAmount: 0,
@@ -355,7 +355,7 @@ export default function AddPurchasePage() {
     tax: '',
     taxAmount: '',
     taxType: '%',
-    paymentType: 'Cash',
+    paymentType: 'Credit',
     paid: '',
     description: '',
     editingId: editId || null
@@ -460,6 +460,8 @@ export default function AddPurchasePage() {
       if (fromContext === 'expenses') {
         setIsFromExpenses(true);
         setPageTitle('Add Expense');
+        // Set default payment type to Cash for expenses (since Credit is not available)
+        setNewPurchase(prev => ({ ...prev, paymentType: 'Cash' }));
         // Fetch expense items from database for suggestions
         fetchExpenseItemsForSuggestions();
       } else if (fromContext === 'purchase-order') {
@@ -778,6 +780,14 @@ export default function AddPurchasePage() {
       if (!newPurchase.partyName) errors.partyName = 'Supplier is required';
       const validItems = newPurchase.items.filter(item => item.item && parseFloat(item.qty) > 0 && parseFloat(item.price) > 0);
       if (validItems.length === 0) errors.items = 'At least one valid item is required';
+      
+      // Validate paid amount for credit purchases
+      if (newPurchase.paymentType === 'Credit') {
+        const paidAmount = Number(newPurchase.paid) || 0;
+        if (paidAmount > subTotal) {
+          errors.paid = 'Paid amount cannot exceed total amount';
+        }
+      }
     }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -988,7 +998,7 @@ export default function AddPurchasePage() {
 
       const paidValue = newPurchase.paymentType === 'Cash'
         ? grandTotal
-        : (newPurchase.paid !== undefined && newPurchase.paid !== '' ? Number(newPurchase.paid) : undefined);
+        : (newPurchase.paymentType === 'Credit' && newPurchase.paid !== undefined && newPurchase.paid !== '' ? Number(newPurchase.paid) : 0);
       // Prepare common data
       const commonData = {
         supplierName: newPurchase.partyName,
@@ -1597,6 +1607,7 @@ export default function AddPurchasePage() {
                                   if (!isFromExpenses) {
                                     setItemDropdownIndex(idx => ({ ...idx, [item.id]: 0 }));
                                   }
+
                                 }}
                                 onFocus={!isFromExpenses ? handleFocus : (event: React.FocusEvent<HTMLInputElement>) => {
                                   // For expenses, show expense suggestions with proper positioning
@@ -1652,17 +1663,30 @@ export default function AddPurchasePage() {
                                   } else if (e.key === 'Escape') {
                                     setShowItemSuggestions(prev => ({ ...prev, [item.id]: false }));
                                   }
-                                }) : (e => {
+                                                                }) : (e => {
                                   // Handle expense item suggestions keyboard navigation
                                   if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
                                     e.preventDefault();
                                     e.stopPropagation();
                                   }
-                                  if (e.key === 'Enter') {
-                                    // Auto-complete with first matching suggestion
-                                    const filtered = expenseItemSuggestions.filter(i => i.toLowerCase().includes(item.item.toLowerCase()));
-                                    if (filtered.length > 0) {
-                                      handleItemChange(item.id, 'item', filtered[0]);
+                                  
+                                  const filtered = expenseItemSuggestions.filter(i => i.toLowerCase().includes(item.item.toLowerCase()));
+                                  
+                                  if (e.key === 'ArrowDown') {
+                                    setItemDropdownIndex(idx => ({ 
+                                      ...idx, 
+                                      [item.id]: Math.min((idx[item.id] || 0) + 1, filtered.length - 1) 
+                                    }));
+                                  } else if (e.key === 'ArrowUp') {
+                                    setItemDropdownIndex(idx => ({ 
+                                      ...idx, 
+                                      [item.id]: Math.max((idx[item.id] || 0) - 1, 0) 
+                                    }));
+                                  } else if (e.key === 'Enter') {
+                                    // Auto-complete with selected suggestion
+                                    const idx = itemDropdownIndex[item.id] || 0;
+                                    if (filtered.length > 0 && idx < filtered.length) {
+                                      handleItemChange(item.id, 'item', filtered[idx]);
                                       setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: false }));
                                       // Clean up dropdown style
                                       setExpenseDropdownStyles(prev => {
@@ -1746,19 +1770,22 @@ export default function AddPurchasePage() {
                                       .map((suggestion, idx) => (
                                         <li
                                           key={idx}
-                                          className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
-                                                                                      onMouseDown={e => {
-                                              e.preventDefault();
-                                              e.stopPropagation();
-                                              handleItemChange(item.id, 'item', suggestion);
-                                              setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: false }));
-                                              // Clean up dropdown style
-                                              setExpenseDropdownStyles(prev => {
-                                                const newStyles = { ...prev };
-                                                delete newStyles[item.id];
-                                                return newStyles;
-                                              });
-                                            }}
+                                          className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 ${itemDropdownIndex[item.id] === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+                                          onMouseDown={e => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handleItemChange(item.id, 'item', suggestion);
+                                            setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: false }));
+                                            // Clean up dropdown style
+                                            setExpenseDropdownStyles(prev => {
+                                              const newStyles = { ...prev };
+                                              delete newStyles[item.id];
+                                              return newStyles;
+                                            });
+                                          }}
+                                          ref={el => { if (itemDropdownIndex[item.id] === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
+                                          role="option"
+                                          aria-selected={itemDropdownIndex[item.id] === idx}
                                         >
                                           <div className="flex justify-between items-center">
                                             <span className="font-medium text-gray-800">{suggestion}</span>
@@ -1844,7 +1871,26 @@ export default function AddPurchasePage() {
                                 type="number"
                                 value={item.price}
                                 min={0}
-                                onChange={e => handleItemChange(item.id, 'price', e.target.value)}
+                                onChange={e => {
+                                  handleItemChange(item.id, 'price', e.target.value);
+                                  // Auto-add new row for expenses when typing price in last row
+                                  if (isFromExpenses && e.target.value) {
+                                    const currentItems = newPurchase.items;
+                                    const isLastRow = index === currentItems.length - 1;
+                                    if (isLastRow && currentItems[0].item && currentItems[0].price) {
+                                      // Last row has price, add new row
+                                      setTimeout(() => {
+                                        setNewPurchase(prev => ({
+                                          ...prev,
+                                          items: [
+                                            ...prev.items,
+                                            { id: Date.now(), item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
+                                          ]
+                                        }));
+                                      }, 100);
+                                    }
+                                  }
+                                }}
                                 className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
                               />
                             </td>
@@ -2027,14 +2073,20 @@ export default function AddPurchasePage() {
                   </div>
                   
                   {/* Right Side - Payment Type and Totals */}
-                  <div className="flex flex-row items-center gap-6">
+                  <div className="flex flex-row items-start gap-8">
                     {/* Payment Type */}
-                    <div>
+                    <div className="min-w-[280px]">
                       <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
                         <span>💳</span> Payment Type
                       </label>
                       <CustomDropdown
-                        options={[
+                        options={isFromExpenses ? [
+                          { value: 'Cash', label: 'Cash' },
+                          { value: 'Card', label: 'Card' },
+                          { value: 'UPI', label: 'UPI' },
+                          { value: 'Cheque', label: 'Cheque' }
+                        ] : [
+                          { value: 'Credit', label: 'Credit' },
                           { value: 'Cash', label: 'Cash' },
                           { value: 'Card', label: 'Card' },
                           { value: 'UPI', label: 'UPI' },
@@ -2042,23 +2094,93 @@ export default function AddPurchasePage() {
                         ]}
                         value={newPurchase.paymentType}
                         onChange={val => setNewPurchase(prev => ({ ...prev, paymentType: val }))}
-                        className="mb-1"
+                        className="mb-1 w-full"
                         dropdownIndex={paymentTypeDropdownIndex}
                         setDropdownIndex={setPaymentTypeDropdownIndex}
-                        optionsCount={4}
+                        optionsCount={isFromExpenses ? 4 : 5}
                       />
+                      
+                      {/* Received Amount Field for Credit Purchases */}
+                      {newPurchase.paymentType === 'Credit' && (
+                        <div className="mt-3">
+                          <label className="block text-xs font-medium text-green-700 mb-1">Paid Amount</label>
+                          <input
+                            type="number"
+                            name="paid"
+                            value={newPurchase.paid}
+                            min={0}
+                            max={subTotal}
+                            onChange={e => setNewPurchase(prev => ({ ...prev, paid: e.target.value }))}
+                            className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 ${
+                              formErrors.paid ? 'border-red-300 bg-red-50 focus:ring-red-200' : 'border-green-200 focus:ring-green-200'
+                            }`}
+                            placeholder={`Enter amount paid (max PKR ${subTotal.toFixed(2)})`}
+                            onBlur={(e) => {
+                              const paidAmount = Number(e.target.value);
+                              if (paidAmount > subTotal) {
+                                setNewPurchase(prev => ({ ...prev, paid: subTotal.toString() }));
+                                setToast({ message: 'Paid amount cannot exceed total amount', type: 'error' });
+                              }
+                            }}
+                            autoComplete="off"
+                          />
+                          {formErrors.paid && <p className="text-xs text-red-500 mt-1">{formErrors.paid}</p>}
+                        </div>
+                      )}
                     </div>
                     
                     {/* Totals */}
-                    <div>
+                    <div className="min-w-[280px]">
                       <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                        <span>💰</span> Total
+                        <span>💰</span> {isFromExpenses ? 'Total' : 'Totals'}
                       </label>
-                      <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-6 py-3 text-center shadow min-w-[180px]">
-                        <div className="text-lg font-bold text-blue-900">
-                          PKR {subTotal.toFixed(2)}
+                      {isFromExpenses ? (
+                        // Simple total for expenses
+                        <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full">
+                          <div className="flex justify-between text-lg font-bold text-blue-900">
+                            <span>Total Amount</span>
+                            <span>PKR {subTotal.toFixed(2)}</span>
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        // Full totals for purchases
+                        <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex justify-between text-xs text-gray-600">
+                              <span>Sub Total</span>
+                              <span>PKR {subTotal.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs text-gray-600">
+                              <span>Discount</span>
+                              <span>- PKR {discountValue.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs text-gray-600">
+                              <span>Tax</span>
+                              <span>+ PKR {taxValue.toFixed(2)}</span>
+                            </div>
+                            <div className="border-t border-blue-200 my-2"></div>
+                            <div className="flex justify-between text-lg font-bold text-blue-900">
+                              <span>Grand Total</span>
+                              <span>PKR {grandTotal.toFixed(2)}</span>
+                            </div>
+                            
+                            {/* Credit Information */}
+                            {newPurchase.paymentType === 'Credit' && newPurchase.paid && Number(newPurchase.paid) > 0 && (
+                              <>
+                                <div className="border-t border-blue-200 my-2"></div>
+                                <div className="flex justify-between text-sm text-green-700">
+                                  <span>Amount Paid</span>
+                                  <span>PKR {Number(newPurchase.paid).toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm text-red-700 font-semibold">
+                                  <span>Credit Amount</span>
+                                  <span>PKR {(grandTotal - Number(newPurchase.paid)).toFixed(2)}</span>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

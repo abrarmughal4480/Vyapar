@@ -98,6 +98,12 @@ export const getUserInvites = async (token: string) => {
   return response.data;
 }; 
 
+export const deleteUserInvite = async (inviteId: string, token: string) => {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await api.delete(`/api/user-invite/${inviteId}`, { headers });
+  return response.data;
+};
+
 export const getInvitesForMe = async (token: string) => {
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
   const response = await api.get('/api/invites/for-me', { headers });
@@ -107,5 +113,11 @@ export const getInvitesForMe = async (token: string) => {
 export const respondToInvite = async (inviteId: string, action: 'Accepted' | 'Rejected', token: string) => {
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
   const response = await api.post('/api/invites/respond', { inviteId, action }, { headers });
+  return response.data;
+}; 
+
+export const updateUserCompanyContext = async (inviteId: string, companyId: string, userId: string, token: string) => {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await api.post('/api/invites/update-company-context', { inviteId, companyId, userId }, { headers });
   return response.data;
 }; 

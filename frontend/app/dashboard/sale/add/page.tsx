@@ -1337,7 +1337,7 @@ const AddSalePage = () => {
                         setCustomerDropdownIndex(i => Math.max(i - 1, 0));
                       } else if (e.key === 'Enter') {
                         if (customerDropdownIndex === 0) {
-                          router.push('/dashboard/parties?addParty=1');
+                          router.push('/dashboard/parties?addParty=1&returnUrl=' + encodeURIComponent('/dashboard/sale/add'));
                           setShowCustomerSuggestions(false);
                         } else {
                           const c = customerSuggestions[customerDropdownIndex - 1];
@@ -1361,7 +1361,7 @@ const AddSalePage = () => {
                             onMouseDown={e => {
                               e.preventDefault();
                               e.stopPropagation();
-                              router.push('/dashboard/parties?addParty=1');
+                              router.push('/dashboard/parties?addParty=1&returnUrl=' + encodeURIComponent('/dashboard/sale/add'));
                               setShowCustomerSuggestions(false);
                             }}
                             ref={el => { if (customerDropdownIndex === 0 && el) el.scrollIntoView({ block: 'nearest' }); }}

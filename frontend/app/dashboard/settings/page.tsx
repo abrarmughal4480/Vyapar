@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { Edit, Trash2, Plus, Mail, User, Crown, AlertTriangle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { getUserInvites } from '@/http/api';
+import { getUserInvites, deleteUserInvite } from '@/http/api';
 import { canAccessAddUser, getCurrentUserInfo, canViewInvitedUsers } from '@/lib/roleAccessControl';
 
 // Pages aur unke permissions ka structure
@@ -144,6 +144,7 @@ export default function SettingsPage() {
       try {
         const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || '') : '';
         const res = await getUserInvites(token);
+        console.log('Fetched invites:', res.data);
         setInvites(res.data || []);
     } catch {
         setInvites([]);
@@ -158,6 +159,59 @@ export default function SettingsPage() {
     (invite.email || '').toLowerCase().includes(searchUser.toLowerCase()) ||
     (invite.role || '').toLowerCase().includes(searchUser.toLowerCase())
   );
+
+  // Handle edit user
+  const handleEditUser = (invite: any) => {
+    console.log('Edit user:', invite);
+    // TODO: Implement edit user functionality
+    // You can navigate to edit page or open a modal
+    // router.push(`/dashboard/settings/edit-user/${invite._id}`);
+  };
+
+  // Handle delete user
+  const handleDeleteUser = async (invite: any) => {
+    if (confirm(`Are you sure you want to delete the invite for ${invite.email}?`)) {
+      try {
+        console.log('Attempting to delete invite:', invite);
+        
+        // Validate invite data
+        if (!invite._id) {
+          alert('Invalid invite: Missing invite ID');
+          return;
+        }
+        
+        if (!invite.email) {
+          alert('Invalid invite: Missing email');
+          return;
+        }
+        
+        const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || '') : '';
+        const response = await deleteUserInvite(invite._id, token);
+        
+        if (response.success) {
+          // Remove the deleted invite from the local state
+          setInvites(prevInvites => prevInvites.filter(inv => inv._id !== invite._id));
+          alert('Invite deleted successfully');
+        } else {
+          alert('Failed to delete invite: ' + response.message);
+        }
+      } catch (error: any) {
+        console.error('Error deleting invite:', error);
+        console.error('Error response:', error.response?.data);
+        console.error('Error status:', error.response?.status);
+        
+        if (error.response?.status === 400) {
+          alert('Cannot delete invite: ' + (error.response?.data?.message || 'Bad request'));
+        } else if (error.response?.status === 403) {
+          alert('Access denied: You are not authorized to delete this invite');
+        } else if (error.response?.status === 404) {
+          alert('Invite not found');
+        } else {
+          alert('Error deleting invite. Please try again.');
+        }
+      }
+    }
+  };
 
   // UI update: Dropdown for roles, fields always show, permissions update on role select
   return (
@@ -231,12 +285,13 @@ export default function SettingsPage() {
                     <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Role</th>
                     <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Status</th>
                     <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Date</th>
+                    <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredInvites.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-gray-500 text-lg font-medium">
+                      <td colSpan={6} className="px-6 py-8 text-center text-gray-500 text-lg font-medium">
                         {searchUser ? `No invites found matching "${searchUser}".` : "No invites found."}
                       </td>
                     </tr>
@@ -254,6 +309,26 @@ export default function SettingsPage() {
                           {invite.status === 'Rejected' && <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-semibold">Rejected</span>}
                         </td>
                         <td className="px-6 py-4 text-center text-gray-500 text-xs">{invite.date ? new Date(invite.date).toLocaleString() : ''}</td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleEditUser(invite)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow"
+                              title="Edit User"
+                            >
+                              <Edit className="w-4 h-4" />
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(invite)}
+                              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow"
+                              title="Delete User"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Delete
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))
                   )}

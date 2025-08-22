@@ -1027,7 +1027,7 @@ export default function CreateSalesOrderPage() {
                         setCustomerDropdownIndex(i => Math.max(i - 1, 0));
                       } else if (e.key === 'Enter') {
                         if (customerDropdownIndex === 0) {
-                          router.push('/dashboard/parties?addParty=1');
+                          router.push('/dashboard/parties?addParty=1&returnUrl=' + encodeURIComponent('/dashboard/sales/create'));
                           setSearchDropdownOpen(false);
                         } else {
                           const party = filtered[customerDropdownIndex - 1];
@@ -1051,7 +1051,7 @@ export default function CreateSalesOrderPage() {
                             onMouseDown={e => {
                               e.preventDefault();
                               e.stopPropagation();
-                              router.push('/dashboard/parties?addParty=1');
+                              router.push('/dashboard/parties?addParty=1&returnUrl=' + encodeURIComponent('/dashboard/sales/create'));
                               setSearchDropdownOpen(false);
                             }}
                             ref={el => { 

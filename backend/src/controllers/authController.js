@@ -249,13 +249,14 @@ const authController = {
 
       const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
       
-      // Update user's current token (but don't update for company context tokens)
-      // Only update for user context tokens to avoid logout issues
-      if (tokenPayload.context !== 'company') {
-        await User.findByIdAndUpdate(userId, { currentToken: token });
-      }
-
+      // Update user's currentToken in database to prevent session manager from logging out
+      // This token will be used by session manager to validate the session
+      const updateResult = await User.findByIdAndUpdate(userId, { currentToken: token });
+      
       console.log(`User ${userId} switched to company context: ${companyId}`);
+      console.log(`Updated currentToken in database for user ${userId}`);
+      console.log(`New token: ${token.substring(0, 20)}...`);
+      console.log(`Database update result:`, updateResult ? 'Success' : 'Failed');
 
       return res.json({ 
         success: true, 
@@ -270,6 +271,56 @@ const authController = {
     } catch (err) {
       console.error('Error switching context:', err);
       return res.status(500).json({ success: false, message: 'Failed to switch context', error: err.message });
+    }
+  },
+
+  // Reset back to user context from company context
+  resetToUserContext: async (req, res) => {
+    try {
+      const userId = req.user && (req.user.originalUserId || req.user.id);
+      
+      if (!userId) {
+        return res.status(400).json({ success: false, message: 'Missing user ID' });
+      }
+
+      // Check if user exists
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      // Generate new token with user context
+      const tokenPayload = {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        context: 'user'
+      };
+
+      const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+      
+      // Update user's currentToken in database
+      const updateResult = await User.findByIdAndUpdate(userId, { currentToken: token });
+
+      console.log(`User ${userId} reset to user context`);
+      console.log(`Updated currentToken in database for user ${userId}`);
+      console.log(`New token: ${token.substring(0, 20)}...`);
+      console.log(`Database update result:`, updateResult ? 'Success' : 'Failed');
+
+      return res.json({ 
+        success: true, 
+        message: 'Context reset to user successfully',
+        token,
+        data: {
+          userId: user._id,
+          userName: user.name,
+          userEmail: user.email
+        }
+      });
+    } catch (err) {
+      console.error('Error resetting to user context:', err);
+      return res.status(500).json({ success: false, message: 'Failed to reset context', error: err.message });
     }
   },
 

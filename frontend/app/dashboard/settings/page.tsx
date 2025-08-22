@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { Edit, Trash2, Plus, Mail, User, Crown, AlertTriangle } from 'lucide-react';
+import { Edit, Trash2, Plus, Mail, User, Crown, AlertTriangle, LogOut } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getUserInvites, deleteUserInvite } from '@/http/api';
 import { canAccessAddUser, getCurrentUserInfo, canViewInvitedUsers } from '@/lib/roleAccessControl';
+import { performLogout } from '@/lib/logout';
 
 // Pages aur unke permissions ka structure
 // Naye permissions add kiye: share, preview, reopen
@@ -251,6 +252,12 @@ export default function SettingsPage() {
                 <span className="text-sm font-medium">Add User Restricted</span>
               </div>
             )}
+            <button
+              onClick={performLogout}
+              className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
+            >
+              <LogOut className="w-5 h-5" /> Logout
+            </button>
           </div>
         </div>
       </div>

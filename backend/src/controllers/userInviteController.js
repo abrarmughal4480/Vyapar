@@ -196,55 +196,63 @@ export const deleteUserInvite = async (req, res) => {
     // Allow deletion of all invites regardless of status
     // Removed the restriction: if (invite.status === 'Accepted') { ... }
 
-    // If the invite was for a specific user (has requestedTo), invalidate their token
+    // If the invite was for a specific user (has requestedTo), remove their access and invalidate token
     if (invite.requestedTo) {
-      console.log('=== TOKEN INVALIDATION FOR SPECIFIC USER ===');
-      console.log('User ID to invalidate:', invite.requestedTo);
+      console.log('=== REMOVING USER ACCESS AND INVALIDATING TOKEN ===');
+      console.log('User ID to remove access:', invite.requestedTo);
       
       try {
-        // Get user's current state BEFORE invalidation
+        // Get user's current state BEFORE removal
         const userBefore = await User.findById(invite.requestedTo);
-        console.log('User BEFORE token invalidation:', {
+        console.log('User BEFORE access removal:', {
           id: userBefore?._id,
           email: userBefore?.email,
           currentToken: userBefore?.currentToken ? 'EXISTS' : 'NONE',
-          tokenLength: userBefore?.currentToken?.length || 0
+          joinedCompanies: userBefore?.joinedCompanies || []
         });
 
-        // Clear the user's currentToken to force logout
+        // Remove user from this company's joinedCompanies and clear their token
         const updateResult = await User.findByIdAndUpdate(
           invite.requestedTo,
-          { $unset: { currentToken: 1 } },
+          { 
+            $pull: { joinedCompanies: invite.requestedBy },
+            $unset: { currentToken: 1 }
+          },
           { new: true }
         );
         
-        console.log('Update result:', updateResult);
+        console.log('User access removal result:', updateResult);
         
-        // Get user's state AFTER invalidation
+        // Also remove this user from the company's joinedCompanies (if they were added)
+        await User.findByIdAndUpdate(
+          invite.requestedBy,
+          { $pull: { joinedCompanies: invite.requestedTo } }
+        );
+        
+        console.log('User removed from company joinedCompanies');
+        
+        // Get user's state AFTER removal
         const userAfter = await User.findById(invite.requestedTo);
-        console.log('User AFTER token invalidation:', {
+        console.log('User AFTER access removal:', {
           id: userAfter?._id,
           email: userAfter?.email,
           currentToken: userAfter?.currentToken ? 'EXISTS' : 'NONE',
-          tokenLength: userAfter?.currentToken?.length || 0
+          joinedCompanies: userAfter?.joinedCompanies || []
         });
         
-        // Compare before and after
-        const tokenChanged = userBefore?.currentToken !== userAfter?.currentToken;
-        console.log('Token changed:', tokenChanged);
-        console.log('Token invalidation successful for user:', invite.requestedTo);
+        console.log('User access removal and token invalidation successful for user:', invite.requestedTo);
         
       } catch (tokenError) {
-        console.error('=== ERROR DURING TOKEN INVALIDATION ===');
-        console.error('Error invalidating user token:', tokenError);
+        console.error('=== ERROR DURING USER ACCESS REMOVAL ===');
+        console.error('Error removing user access:', tokenError);
         console.error('Error stack:', tokenError.stack);
-        // Continue with invite deletion even if token invalidation fails
+        // Continue with invite deletion even if access removal fails
       }
     } else {
-      console.log('=== TOKEN INVALIDATION BY EMAIL ===');
+      console.log('=== REMOVING USER ACCESS BY EMAIL ===');
       console.log('No specific user ID, searching by email:', invite.email);
       
-      // If no specific user ID, try to find user by email and invalidate their token
+      // If no specific user ID, try to find user by email and remove their access
       try {
         const userByEmail = await User.findOne({ email: invite.email });
         if (userByEmail) {
@@ -252,48 +260,57 @@ export const deleteUserInvite = async (req, res) => {
             id: userByEmail._id,
             email: userByEmail.email,
             currentToken: userByEmail.currentToken ? 'EXISTS' : 'NONE',
-            tokenLength: userByEmail.currentToken?.length || 0
+            joinedCompanies: userByEmail.joinedCompanies || []
           });
           
-          // Get user's current state BEFORE invalidation
+          // Get user's current state BEFORE removal
           const userBefore = await User.findById(userByEmail._id);
-          console.log('User BEFORE token invalidation (by email):', {
+          console.log('User BEFORE access removal (by email):', {
             id: userBefore?._id,
             email: userBefore?.email,
             currentToken: userBefore?.currentToken ? 'EXISTS' : 'NONE',
-            tokenLength: userBefore?.currentToken?.length || 0
+            joinedCompanies: userBefore?.joinedCompanies || []
           });
 
+          // Remove user from this company's joinedCompanies and clear their token
           const updateResult = await User.findByIdAndUpdate(
             userByEmail._id,
-            { $unset: { currentToken: 1 } },
+            { 
+              $pull: { joinedCompanies: invite.requestedBy },
+              $unset: { currentToken: 1 }
+            },
             { new: true }
           );
           
-          console.log('Update result (by email):', updateResult);
+          console.log('User access removal result (by email):', updateResult);
           
-          // Get user's state AFTER invalidation
+          // Also remove this user from the company's joinedCompanies (if they were added)
+          await User.findByIdAndUpdate(
+            invite.requestedBy,
+            { $pull: { joinedCompanies: userByEmail._id } }
+          );
+          
+          console.log('User removed from company joinedCompanies (by email)');
+          
+          // Get user's state AFTER removal
           const userAfter = await User.findById(userByEmail._id);
-          console.log('User AFTER token invalidation (by email):', {
+          console.log('User AFTER access removal (by email):', {
             id: userAfter?._id,
             email: userAfter?.email,
             currentToken: userAfter?.currentToken ? 'EXISTS' : 'NONE',
-            tokenLength: userAfter?.currentToken?.length || 0
+            joinedCompanies: userAfter?.joinedCompanies || []
           });
           
-          // Compare before and after
-          const tokenChanged = userBefore?.currentToken !== userAfter?.currentToken;
-          console.log('Token changed (by email):', tokenChanged);
-          console.log('Token invalidation successful for user (by email):', userByEmail._id);
+          console.log('User access removal and token invalidation successful for user (by email):', userByEmail._id);
           
         } else {
           console.log('No user found with email:', invite.email);
         }
       } catch (emailTokenError) {
-        console.error('=== ERROR DURING EMAIL TOKEN INVALIDATION ===');
-        console.error('Error invalidating user token by email:', emailTokenError);
+        console.error('=== ERROR DURING EMAIL USER ACCESS REMOVAL ===');
+        console.error('Error removing user access by email:', emailTokenError);
         console.error('Error stack:', emailTokenError.stack);
-        // Continue with invite deletion even if token invalidation fails
+        // Continue with invite deletion even if access removal fails
       }
     }
 

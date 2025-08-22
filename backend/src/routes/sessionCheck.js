@@ -8,7 +8,7 @@ const router = express.Router();
 // Enhanced session check endpoint that verifies token is still current
 router.get('/session-check', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    let userId = req.user.id;
     const currentToken = req.headers.authorization?.replace('Bearer ', '');
     
     if (!currentToken) {
@@ -17,6 +17,11 @@ router.get('/session-check', authMiddleware, async (req, res) => {
         code: 'TOKEN_MISSING',
         message: 'No token provided'
       });
+    }
+    
+    // If user is in company context, use originalUserId for token validation
+    if (req.user.context === 'company' && req.user.originalUserId) {
+      userId = req.user.originalUserId;
     }
     
     // Check if this token is still the current token in the database
@@ -31,6 +36,9 @@ router.get('/session-check', authMiddleware, async (req, res) => {
     
     // If user has currentToken field and it doesn't match, force logout
     if (user.currentToken && user.currentToken !== currentToken) {
+      console.log(`Session check failed: Token mismatch for user ${userId}`);
+      console.log(`Database token: ${user.currentToken}`);
+      console.log(`Request token: ${currentToken}`);
       return res.status(401).json({
         success: false,
         code: 'SESSION_EXPIRED',

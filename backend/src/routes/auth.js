@@ -11,6 +11,7 @@ router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.post('/logout', authMiddleware, authController.logout);
 router.post('/switch-context', authMiddleware, authController.switchContext);
+router.post('/reset-to-user-context', authMiddleware, authController.resetToUserContext);
 router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password', authController.resetPassword);
 

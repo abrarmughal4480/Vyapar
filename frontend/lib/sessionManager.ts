@@ -71,6 +71,11 @@ class SessionManager {
     console.log('Session monitoring stopped');
   }
 
+  // Check if session monitoring is active
+  isMonitoringActive() {
+    return this.isActive;
+  }
+
   // Handle page visibility change
   private handleVisibilityChange() {
     if (!document.hidden) {

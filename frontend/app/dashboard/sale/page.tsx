@@ -673,6 +673,153 @@ Your Business Name`;
     setShowPaymentIn(true);
   };
 
+    const handlePreviewAsDeliveryChallan = (transaction: any) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    
+    const printContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 15px;">
+        <!-- Company Header -->
+        <div style="text-align: center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 15px;">
+          <h1 style="margin: 0; color: #1f2937; font-size: 20px;">Devease Digital Pvt Ltd.</h1>
+          <p style="margin: 3px 0; color: #6b7280; font-size: 11px;">456 Business Ave, Karachi, Pakistan</p>
+          <p style="margin: 3px 0; color: #6b7280; font-size: 11px;">Phone: +92 21 9876543 | Email: info@deveasedigital.com</p>
+          <h2 style="margin: 15px 0 8px 0; color: #dc2626; font-size: 18px;">DELIVERY CHALLAN</h2>
+          <p style="margin: 3px 0; color: #374151; font-size: 12px;">Challan #${transaction.invoiceNo || transaction._id || transaction.id}</p>
+          <p style="margin: 3px 0; color: #374151; font-size: 12px;">Date: ${transaction.date ? new Date(transaction.date).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB')}</p>
+        </div>
+        
+        <!-- Bill To Section -->
+        <div style="margin-bottom: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <div style="border: 1px solid #d1d5db; padding: 10px; border-radius: 4px;">
+            <h3 style="margin: 0 0 8px 0; color: #1f2937; font-size: 14px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">Bill To:</h3>
+            <p style="margin: 3px 0; font-weight: bold; color: #1f2937; font-size: 12px;">${transaction.partyName || 'Customer Name'}</p>
+            <p style="margin: 3px 0; color: #6b7280; font-size: 11px;">Phone: ${transaction.phoneNo || 'N/A'}</p>
+            <p style="margin: 3px 0; color: #6b7280; font-size: 11px;">Payment Type: ${transaction.paymentType || 'N/A'}</p>
+          </div>
+          
+          <div style="border: 1px solid #d1d5db; padding: 10px; border-radius: 4px;">
+            <h3 style="margin: 0 0 8px 0; color: #1f2937; font-size: 14px; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">Invoice Details:</h3>
+            <p style="margin: 3px 0; color: #6b7280; font-size: 11px;">Invoice #: ${transaction.invoiceNo || transaction._id || transaction.id}</p>
+            <p style="margin: 3px 0; color: #6b7280; font-size: 11px;">Date: ${transaction.date ? new Date(transaction.date).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB')}</p>
+            <p style="margin: 3px 0; color: #6b7280; font-size: 11px;">Status: ${transaction.status || 'Pending'}</p>
+          </div>
+        </div>
+        
+        <!-- Items Table -->
+        <div style="margin-bottom: 20px;">
+          <h3 style="margin: 0 0 10px 0; color: #1f2937; font-size: 14px;">Items List:</h3>
+          <table style="width: 100%; border-collapse: collapse; border: 1px solid #d1d5db; border-radius: 4px; overflow: hidden;">
+            <thead>
+              <tr style="background-color: #f3f4f6;">
+                <th style="border: 1px solid #d1d5db; padding: 8px; text-align: left; font-weight: 600; color: #374151; font-size: 11px;">#</th>
+                <th style="border: 1px solid #d1d5db; padding: 8px; text-align: left; font-weight: 600; color: #374151; font-size: 11px;">Item</th>
+                <th style="border: 1px solid #d1d5db; padding: 8px; text-align: center; font-weight: 600; color: #374151; font-size: 11px;">Qty</th>
+                <th style="border: 1px solid #d1d5db; padding: 8px; text-align: center; font-weight: 600; color: #374151; font-size: 11px;">Unit</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${Array.isArray(transaction.items) ? transaction.items.filter((item: any) => item.item && item.qty).map((item: any, index: number) => `
+                <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : '#f9fafb'};">
+                  <td style="border: 1px solid #d1d5db; padding: 8px; text-align: center; color: #374151; font-size: 11px;">${index + 1}</td>
+                  <td style="border: 1px solid #d1d5db; padding: 8px; color: #1f2937; font-weight: 500; font-size: 11px;">${item.item || 'N/A'}</td>
+                  <td style="border: 1px solid #d1d5db; padding: 8px; text-align: center; color: #374151; font-size: 11px;">${item.qty || 'N/A'}</td>
+                  <td style="border: 1px solid #d1d5db; padding: 8px; text-align: center; color: #374151; font-size: 11px;">${item.unit || 'N/A'}</td>
+                </tr>
+              `).join('') : `
+                <tr style="background-color: #ffffff;">
+                  <td style="border: 1px solid #d1d5db; padding: 8px; text-align: center; color: #374151; font-size: 11px;">1</td>
+                  <td style="border: 1px solid #d1d5db; padding: 8px; color: #1f2937; font-weight: 500; font-size: 11px;">${transaction.item || 'N/A'}</td>
+                  <td style="border: 1px solid #d1d5db; padding: 8px; text-align: center; color: #374151; font-size: 11px;">${transaction.qty || 'N/A'}</td>
+                  <td style="border: 1px solid #d1d5db; padding: 8px; text-align: center; color: #374151; font-size: 11px;">${transaction.unit || 'N/A'}</td>
+                </tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+        
+        <!-- Terms & Conditions -->
+        <div style="margin-bottom: 20px; padding: 10px; background-color: #f9fafb; border-radius: 4px; border: 1px solid #e5e7eb;">
+          <h4 style="margin: 0 0 8px 0; color: #1f2937; font-size: 12px;">Terms & Conditions:</h4>
+          <p style="margin: 3px 0; color: #6b7280; font-size: 11px;">Thanks for doing business with us!</p>
+        </div>
+        
+        <!-- Signature Sections -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+          <!-- Received By Section -->
+          <div style="border: 1px solid #d1d5db; padding: 10px; border-radius: 4px; background-color: #f9fafb;">
+            <h4 style="margin: 0 0 10px 0; color: #1f2937; font-size: 12px; text-align: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">Received By:</h4>
+            <div style="margin-bottom: 10px;">
+              <p style="margin: 3px 0; color: #6b7280; font-size: 11px;"><strong>Name:</strong> _________________</p>
+            </div>
+            <div style="margin-bottom: 10px;">
+              <p style="margin: 3px 0; color: #6b7280; font-size: 11px;"><strong>Comment:</strong> _________________</p>
+            </div>
+            <div style="margin-bottom: 10px;">
+              <p style="margin: 3px 0; color: #6b7280; font-size: 11px;"><strong>Date:</strong> _________________</p>
+            </div>
+            <div style="text-align: center; margin-top: 15px;">
+              <p style="margin: 0; color: #6b7280; font-size: 11px;"><strong>Signature:</strong></p>
+              <div style="border-top: 1px solid #000; margin-top: 20px; padding-top: 8px; height: 40px;"></div>
+            </div>
+          </div>
+          
+          <!-- Delivered By Section -->
+          <div style="border: 1px solid #d1d5db; padding: 10px; border-radius: 4px; background-color: #f9fafb;">
+            <h4 style="margin: 0 0 10px 0; color: #1f2937; font-size: 12px; text-align: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px;">Delivered By:</h4>
+            <div style="margin-bottom: 10px;">
+              <p style="margin: 3px 0; color: #6b7280; font-size: 11px;"><strong>Name:</strong> _________________</p>
+            </div>
+            <div style="margin-bottom: 10px;">
+              <p style="margin: 3px 0; color: #6b7280; font-size: 11px;"><strong>Comment:</strong> _________________</p>
+            </div>
+            <div style="margin-bottom: 10px;">
+              <p style="margin: 3px 0; color: #6b7280; font-size: 11px;"><strong>Date:</strong> _________________</p>
+            </div>
+            <div style="text-align: center; margin-top: 15px;">
+              <p style="margin: 0; color: #6b7280; font-size: 11px;"><strong>Signature:</strong></p>
+              <div style="border-top: 1px solid #000; margin-top: 20px; padding-top: 8px; height: 40px;"></div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Company Authorization -->
+        <div style="text-align: center; margin-top: 30px; padding: 15px; border-top: 1px solid #d1d5db;">
+          <p style="margin: 0; color: #1f2937; font-size: 12px; font-weight: 600;">For My Company:</p>
+          <p style="margin: 8px 0 0 0; color: #6b7280; font-size: 11px;">Authorized Signatory</p>
+          <div style="border-top: 1px solid #000; margin: 20px auto 0 auto; padding-top: 8px; width: 150px; height: 40px;"></div>
+        </div>
+      </div>
+    `;
+    
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Delivery Challan #${transaction.invoiceNo || transaction._id || transaction.id}</title>
+          <style>
+            @media print {
+              body { margin: 0; }
+              @page { margin: 1cm; }
+            }
+            body { font-family: Arial, sans-serif; }
+          </style>
+        </head>
+        <body>
+          ${printContent}
+          <script>
+            window.onload = function() {
+              window.print();
+              window.onafterprint = function() {
+                window.close();
+              };
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   // Filter helper functions
   const getDateRange = (filterType: string) => {
     const today = new Date();
@@ -770,11 +917,12 @@ Your Business Name`;
   }, [showDateDropdown]);
 
   // TableActionMenu component for each row
-  function TableActionMenu({ transaction, onEdit, onDelete, onReceivePayment }: {
+  function TableActionMenu({ transaction, onEdit, onDelete, onReceivePayment, onPreviewAsDeliveryChallan }: {
     transaction: any,
     onEdit?: () => void,
     onDelete?: () => void,
     onReceivePayment?: () => void,
+    onPreviewAsDeliveryChallan?: () => void,
   }) {
     const [open, setOpen] = useState(false);
     const btnRef = useRef<HTMLButtonElement | null>(null);
@@ -851,6 +999,14 @@ Your Business Name`;
                 className="px-4 py-2 hover:bg-gray-200 text-black w-full text-left"
               >
                 Receive Payment
+              </button>
+            )}
+            {onPreviewAsDeliveryChallan && (
+              <button
+                onClick={e => { e.stopPropagation(); setOpen(false); onPreviewAsDeliveryChallan(); }}
+                className="px-4 py-2 hover:bg-gray-200 text-black w-full text-left"
+              >
+                Preview as Delivery Challan
               </button>
             )}
           </div>,
@@ -1177,6 +1333,7 @@ Your Business Name`;
                                   onEdit={canEditSalesData() ? () => handleEditTransaction(transaction) : undefined}
                                   onDelete={canDeleteSalesData() ? () => handleDeleteTransaction(transaction._id || transaction.id) : undefined}
                                   onReceivePayment={() => handleReceivePayment(transaction)}
+                                  onPreviewAsDeliveryChallan={() => handlePreviewAsDeliveryChallan(transaction)}
                                 />
                               ) : (
                                 <div className="text-gray-400 text-sm">No actions</div>

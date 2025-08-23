@@ -59,6 +59,8 @@ type BusinessStats = {
   totalStockValue?: number;
   outOfStockItems?: number;
   negativeStockItems?: number;
+  cashInHand?: number;
+  totalExpenses?: number;
 };
 
 const quickActions = [
@@ -473,6 +475,34 @@ export default function Dashboard() {
       bgLight: 'bg-red-50',
       trend: 'down',
       onClick: openPayableModal,
+    },
+    // New Stat: Cash In Hand
+    {
+      title: 'Cash In Hand',
+      value: `PKR ${(businessStats.cashInHand ?? 0).toLocaleString()}`,
+      change: '',
+      icon: DollarSign,
+      color: 'text-purple-600',
+      bgGradient: 'from-purple-500 to-indigo-600',
+      bgLight: 'bg-purple-50',
+      trend: 'up',
+      onClick: () => {
+        router.push('/dashboard/cash-bank');
+      },
+    },
+    // New Stat: Total Expenses
+    {
+      title: 'Total Expenses',
+      value: `PKR ${(businessStats.totalExpenses ?? 0).toLocaleString()}`,
+      change: '',
+      icon: ShoppingCart,
+      color: 'text-amber-600',
+      bgGradient: 'from-amber-500 to-yellow-600',
+      bgLight: 'bg-amber-50',
+      trend: 'down',
+      onClick: () => {
+        router.push('/dashboard/expenses');
+      },
     },
   ];
 

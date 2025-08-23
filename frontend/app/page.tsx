@@ -479,7 +479,7 @@ export default function Home() {
       if (!formData.businessName) errors.businessName = 'Business name is required';
       if (!formData.phone) errors.phone = 'Phone number is required';
       else if (!/^\+?[\d\s-()]{10,}$/.test(formData.phone)) errors.phone = 'Please enter a valid phone number';
-      if (currentStep === 2) {
+      if (currentStep === 3) {
         if (!formData.businessType) errors.businessType = 'Please select your business type';
         if (!agreedToTerms) errors.terms = 'Please accept the terms and conditions';
       }
@@ -601,7 +601,7 @@ export default function Home() {
       if (isLogin) {
         result = await handleLogin(formData.email, formData.password);
       } else {
-        if (currentStep === 3) {
+        if (currentStep === 4) {
           // Verify OTP and register
           if (!otp || otp.length !== 6) {
             setOtpError('Please enter a valid 6-digit OTP');
@@ -676,33 +676,34 @@ export default function Home() {
   const renderStepIndicator = () => {
     if (isLogin) return null;
     const steps = [
-      { number: 1, title: 'Account Info', icon: Users },
-      { number: 2, title: 'Business Details', icon: Globe },
-      { number: 3, title: 'Email Verification', icon: CheckCircle }
+      { number: 1, title: 'Business', icon: Users },
+      { number: 2, title: 'Account', icon: Globe },
+      { number: 3, title: 'Type', icon: Globe },
+      { number: 4, title: 'Verify', icon: CheckCircle }
     ];
     return (
-      <div className="flex justify-center mb-6 sm:mb-8">
-        <div className="flex items-center">
+      <div className="flex justify-center mb-4">
+        <div className="flex items-center space-x-1 sm:space-x-2">
           {steps.map((step, index) => (
             <div key={step.number} className="flex items-center">
               <div className="flex flex-col items-center">
-                <div className={`w-8 h-8 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center text-xs sm:text-sm font-bold transition-all duration-300 ${
+                <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl flex items-center justify-center text-xs font-bold transition-all duration-300 ${
                   currentStep >= step.number 
                     ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-lg' 
                     : 'bg-gray-200 text-gray-500'
                 }`}>
                   {currentStep > step.number ? (
-                    <CheckCircle className="w-4 h-4 sm:w-6 sm:h-6" />
+                    <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
                   ) : (
-                    <step.icon className="w-4 h-4 sm:w-6 sm:h-6" />
+                    <step.icon className="w-3 h-3 sm:w-4 sm:h-4" />
                   )}
                 </div>
-                <span className={`text-xs sm:text-sm mt-1 sm:mt-2 font-medium text-center ${currentStep >= step.number ? 'text-indigo-600' : 'text-gray-500'}`}>
+                <span className={`text-xs mt-1 font-medium text-center max-w-[45px] sm:max-w-[55px] lg:max-w-[60px] leading-tight ${currentStep >= step.number ? 'text-indigo-600' : 'text-gray-500'}`}>
                   {step.title}
                 </span>
               </div>
               {index < steps.length - 1 && (
-                <div className={`w-8 sm:w-20 h-1 mx-2 sm:mx-4 rounded-full transition-all duration-300 ${
+                <div className={`w-8 h-1 sm:w-12 h-1 mx-1 sm:mx-2 rounded-full transition-all duration-300 ${
                   currentStep > step.number ? 'bg-gradient-to-r from-indigo-600 to-purple-600' : 'bg-gray-200'
                 }`}></div>
               )}
@@ -742,33 +743,40 @@ export default function Home() {
   // Helper: Go to next step in signup
   const nextStep = async () => {
     if (currentStep === 1) {
-      // Validate step 1 fields
+      // Validate step 1 fields - Business Info
       const errors: Record<string, string> = {};
       if (!formData.businessName) errors.businessName = 'Business name is required';
       if (!formData.phone) errors.phone = 'Phone number is required';
       else if (!/^[+]?\d{10,}$/.test(formData.phone)) errors.phone = 'Please enter a valid phone number';
+      setFormErrors(errors);
+      if (Object.keys(errors).length === 0) {
+        setCurrentStep(2);
+      }
+    } else if (currentStep === 2) {
+      // Validate step 2 fields - Account Details
+      const errors: Record<string, string> = {};
       if (!formData.email) errors.email = 'Email is required';
       else if (!/\S+@\S+\.\S+/.test(formData.email)) errors.email = 'Please enter a valid email';
       if (!formData.password) errors.password = 'Password is required';
       else if (formData.password.length < 6) errors.password = 'Password must be at least 6 characters';
       setFormErrors(errors);
       if (Object.keys(errors).length === 0) {
-        setCurrentStep(2);
+        setCurrentStep(3);
       }
-    } else if (currentStep === 2) {
-      // Validate step 2 fields
+    } else if (currentStep === 3) {
+      // Validate step 3 fields - Business Type
       const errors: Record<string, string> = {};
       if (!formData.businessType) errors.businessType = 'Please select your business type';
       if (!agreedToTerms) errors.terms = 'Please accept the terms and conditions';
       setFormErrors(errors);
       if (Object.keys(errors).length === 0) {
-        // Send OTP before moving to step 3
+        // Send OTP before moving to step 4
         setOtpLoading(true);
         setOtpError('');
         const result = await handleSendOTP(formData.email);
         setOtpLoading(false);
         if (result.success) {
-          setCurrentStep(3);
+          setCurrentStep(4);
         } else {
           setOtpError(result.error || 'Failed to send OTP');
         }
@@ -911,8 +919,7 @@ export default function Home() {
 
       {/* Hero Section */}
       <section
-        className="relative min-h-screen flex items-center pt-20 sm:pt-24 lg:pt-16 pb-8 lg:pb-0 overflow-hidden"
-        style={{ minHeight: 'calc(100vh - 4rem)', maxHeight: 'calc(100vh - 4rem)' }}
+        className="relative min-h-auto lg:min-h-[calc(100vh-100px)] flex items-center pt-20 sm:pt-24 lg:pt-16 pb-8 lg:pb-0 overflow-hidden"
       >
         {/* Animated background shapes for hero */}
         <div className="absolute -top-16 sm:-top-32 -left-16 sm:-left-32 w-48 h-48 sm:w-96 sm:h-96 bg-gradient-to-br from-indigo-400/30 to-purple-600/20 rounded-full blur-3xl animate-pulse z-0"></div>
@@ -920,65 +927,73 @@ export default function Home() {
         <div className="container mx-auto px-4 sm:px-6 lg:max-w-none lg:px-8 xl:px-24 relative z-10">
           <div className="flex flex-col lg:flex-row items-center gap-8 sm:gap-12 h-full w-full">
             {/* Left Column - Content */}
-            <div className="w-full lg:w-[60%] text-center lg:text-left h-full flex flex-col justify-center space-y-6 sm:space-y-8">
-              <div className="inline-flex items-center bg-white/80 backdrop-blur-sm rounded-full px-4 sm:px-6 py-2 border border-indigo-200 shadow-lg animate-fadeIn max-w-xs mx-auto lg:mx-0">
-                <Award className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 mr-2" />
-                <span className="text-xs sm:text-sm font-medium text-indigo-600">#1 Business Management Platform</span>
+            <div className="w-full lg:w-[60%] text-center lg:text-left h-full flex flex-col justify-center space-y-4 sm:space-y-6 lg:space-y-8 px-4 sm:px-6 lg:px-0">
+              <div className="inline-flex items-center bg-white/80 backdrop-blur-sm rounded-full px-3 sm:px-4 lg:px-6 py-2 border border-indigo-200 shadow-lg animate-fadeIn max-w-fit mx-auto lg:mx-0 whitespace-nowrap">
+                <Award className="w-3 h-3 sm:w-4 sm:h-4 lg:w-5 lg:h-5 text-indigo-600 mr-2" />
+                <span className="text-xs sm:text-sm lg:text-base font-medium text-indigo-600">#1 Business Management Platform</span>
               </div>
               <div>
-                <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-gray-900 mb-4 leading-tight animate-slideInUp">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl 2xl:text-7xl font-bold text-gray-900 mb-3 sm:mb-4 leading-tight animate-slideInUp">
                   Manage Your Business
-                  <span className="block bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 bg-clip-text text-transparent pb-2 leading-[1.15]">
+                  <span className="block bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 bg-clip-text text-transparent pb-1 sm:pb-2 leading-[1.1] sm:leading-[1.15]">
                     Professionally
                   </span>
                 </h1>
-                <div className="h-1 w-24 sm:w-32 bg-gradient-to-r from-indigo-500 via-purple-500 to-blue-500 rounded-full mx-auto lg:mx-0 mb-4 animate-fadeIn" />
+                <div className="h-1 w-16 sm:w-20 lg:w-24 xl:w-32 bg-gradient-to-r from-indigo-500 via-purple-500 to-blue-500 rounded-full mx-auto lg:mx-0 mb-3 sm:mb-4 animate-fadeIn" />
               </div>
-              <p className="text-base sm:text-lg lg:text-xl text-gray-600 leading-relaxed max-w-xl animate-fadeIn px-4 sm:px-0">
+              <p className="text-sm sm:text-base lg:text-lg xl:text-xl text-gray-600 leading-relaxed max-w-lg lg:max-w-xl animate-fadeIn">
                 Transform your business with our all-in-one platform for inventory, billing, accounting, and customer management. Join 1,000+ successful businesses.
               </p>
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 animate-fadeIn px-4 sm:px-0">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 lg:gap-4 animate-fadeIn">
                 <button 
                   onClick={() => {
                     setIsLogin(false);
                     setCurrentStep(1);
                   }}
-                  className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-2xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-bold shadow-2xl hover:shadow-3xl transform hover:-translate-y-1 flex items-center justify-center text-sm sm:text-base"
+                  className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 lg:py-4 rounded-xl sm:rounded-2xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-bold shadow-xl sm:shadow-2xl hover:shadow-3xl transform hover:-translate-y-1 flex items-center justify-center text-xs sm:text-sm lg:text-base"
                 >
                   Start Free Trial
-                  <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
+                  <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 lg:w-5 lg:h-5 ml-2" />
                 </button>
                 <button 
                   onClick={() => {
                     setIsLogin(true);
                     setCurrentStep(1);
                   }}
-                  className="bg-white/80 backdrop-blur-sm text-gray-700 px-6 sm:px-8 py-3 sm:py-4 rounded-2xl hover:bg-white transition-all duration-300 font-bold border border-gray-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1 text-sm sm:text-base"
+                  className="bg-white/80 backdrop-blur-sm text-gray-700 px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 lg:py-4 rounded-xl sm:rounded-2xl hover:bg-white transition-all duration-300 font-bold border border-gray-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1 text-xs sm:text-sm lg:text-base"
                 >
                   Sign In
                 </button>
               </div>
               {/* Trust/Stats Row */}
-              <div className="grid grid-cols-2 sm:flex sm:flex-row items-center justify-center lg:justify-start gap-4 sm:gap-6 mt-4 animate-fadeInUp px-4 sm:px-0">
-                <div className="flex items-center space-x-2 justify-center sm:justify-start">
-                  <Users className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
-                  <span className="font-semibold text-gray-700 text-sm sm:text-base">1,000+</span>
-                  <span className="text-gray-500 text-sm sm:text-base">Businesses</span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex lg:flex-row items-center justify-center lg:justify-start gap-2 sm:gap-3 lg:gap-4 xl:gap-6 mt-3 sm:mt-4 animate-fadeInUp">
+                <div className="flex flex-col sm:flex-row items-center space-y-1 sm:space-y-0 sm:space-x-2 justify-center lg:justify-start">
+                  <Users className="w-3 h-3 sm:w-4 sm:h-4 lg:w-5 lg:h-5 text-indigo-600" />
+                  <div className="text-center sm:text-left">
+                    <span className="font-semibold text-gray-700 text-xs sm:text-sm lg:text-base">1,000+</span>
+                    <span className="text-gray-500 text-xs sm:text-sm lg:text-base block sm:inline sm:ml-1">Businesses</span>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2 justify-center sm:justify-start">
-                  <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
-                  <span className="font-semibold text-gray-700 text-sm sm:text-base">₨100Cr+</span>
-                  <span className="text-gray-500 text-sm sm:text-base">Transactions</span>
+                <div className="flex flex-col sm:flex-row items-center space-y-1 sm:space-y-0 sm:space-x-2 justify-center lg:justify-start">
+                  <DollarSign className="w-3 h-3 sm:w-4 sm:h-4 lg:w-5 lg:h-5 text-green-600" />
+                  <div className="text-center sm:text-left">
+                    <span className="font-semibold text-gray-700 text-xs sm:text-sm lg:text-base">₨100Cr+</span>
+                    <span className="text-gray-500 text-xs sm:text-sm lg:text-base block sm:inline sm:ml-1">Transactions</span>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2 justify-center sm:justify-start">
-                  <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
-                  <span className="font-semibold text-gray-700 text-sm sm:text-base">99.9%</span>
-                  <span className="text-gray-500 text-sm sm:text-base">Uptime</span>
+                <div className="flex flex-col sm:flex-row items-center space-y-1 sm:space-y-0 sm:space-x-2 justify-center lg:justify-start">
+                  <Shield className="w-3 h-3 sm:w-4 sm:h-4 lg:w-5 lg:h-5 text-purple-600" />
+                  <div className="text-center sm:text-left">
+                    <span className="font-semibold text-gray-700 text-xs sm:text-sm lg:text-base">99.9%</span>
+                    <span className="text-gray-500 text-xs sm:text-sm lg:text-base block sm:inline sm:ml-1">Uptime</span>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2 justify-center sm:justify-start">
-                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
-                  <span className="font-semibold text-gray-700 text-sm sm:text-base">24/7</span>
-                  <span className="text-gray-500 text-sm sm:text-base">Support</span>
+                <div className="flex flex-col sm:flex-row items-center space-y-1 sm:space-y-0 sm:space-x-2 justify-center lg:justify-start">
+                  <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 lg:w-5 lg:h-5 text-green-500" />
+                  <div className="text-center sm:text-left">
+                    <span className="font-semibold text-gray-700 text-xs sm:text-sm lg:text-base">24/7</span>
+                    <span className="text-gray-500 text-xs sm:text-sm lg:text-base block sm:inline sm:ml-1">Support</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1032,9 +1047,6 @@ export default function Home() {
                   </button>
                 </div>
 
-                {/* Step Indicator */}
-                <div className="mb-3">{renderStepIndicator()}</div>
-
                 {/* Error Display */}
                 {apiError && (
                   <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2">
@@ -1046,6 +1058,11 @@ export default function Home() {
                 )}
 
                 <div className="space-y-3">
+                  {/* Step Indicator - Only show for signup */}
+                  {!isLogin && !showForgotPassword && (
+                    <div className="mb-4">{renderStepIndicator()}</div>
+                  )}
+                  
                   {showForgotPassword ? (
                     <>
                       <div className="text-center mb-6">
@@ -1172,6 +1189,93 @@ export default function Home() {
                         </>
                       )}
 
+                      {isLogin ? (
+                        <>
+                          <div>
+                            <label className="block text-sm sm:text-base font-bold text-gray-700 mb-1">
+                              Email Address
+                            </label>
+                            <input
+                              type="email"
+                              name="email"
+                              placeholder="your@email.com"
+                              className={`w-full px-3 sm:px-4 py-2 sm:py-2.5 border-2 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium text-sm sm:text-base ${
+                                formErrors.email ? 'border-red-500' : 'border-gray-200'
+                              }`}
+                              value={formData.email}
+                              onChange={handleInputChange}
+                            />
+                            {formErrors.email && (
+                              <p className="text-red-500 text-xs sm:text-sm mt-1 font-medium">{formErrors.email}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="block text-sm sm:text-base font-bold text-gray-700 mb-1">
+                              Password
+                            </label>
+                            <div className="relative">
+                              <input
+                                type={showPassword ? 'text' : 'password'}
+                                name="password"
+                                placeholder="••••••••"
+                                className={`w-full px-3 sm:px-4 py-2 sm:py-2.5 pr-12 border-2 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium text-sm sm:text-base ${
+                                  formErrors.password ? 'border-red-500' : 'border-gray-200'
+                                }`}
+                                value={formData.password}
+                                onChange={handleInputChange}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-3 sm:right-4 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
+                              >
+                                {showPassword ? <EyeOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Eye className="w-4 h-4 sm:w-5 sm:h-5" />}
+                              </button>
+                            </div>
+                            {formErrors.password && (
+                              <p className="text-red-500 text-xs sm:text-sm mt-1 font-medium">{formErrors.password}</p>
+                            )}
+                          </div>
+                          <button
+                            onClick={handleSubmit}
+                            disabled={isLoading}
+                            className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 sm:py-4 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-sm sm:text-base"
+                          >
+                            {isLoading ? (
+                              <>
+                                <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white mr-2"></div>
+                                Signing in...
+                              </>
+                            ) : (
+                              <>
+                                Sign In
+                                <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
+                              </>
+                            )}
+                          </button>
+                          {isLogin && !showForgotPassword && (
+                            <div className="text-center mt-3">
+                              <button
+                                onClick={() => setShowForgotPassword(true)}
+                                className="text-xs sm:text-sm text-indigo-600 hover:text-indigo-700 font-medium transition-colors duration-200 hover:underline"
+                              >
+                                Forgot your password?
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <button
+                          onClick={nextStep}
+                          className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 sm:py-4 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-sm sm:text-base flex items-center justify-center"
+                        >
+                          Continue
+                          <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
+                        </button>
+                      )}
+                    </>
+                  ) : currentStep === 2 ? (
+                    <>
                       <div>
                         <label className="block text-sm sm:text-base font-bold text-gray-700 mb-1">
                           Email Address
@@ -1217,50 +1321,26 @@ export default function Home() {
                         {formErrors.password && (
                           <p className="text-red-500 text-xs sm:text-sm mt-1 font-medium">{formErrors.password}</p>
                         )}
-                        {!isLogin && renderPasswordStrength()}
+                        {renderPasswordStrength()}
                       </div>
 
-                      {isLogin ? (
-                        <>
-                          <button
-                            onClick={handleSubmit}
-                            disabled={isLoading}
-                            className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 sm:py-4 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-sm sm:text-base"
-                          >
-                            {isLoading ? (
-                              <>
-                                <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white mr-2"></div>
-                                Signing in...
-                              </>
-                            ) : (
-                              <>
-                                Sign In
-                                <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
-                              </>
-                            )}
-                          </button>
-                          {isLogin && !showForgotPassword && (
-                            <div className="text-center mt-3">
-                              <button
-                                onClick={() => setShowForgotPassword(true)}
-                                className="text-xs sm:text-sm text-indigo-600 hover:text-indigo-700 font-medium transition-colors duration-200 hover:underline"
-                              >
-                                Forgot your password?
-                              </button>
-                            </div>
-                          )}
-                        </>
-                      ) : (
+                      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                        <button
+                          onClick={() => setCurrentStep(1)}
+                          className="w-full sm:flex-1 px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all duration-300 font-bold text-sm sm:text-base"
+                        >
+                          Back
+                        </button>
                         <button
                           onClick={nextStep}
-                          className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 sm:py-4 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-sm sm:text-base"
+                          className="w-full sm:flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 text-sm sm:text-base flex items-center justify-center"
                         >
                           Continue
-                          <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 inline ml-2" />
+                          <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
                         </button>
-                      )}
+                      </div>
                     </>
-                  ) : currentStep === 2 ? (
+                  ) : currentStep === 3 ? (
                     <>
                       <div>
                         <label className="block text-base font-bold text-gray-700 mb-1">
@@ -1287,69 +1367,15 @@ export default function Home() {
                         )}
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-base font-bold text-gray-700 mb-1">
-                            GST Number
-                          </label>
+                      <div className="flex items-start mt-4">
+                        <label className="inline-flex items-start cursor-pointer w-full">
                           <input
-                            type="text"
-                            name="gstNumber"
-                            placeholder="Optional"
-                            className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-medium"
-                            value={formData.gstNumber}
-                            onChange={handleInputChange}
+                            type="checkbox"
+                            checked={agreedToTerms}
+                            onChange={() => setAgreedToTerms(!agreedToTerms)}
+                            className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-gray-300 rounded transition-colors checked:bg-indigo-600 checked:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 mr-2 sm:mr-3 mt-0.5 flex-shrink-0 accent-indigo-600"
                           />
-                        </div>
-                        <div>
-                          <label className="block text-base font-bold text-gray-700 mb-1">
-                            Website
-                          </label>
-                          <input
-                            type="url"
-                            name="website"
-                            placeholder="Optional"
-                            className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-medium"
-                            value={formData.website}
-                            onChange={handleInputChange}
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-base font-bold text-gray-700 mb-1">
-                          Business Address
-                        </label>
-                        <textarea
-                          name="address"
-                          placeholder="Optional"
-                          rows={3}
-                          className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none font-medium"
-                          value={formData.address}
-                          onChange={handleInputChange}
-                        />
-                      </div>
-
-                      <div className="flex items-start mt-1">
-                        <label className="inline-flex items-center cursor-pointer">
-                          <span className="relative w-5 h-5 flex-shrink-0">
-                            <input
-                              type="checkbox"
-                              checked={agreedToTerms}
-                              onChange={() => setAgreedToTerms(!agreedToTerms)}
-                              className="peer appearance-none w-5 h-5 border-2 border-gray-300 rounded transition-colors checked:bg-indigo-600 checked:border-indigo-600 checked:ring-2 checked:ring-indigo-400 focus:outline-none"
-                            />
-                            <svg
-                              className="pointer-events-none absolute inset-0 w-5 h-5 opacity-0 peer-checked:opacity-100 transition-opacity duration-200"
-                              viewBox="0 0 20 20"
-                              fill="none"
-                              stroke="white"
-                              strokeWidth="2.5"
-                            >
-                              <polyline points="5 11 9 15 15 7" />
-                            </svg>
-                          </span>
-                          <span className="ml-3 text-sm text-gray-700 font-medium">
+                          <span className="text-xs sm:text-sm text-gray-700 font-medium leading-relaxed">
                             I agree to the <a href="#" className="text-indigo-600 hover:text-indigo-700 font-bold">terms and conditions</a> and <a href="#" className="text-indigo-600 hover:text-indigo-700 font-bold">privacy policy</a>
                           </span>
                         </label>
@@ -1358,27 +1384,27 @@ export default function Home() {
                         <p className="text-red-500 text-sm font-medium mt-1">{formErrors.terms}</p>
                       )}
 
-                      <div className="flex space-x-4">
+                      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                         <button
-                          onClick={() => setCurrentStep(1)}
-                          className="flex-1 px-6 py-4 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all duration-300 font-bold"
+                          onClick={() => setCurrentStep(2)}
+                          className="w-full sm:flex-1 px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all duration-300 font-bold text-sm sm:text-base"
                         >
                           Back
                         </button>
                         <button
                           onClick={nextStep}
                           disabled={otpLoading || !formData.businessType || !agreedToTerms}
-                          className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                          className="w-full sm:flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-sm sm:text-base"
                         >
                           {otpLoading ? (
                             <>
-                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                              <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white mr-2"></div>
                               Sending OTP...
                             </>
                           ) : (
                             <>
                                Continue
-                              <ArrowRight className="w-5 h-5 ml-2" />
+                              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
                             </>
                           )}
                         </button>
@@ -1450,27 +1476,27 @@ export default function Home() {
                         </p>
                       </div>
 
-                      <div className="flex space-x-4">
+                      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                         <button
-                          onClick={() => setCurrentStep(2)}
-                          className="flex-1 px-6 py-4 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all duration-300 font-bold"
+                          onClick={() => setCurrentStep(3)}
+                          className="w-full sm:flex-1 px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all duration-300 font-bold text-sm sm:text-base"
                         >
                           Back
                         </button>
                         <button
                           onClick={handleSubmit}
                           disabled={isLoading || !otp || otp.length !== 6}
-                          className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                          className="w-full sm:flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-sm sm:text-base"
                         >
                           {isLoading ? (
                             <>
-                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                              <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white mr-2"></div>
                               Verifying...
                             </>
                           ) : (
                             <>
                               Verify
-                              <ArrowRight className="w-5 h-5 ml-2" />
+                              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
                             </>
                           )}
                         </button>

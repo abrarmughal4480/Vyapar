@@ -98,6 +98,12 @@ export const getUserInvites = async (token: string) => {
   return response.data;
 }; 
 
+export const updateUserInvite = async (inviteId: string, role: string, token: string) => {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await api.put(`/api/user-invite/${inviteId}`, { role }, { headers });
+  return response.data;
+};
+
 export const deleteUserInvite = async (inviteId: string, token: string) => {
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
   const response = await api.delete(`/api/user-invite/${inviteId}`, { headers });

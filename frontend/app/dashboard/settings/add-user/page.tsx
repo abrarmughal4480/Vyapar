@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, AlertTriangle, Shield } from 'lucide-react';
-import { sendUserInvite } from '@/http/api';
+import { sendUserInvite, updateUserInvite } from '@/http/api';
 import { canAccessAddUser, getCurrentUserInfo } from '@/lib/roleAccessControl';
 
 const ROLES = ["SALESMAN", "SECONDARY ADMIN", "CA", "PURCHASER", "Custom"];
@@ -48,6 +48,11 @@ const ROLE_DEFAULTS: Record<string, any[]> = {
 
 export default function AddUserPage() {
   const router = useRouter();
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [inviteId, setInviteId] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("");
+  
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
@@ -95,8 +100,37 @@ export default function AddUserPage() {
     }
   };
 
-  // Check access on component mount
+  // Check access and read URL parameters on component mount
   useEffect(() => {
+    // Read URL parameters for edit mode
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const editMode = urlParams.get('edit') === 'true';
+      const id = urlParams.get('id') || '';
+      const emailParam = urlParams.get('email') || '';
+      const roleParam = urlParams.get('role') || '';
+      
+      if (editMode) {
+        setIsEditMode(true);
+        setInviteId(id);
+        setInviteEmail(emailParam);
+        setInviteRole(roleParam);
+        setEmail(emailParam);
+        setRole(roleParam);
+        
+        // Load permissions based on role for edit mode
+        if (roleParam && ROLE_DEFAULTS[roleParam]) {
+          const perms = PAGES.map(page => {
+            const found = ROLE_DEFAULTS[roleParam].find((p: any) => p.page === page);
+            return found
+              ? { page, permissions: { ...found.permissions } }
+              : { page, permissions: Object.fromEntries(PERMISSIONS.map(p => [p, false])) };
+          });
+          setPermissions(perms);
+        }
+      }
+    }
+
     const checkAccess = () => {
       const currentUserInfo = getCurrentUserInfo();
       setUserInfo(currentUserInfo);
@@ -123,30 +157,49 @@ export default function AddUserPage() {
       return;
     }
     
-    if (!name || !email || !role) {
-      setError("Name, Email, aur Role zaroori hain");
+    if (!email || !role) {
+      setError("Email aur Role zaroori hain");
       return;
     }
     setLoading(true);
     try {
-      // Get companyName from localStorage or fallback
-      let companyName = '';
-      if (typeof window !== 'undefined') {
-        companyName = localStorage.getItem('businessName') || localStorage.getItem('companyName') || 'Devease Digital';
-      }
       const token = typeof window !== 'undefined' ? (localStorage.getItem('token') || '') : '';
-      const apiRes = await sendUserInvite({ email, role, companyName: companyName || 'Your Company' }, token);
-      if (apiRes.success) {
-        setSuccess(true);
-        setName("");
-        setEmail("");
-        setRole("");
-        setPermissions(PAGES.map(page => ({
-          page,
-          permissions: Object.fromEntries(PERMISSIONS.map(p => [p, false]))
-        })));
+      
+      if (isEditMode && inviteId) {
+        // Edit mode - update existing invite
+        const apiRes = await updateUserInvite(inviteId, role, token);
+        if (apiRes.success) {
+          setSuccess(true);
+          setTimeout(() => {
+            router.push('/dashboard/settings');
+          }, 2000);
+        } else {
+          setError(apiRes.message || "Update nahi hua. Dobara koshish karo.");
+        }
       } else {
-        setError(apiRes.message || "Save nahi hua. Dobara koshish karo.");
+        // Add mode - create new invite
+        if (!name) {
+          setError("Name zaroori hai");
+          return;
+        }
+        // Get companyName from localStorage or fallback
+        let companyName = '';
+        if (typeof window !== 'undefined') {
+          companyName = localStorage.getItem('businessName') || localStorage.getItem('companyName') || 'Devease Digital';
+        }
+        const apiRes = await sendUserInvite({ email, role, companyName: companyName || 'Your Company' }, token);
+        if (apiRes.success) {
+          setSuccess(true);
+          setName("");
+          setEmail("");
+          setRole("");
+          setPermissions(PAGES.map(page => ({
+            page,
+            permissions: Object.fromEntries(PERMISSIONS.map(p => [p, false]))
+          })));
+        } else {
+          setError(apiRes.message || "Save nahi hua. Dobara koshish karo.");
+        }
       }
     } catch (err: any) {
       setError(err?.response?.data?.message || err?.message || "Save nahi hua. Dobara koshish karo.");
@@ -201,8 +254,12 @@ export default function AddUserPage() {
           <ArrowLeft className="w-5 h-5 text-blue-600" />
         </button>
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Add New User</h1>
-          <p className="text-sm text-gray-500 mt-1">Create a new user and set their permissions</p>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">
+            {isEditMode ? 'Edit User Role' : 'Add New User'}
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {isEditMode ? 'Update user role and permissions' : 'Create a new user and set their permissions'}
+          </p>
         </div>
         {/* Show current user info */}
         <div className="ml-auto flex items-center gap-2 bg-green-50 text-green-700 px-3 py-1 rounded-lg border border-green-200">
@@ -213,26 +270,31 @@ export default function AddUserPage() {
       {/* Form Card */}
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-lg p-8 border border-indigo-100 w-full max-w-none">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div>
-            <label className="block text-gray-700 font-semibold mb-2 text-lg">Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              className="w-full px-4 py-3 border-2 border-indigo-200 rounded-xl bg-white text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 text-lg"
-              placeholder="Enter name"
-              required
-            />
-          </div>
+          {!isEditMode && (
+            <div>
+              <label className="block text-gray-700 font-semibold mb-2 text-lg">Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                className="w-full px-4 py-3 border-2 border-indigo-200 rounded-xl bg-white text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 text-lg"
+                placeholder="Enter name"
+                required
+              />
+            </div>
+          )}
           <div>
             <label className="block text-gray-700 font-semibold mb-2 text-lg">Email</label>
             <input
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full px-4 py-3 border-2 border-indigo-200 rounded-xl bg-white text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 text-lg"
+              className={`w-full px-4 py-3 border-2 border-indigo-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 text-lg ${
+                isEditMode ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white text-gray-700'
+              }`}
               placeholder="Enter email"
               required
+              disabled={isEditMode}
             />
           </div>
           <div>
@@ -269,12 +331,21 @@ export default function AddUserPage() {
                     <td className="px-4 py-3 text-left text-gray-900 font-medium">{p.page}</td>
                     {PERMISSIONS.map(perm => (
                       <td key={perm} className="px-4 py-3 text-center">
-                        <input
-                          type="checkbox"
-                          checked={p.permissions[perm]}
-                          onChange={() => handlePermissionChange(idx, perm)}
-                          className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
+                        <div className="flex items-center justify-center">
+                          {p.permissions[perm] ? (
+                            <div className="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center">
+                              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          ) : (
+                            <div className="w-6 h-6 bg-red-600 rounded-full flex items-center justify-center">
+                              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
                       </td>
                     ))}
                   </tr>
@@ -288,9 +359,11 @@ export default function AddUserPage() {
           className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-lg hover:bg-blue-700 transition-colors shadow-md"
           disabled={loading}
         >
-          {loading ? "Saving..." : "Save User"}
+          {loading ? (isEditMode ? "Updating..." : "Saving...") : (isEditMode ? "Update User" : "Save User")}
         </button>
-        {success && <div className="text-green-600 text-center font-semibold mt-4">User and permissions have been saved!</div>}
+        {success && <div className="text-green-600 text-center font-semibold mt-4">
+          {isEditMode ? "User role updated successfully! Redirecting..." : "User and permissions have been saved!"}
+        </div>}
         {error && <div className="text-red-600 text-center font-semibold mt-4">{error}</div>}
       </form>
     </div>

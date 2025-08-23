@@ -5,6 +5,8 @@ import Item from '../models/items.js';
 import mongoose from 'mongoose';
 import CreditNote from '../models/creditNote.js';
 import User from '../models/user.js';
+import Expense from '../models/expense.js';
+import CashBank from '../models/cashBank.js';
 import { uploadProfileImage } from '../services/cloudinaryService.js';
 import formidable from 'formidable';
 import fs from 'fs';
@@ -24,6 +26,109 @@ const _clearUserDashboardCache = (userId) => {
 
 const _getDashboardCacheKey = (userId, type) => {
   return `dashboard_${userId}_${type}`;
+};
+
+// Helper function to get expense stats using existing controller logic
+const _getExpenseStatsForUser = async (userId) => {
+  try {
+    const totalExpenses = await Expense.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+      { $group: { _id: null, total: { $sum: '$totalAmount' } } }
+    ]);
+    return totalExpenses[0]?.total || 0;
+  } catch (error) {
+    console.error('Error getting expense stats:', error);
+    return 0;
+  }
+};
+
+// Helper function to get cash in hand using existing controller logic
+const _getCashInHandForUser = async (userId) => {
+  try {
+    // Convert userId to ObjectId for aggregation
+    const objectUserId = new mongoose.Types.ObjectId(userId);
+    
+    // Get sales data
+    const sales = await Sale.find({ userId })
+      .select('grandTotal received balance paymentType createdAt')
+      .lean();
+
+    // Get purchases data
+    const purchases = await Purchase.find({ userId })
+      .select('grandTotal paid balance paymentType createdAt')
+      .lean();
+
+    // Get credit notes data
+    const creditNotes = await CreditNote.find({ userId })
+      .select('amount type createdAt')
+      .lean();
+
+    // Get expenses data
+    const expenses = await Expense.find({ userId })
+      .select('totalAmount paymentType expenseDate createdAt')
+      .lean();
+
+    // Get cash bank transactions (adjustments)
+    const cashAdjustments = await CashBank.find({ userId })
+      .select('type amount description date createdAt')
+      .sort({ createdAt: 1 })
+      .lean();
+
+    // Calculate totals from sales
+    const totalReceived = sales.reduce((sum, sale) => sum + (sale.received || 0), 0);
+    const totalSalesBalance = sales.reduce((sum, sale) => sum + (sale.balance || 0), 0);
+
+    // Calculate totals from purchases
+    const totalPaid = purchases.reduce((sum, purchase) => sum + (purchase.paid || 0), 0);
+    const totalPurchaseBalance = purchases.reduce((sum, purchase) => sum + (purchase.balance || 0), 0);
+
+    // Calculate total expenses
+    const totalExpenses = expenses.reduce((sum, expense) => sum + (expense.totalAmount || 0), 0);
+
+    // Calculate net effect of credit notes
+    const totalCreditNotes = creditNotes.reduce((sum, note) => {
+      const amount = Number(note.amount) || 0;
+      if (isNaN(amount)) return sum;
+      
+      if (note.type === 'Sale') {
+        return sum + amount; // Credit note reduces sales (adds to cash)
+      } else {
+        return sum - amount; // Credit note reduces purchases (reduces cash)
+      }
+    }, 0);
+
+    // Calculate net cash flow from business operations
+    // Net Cash Flow = Total Received - Total Expenses + Credit Notes effect
+    const netCashFlow = totalReceived - totalExpenses + totalCreditNotes;
+    
+    // Calculate total cash adjustments
+    const totalCashAdjustments = cashAdjustments.reduce((sum, adjustment) => {
+      if (adjustment.type === 'Income') {
+        return sum + adjustment.amount;
+      } else if (adjustment.type === 'Expense') {
+        return sum - adjustment.amount;
+      }
+      return sum;
+    }, 0);
+    
+    // Final cash in hand = Business net cash flow + total cash adjustments
+    const finalCashInHand = netCashFlow + totalCashAdjustments;
+
+    console.log('Cash In Hand Calculation:', {
+      userId,
+      totalReceived,
+      totalExpenses,
+      totalCreditNotes,
+      netCashFlow,
+      totalCashAdjustments,
+      finalCashInHand
+    });
+
+    return finalCashInHand;
+  } catch (error) {
+    console.error('Error getting cash in hand:', error);
+    return 0;
+  }
 };
 
 export const getDashboardStats = async (req, res) => {
@@ -61,7 +166,7 @@ export const getDashboardStats = async (req, res) => {
     const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
 
     // Optimize queries by using lean() and specific field selection
-    const [sales, purchases, customers, items, revenueAgg, thisMonthAgg, lastMonthAgg, thisMonthOrders, lastMonthOrders, thisMonthProducts, lastMonthProducts, thisMonthCustomers, lastMonthCustomers, totalOrders, totalReceivableAgg, totalPayableAgg, creditNotesAgg, stockValueAgg, lowStockItems, outOfStockItems, negativeStockItems] = await Promise.all([
+    const [sales, purchases, customers, items, revenueAgg, thisMonthAgg, lastMonthAgg, thisMonthOrders, lastMonthOrders, thisMonthProducts, lastMonthProducts, thisMonthCustomers, lastMonthCustomers, totalOrders, totalReceivableAgg, totalPayableAgg, creditNotesAgg, stockValueAgg, lowStockItems] = await Promise.all([
       Sale.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
       Purchase.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
       Party.countDocuments({ user: userId }).lean(),
@@ -184,14 +289,22 @@ export const getDashboardStats = async (req, res) => {
         { $match: { hasStockIssue: true } },
         { $count: "total" }
       ]),
+      // New: Get total expenses amount using existing controller logic
+      Expense.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$totalAmount' } } }]),
+      // New: Get cash in hand using existing controller logic
+      CashBank.findOne({ userId: objectUserId }).sort({ createdAt: -1 }).select('cashInHand').lean(),
     ]);
 
-    const totalSales = sales[0]?.total || 0;
-    const totalCreditNotes = creditNotesAgg[0]?.total || 0;
+    // Get expense and cash in hand using helper functions (existing controller logic)
+    const totalExpenses = await _getExpenseStatsForUser(userId);
+    const cashInHand = await _getCashInHandForUser(userId);
+
+    const totalSales = sales && sales.length > 0 ? sales[0].total || 0 : 0;
+    const totalCreditNotes = creditNotesAgg && creditNotesAgg.length > 0 ? creditNotesAgg[0].total || 0 : 0;
     const netRevenue = totalSales - totalCreditNotes;
 
-    const thisMonthRevenue = thisMonthAgg[0]?.total || 0;
-    const lastMonthRevenue = lastMonthAgg[0]?.total || 0;
+    const thisMonthRevenue = thisMonthAgg && thisMonthAgg.length > 0 ? thisMonthAgg[0].total || 0 : 0;
+    const lastMonthRevenue = lastMonthAgg && lastMonthAgg.length > 0 ? lastMonthAgg[0].total || 0 : 0;
     let revenueChange = 0;
     if (lastMonthRevenue > 0) {
       revenueChange = ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100;
@@ -223,26 +336,17 @@ export const getDashboardStats = async (req, res) => {
       customersChange = 100;
     }
 
-    const totalStockValue = stockValueAgg[0]?.totalStockValue || 0;
-    const totalStockIssues = stockValueAgg[0]?.total || 0;
+    const totalStockValue = stockValueAgg && stockValueAgg.length > 0 ? stockValueAgg[0].totalStockValue || 0 : 0;
+    const totalStockIssues = lowStockItems && lowStockItems.length > 0 ? lowStockItems[0].total || 0 : 0;
     
-    // Debug log for stock value
-    console.log('Stock Value Calculation:', {
-      stockValueAgg,
-      totalStockValue,
-      totalStockIssues,
-      userId
-    });
-
     // Also log some sample items to see what data we have
     const sampleItems = await Item.find({ userId: userId }).select('name stock purchasePrice').limit(5).lean();
-    console.log('Sample Items for Stock Value:', sampleItems);
 
     const result = {
       success: true,
       data: {
         totalSales: totalSales,
-        totalPurchases: purchases[0]?.total || 0,
+        totalPurchases: purchases && purchases.length > 0 ? purchases[0].total || 0 : 0,
         totalCustomers: customers,
         itemsInStock: items,
         totalRevenue: netRevenue,
@@ -251,13 +355,14 @@ export const getDashboardStats = async (req, res) => {
         productsChange,
         customersChange,
         totalOrders: totalOrders || 0,
-        totalReceivable: totalReceivableAgg[0]?.total || 0,
-        totalPayable: totalPayableAgg[0]?.total || 0,
+        totalReceivable: totalReceivableAgg && totalReceivableAgg.length > 0 ? totalReceivableAgg[0].total || 0 : 0,
+        totalPayable: totalPayableAgg && totalPayableAgg.length > 0 ? totalPayableAgg[0].total || 0 : 0,
         totalStockValue: totalStockValue,
         lowStockItems: totalStockIssues || 0,
         outOfStockItems: 0, // Will be calculated in detailed view
         negativeStockItems: 0, // Will be calculated in detailed view
-
+        totalExpenses: totalExpenses,
+        cashInHand: cashInHand,
       }
     };
 

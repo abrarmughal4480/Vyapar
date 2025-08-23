@@ -159,6 +159,38 @@ export const updateUserCompanyContext = async (req, res) => {
 };
 
 // Delete user invite
+export const updateUserInvite = async (req, res) => {
+  try {
+    const { inviteId } = req.params;
+    const { role } = req.body;
+    const requestedBy = req.user && (req.user._id || req.user.id);
+    
+    if (!inviteId || !role || !requestedBy) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+
+    // Find the invite
+    const invite = await UserInvite.findById(inviteId);
+    if (!invite) {
+      return res.status(404).json({ success: false, message: 'Invite not found' });
+    }
+
+    // Check if the user has permission to update this invite
+    if (invite.requestedBy.toString() !== requestedBy.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized to update this invite' });
+    }
+
+    // Update only the role
+    invite.role = role;
+    await invite.save();
+
+    res.json({ success: true, message: 'Invite updated successfully', data: invite });
+  } catch (err) {
+    console.error('Error updating user invite:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 export const deleteUserInvite = async (req, res) => {
   try {
     const { inviteId } = req.params;

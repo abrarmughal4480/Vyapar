@@ -164,9 +164,14 @@ export default function SettingsPage() {
   // Handle edit user
   const handleEditUser = (invite: any) => {
     console.log('Edit user:', invite);
-    // TODO: Implement edit user functionality
-    // You can navigate to edit page or open a modal
-    // router.push(`/dashboard/settings/edit-user/${invite._id}`);
+    // Redirect to add-user page with edit parameters
+    const params = new URLSearchParams({
+      edit: 'true',
+      id: invite._id,
+      email: invite.email,
+      role: invite.role
+    });
+    router.push(`/dashboard/settings/add-user?${params.toString()}`);
   };
 
   // Handle delete user

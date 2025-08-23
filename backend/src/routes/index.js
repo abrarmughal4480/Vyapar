@@ -18,7 +18,7 @@ import expenseRoutes from './expense.js';
 import cashBankRoutes from './cashBank.js';
 import { getDashboardStats, getSalesOverview, getRecentActivity, getProfile, updateProfile, getReceivablesList, getPayablesList, getDashboardPerformanceStats, testStockValue, getStockSummary } from '../controllers/dashboardController.js';
 import sessionCheckRoutes from './sessionCheck.js';
-import { sendUserInvite, getUserInvites, getInvitesForMe, respondToInvite, deleteUserInvite, updateUserCompanyContext } from '../controllers/userInviteController.js';
+import { sendUserInvite, getUserInvites, getInvitesForMe, respondToInvite, deleteUserInvite, updateUserInvite, updateUserCompanyContext } from '../controllers/userInviteController.js';
 
 const router = express.Router();
 
@@ -96,6 +96,7 @@ router.post('/api/user-invite', authMiddleware, requirePageAccess('add-user'), s
 
 // Get all invites sent by the logged-in user
 router.get('/api/user-invites', authMiddleware, getUserInvites);
+router.put('/api/user-invite/:inviteId', authMiddleware, updateUserInvite);
 router.delete('/api/user-invite/:inviteId', authMiddleware, deleteUserInvite);
 
 // Get invites for the logged-in user's email

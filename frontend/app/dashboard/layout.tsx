@@ -1,11 +1,33 @@
 'use client'
 import Header from '../components/Header'
 import Sidebar from '../components/Sidebar'
-import BottomNavigation from '../components/BottomNavigation'
 import { useState, useEffect } from 'react'
 import { SidebarContext } from '../contexts/SidebarContext'
 import { useRouter } from 'next/navigation'
 import sessionManager from '../../lib/sessionManager'
+
+// Component to create overlay container dynamically
+function OverlayContainer() {
+  useEffect(() => {
+    // Create overlay container if it doesn't exist
+    if (typeof window !== 'undefined' && !document.getElementById('overlay-container')) {
+      const overlayContainer = document.createElement('div');
+      overlayContainer.id = 'overlay-container';
+      overlayContainer.className = 'relative z-50';
+      document.body.appendChild(overlayContainer);
+    }
+    
+    return () => {
+      // Cleanup overlay container on unmount
+      const overlayContainer = document.getElementById('overlay-container');
+      if (overlayContainer) {
+        overlayContainer.remove();
+      }
+    };
+  }, []);
+  
+  return null; // This component doesn't render anything
+}
 
 export default function DashboardLayout({
   children,
@@ -13,6 +35,7 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [isScrollRestored, setIsScrollRestored] = useState(false)
   const router = useRouter();
   
@@ -74,12 +97,20 @@ export default function DashboardLayout({
   }, [router]);
   
   return (
-    <SidebarContext.Provider value={{ isCollapsed, setIsCollapsed }}>
+    <SidebarContext.Provider value={{ isCollapsed, setIsCollapsed, isMobileSidebarOpen, setIsMobileSidebarOpen }}>
       <div className="min-h-screen bg-gray-50">
         {/* Sidebar for desktop - Also fade in */}
         <div className={`print:hidden transition-opacity duration-300 ${isScrollRestored ? 'opacity-100' : 'opacity-0'}`}>
           <Sidebar />
         </div>
+        
+        {/* Mobile Sidebar Overlay */}
+        {isMobileSidebarOpen && (
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
+            onClick={() => setIsMobileSidebarOpen(false)}
+          />
+        )}
         
         {/* Main content area */}
         <div className={`transition-all duration-300 ease-in-out ${isCollapsed ? 'lg:ml-16' : 'lg:ml-64'}`}>
@@ -89,73 +120,19 @@ export default function DashboardLayout({
           </div>
           
           {/* Main content - Show only after scroll is restored to prevent flash */}
-          <main className={`pb-20 lg:pb-0 transition-opacity duration-300 ${isScrollRestored ? 'opacity-100' : 'opacity-0'}`}>
+          <main className={`transition-opacity duration-300 ${isScrollRestored ? 'opacity-100' : 'opacity-0'}`}>
             {children}
           </main>
           
-          {/* Overlay container for trial expiration */}
-          <div id="overlay-container" className="relative z-50"></div>
+          {/* Overlay container for trial expiration - Created dynamically on client side */}
         </div>
         
-        {/* Bottom navigation for mobile */}
-        <div className={`print:hidden transition-opacity duration-300 ${isScrollRestored ? 'opacity-100' : 'opacity-0'}`}>
-          <BottomNavigation />
-        </div>
+        {/* Overlay Container Component */}
+        <OverlayContainer />
+
       </div>
       
-      {/* Global overlay removal script - Only on pricing page */}
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            (function() {
-              function removeOverlayOnPricing() {
-                // Check multiple possible paths for pricing page
-                const currentPath = window.location.pathname;
-                if (currentPath === '/dashboard/pricing' || 
-                    currentPath === '/dashboard/pricing/' ||
-                    currentPath.includes('/dashboard/pricing') ||
-                    currentPath.includes('pricing')) {
-                  
-                  const overlay = document.getElementById('buy-plan-overlay');
-                  if (overlay) {
-                    overlay.remove();
-                    console.log('Dashboard layout: Overlay removed from pricing page - Path:', currentPath);
-                  }
-                  
-                  // Also remove any overlay with similar ID
-                  const allOverlays = document.querySelectorAll('[id*="overlay"], [id*="Overlay"]');
-                  allOverlays.forEach(function(el) {
-                    if (el.id.includes('buy-plan') || el.id.includes('overlay')) {
-                      el.remove();
-                      console.log('Removed additional overlay:', el.id);
-                    }
-                  });
-                }
-              }
-              
-              // Check immediately
-              removeOverlayOnPricing();
-              
-              // Check every 50ms for faster response
-              setInterval(removeOverlayOnPricing, 50);
-              
-              // Also check on route changes
-              let currentPath = window.location.pathname;
-              setInterval(function() {
-                if (window.location.pathname !== currentPath) {
-                  currentPath = window.location.pathname;
-                  removeOverlayOnPricing();
-                }
-              }, 50);
-              
-              // Force check on window focus and load
-              window.addEventListener('focus', removeOverlayOnPricing);
-              window.addEventListener('load', removeOverlayOnPricing);
-              document.addEventListener('DOMContentLoaded', removeOverlayOnPricing);
-            })();
-          `
-        }}
-      />
+            {/* Overlay removal is now handled by the Sidebar component */}
     </SidebarContext.Provider>
   )
 }

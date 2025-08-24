@@ -66,6 +66,7 @@ const navItems: NavItem[] = [
   { id: 'reports', label: 'Reports', icon: '📈', path: '/dashboard/reports', description: 'Business Analytics' },
   { id: 'barcode', label: 'Barcode', icon: '📱', path: '/dashboard/barcode', description: 'Barcode Scanner' },
   { id: 'backup-restore', label: 'Backup & Restore', icon: '💾', path: '/dashboard/backup-restore', description: 'Data Management' },
+  { id: 'pricing', label: 'Pricing', icon: '💰', path: '/dashboard/pricing', description: 'Plans & Pricing' },
   { id: 'settings', label: 'Settings', icon: '⚙️', path: '/dashboard/settings', description: 'App Configuration' }
 ]
 
@@ -122,9 +123,12 @@ export default function Sidebar() {
   const [isLicenseCheckComplete, setIsLicenseCheckComplete] = useState(false)
 
   // Use SidebarContext for isCollapsed and setIsCollapsed
-  const { isCollapsed, setIsCollapsed } = useContext(SidebarContext)
+  const { isCollapsed, setIsCollapsed, isMobileSidebarOpen, setIsMobileSidebarOpen } = useContext(SidebarContext)
 
   useEffect(() => {
+    // Only run on client side to prevent hydration issues
+    if (typeof window === 'undefined') return;
+    
     const name = localStorage.getItem('businessName')
     if (name) setBusinessName(name)
     
@@ -190,7 +194,7 @@ export default function Sidebar() {
     
     checkLicenseStatusFromDB()
     
-    // Check if user has been logged in for more than 14 days
+    // Check if user has been logged in for more than 3 days
     const user = JSON.parse(localStorage.getItem('user') || '{}')
     if (user && user.createdAt) {
       const userCreatedAt = new Date(user.createdAt)
@@ -198,7 +202,7 @@ export default function Sidebar() {
       const days = Math.floor((currentDate.getTime() - userCreatedAt.getTime()) / (1000 * 60 * 60 * 24))
       setDaysSinceCreation(days)
       
-      if (days > 14) {
+      if (days > 3) {
         setShowBuyPlan(true)
       }
     }
@@ -223,6 +227,9 @@ export default function Sidebar() {
 
   // Add/remove overlay when showBuyPlan changes - Only after data is fully loaded
   useEffect(() => {
+    // Only run on client side to prevent hydration issues
+    if (typeof window === 'undefined') return;
+    
     console.log('showBuyPlan changed:', showBuyPlan)
     console.log('hasLicenseKey:', hasLicenseKey)
     console.log('isDataLoaded:', isDataLoaded)
@@ -248,8 +255,8 @@ export default function Sidebar() {
     // Preserve current scroll position
     const currentScrollY = window.scrollY;
     
-    // Only show overlay if user doesn't have license key and has exceeded 14 days
-    if (showBuyPlan && !hasLicenseKey && daysSinceCreation > 14) {
+    // Only show overlay if user doesn't have license key and has exceeded 3 days
+    if (showBuyPlan && !hasLicenseKey && daysSinceCreation > 3) {
       // Double check - don't create overlay on pricing page
       if (window.location.pathname === '/dashboard/pricing') {
         console.log('Pricing page detected, not creating overlay')
@@ -270,8 +277,8 @@ export default function Sidebar() {
       overlay.className = 'trial-expired-overlay'
       overlay.style.position = 'fixed'
       overlay.style.top = '0'
-      overlay.style.left = isCollapsed ? '64px' : '256px'
-      overlay.style.width = isCollapsed ? 'calc(100vw - 64px)' : 'calc(100vw - 256px)'
+      overlay.style.left = '0'
+      overlay.style.width = '100vw'
       overlay.style.height = '100vh'
       overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.3)' // Lighter overlay for better visibility
       overlay.style.zIndex = '9999'
@@ -305,29 +312,33 @@ export default function Sidebar() {
       messageDiv.style.transform = 'translate(-50%, -50%)'
       messageDiv.style.textAlign = 'center'
       messageDiv.style.color = 'white'
-      messageDiv.style.fontSize = '24px'
+      messageDiv.style.fontSize = 'clamp(18px, 4vw, 24px)' // Responsive font size
       messageDiv.style.fontWeight = 'bold'
       messageDiv.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)'
+      messageDiv.style.maxWidth = '90vw' // Ensure text doesn't overflow on mobile
+      messageDiv.style.padding = '0 20px' // Add padding for mobile
       messageDiv.innerHTML = `
-        <div style="margin-bottom: 20px;">⏰</div>
-        <div>Trial Period Expired</div>
-        <div style="font-size: 16px; margin-top: 10px; opacity: 0.9;">
+        <div style="margin-bottom: 20px; font-size: clamp(24px, 6vw, 32px);">⏰</div>
+        <div style="margin-bottom: 10px;">Trial Period Expired</div>
+        <div style="font-size: clamp(14px, 3.5vw, 16px); margin-top: 10px; opacity: 0.9; margin-bottom: 20px;">
           Please upgrade your plan to continue using the application
         </div>
         <button 
           onclick="window.location.href='/dashboard/pricing'"
           style="
             margin-top: 20px;
-            padding: 12px 24px;
+            padding: clamp(10px, 2.5vw, 12px) clamp(20px, 5vw, 24px);
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
             border-radius: 8px;
-            font-size: 16px;
+            font-size: clamp(14px, 3.5vw, 16px);
             font-weight: bold;
             cursor: pointer;
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
             transition: all 0.3s ease;
+            min-width: 120px;
+            white-space: nowrap;
           "
           onmouseover="this.style.transform='scale(1.05)'"
           onmouseout="this.style.transform='scale(1)'"
@@ -405,12 +416,17 @@ export default function Sidebar() {
 
 
   // Make function globally available for immediate access
-  if (typeof window !== 'undefined') {
-    (window as any).removeOverlayOnPricing = removeOverlayOnPricing;
-  }
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).removeOverlayOnPricing = removeOverlayOnPricing;
+    }
+  }, []);
 
   // Simple and direct overlay management
   useEffect(() => {
+    // Only run on client side to prevent hydration issues
+    if (typeof window === 'undefined') return;
+    
     const checkAndManageOverlay = () => {
       const currentPath = window.location.pathname;
       const isOnPricingPage = currentPath === '/dashboard/pricing' || 
@@ -447,6 +463,8 @@ export default function Sidebar() {
   }, [showBuyPlan, hasLicenseKey, daysSinceCreation, pathname]);
 
   const handleLogout = async () => {
+    // Close mobile sidebar when logging out
+    setIsMobileSidebarOpen(false)
     await performLogout();
   }
 
@@ -484,6 +502,9 @@ export default function Sidebar() {
   }
 
   const handleNavigation = (item: NavItem) => {
+    // Close mobile sidebar when navigating
+    setIsMobileSidebarOpen(false)
+    
     if (item.hasDropdown) {
       toggleDropdown(item.id)
       // Close other dropdowns when opening a new one
@@ -522,15 +543,15 @@ export default function Sidebar() {
     return pathname === subItem.path
   }
 
-  // Calculate progress percentage for the 14-day trial
+  // Calculate progress percentage for the 3-day trial
   const getTrialProgress = () => {
-    if (daysSinceCreation >= 14) return 100
-    return Math.round((daysSinceCreation / 14) * 100)
+    if (daysSinceCreation >= 3) return 100
+    return Math.round((daysSinceCreation / 3) * 100)
   }
 
   // Get remaining days
   const getRemainingDays = () => {
-    const remaining = 14 - daysSinceCreation
+    const remaining = 3 - daysSinceCreation
     return remaining > 0 ? remaining : 0
   }
 
@@ -574,9 +595,9 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`fixed left-0 top-0 h-full bg-white shadow-lg border-r border-gray-200 transition-all duration-300 ease-in-out z-40 ${
+      className={`fixed left-0 top-0 h-full bg-white shadow-lg border-r border-gray-200 transition-all duration-300 ease-in-out z-50 ${
         isCollapsed ? 'w-16' : 'w-64'
-      } hidden lg:flex flex-col`} 
+      } ${isMobileSidebarOpen ? 'flex lg:hidden' : 'hidden lg:flex'} flex-col`} 
       aria-label="Sidebar" role="navigation"
     >
       {/* Header */}
@@ -592,13 +613,25 @@ export default function Sidebar() {
             </div>
           </div>
         )}
-        <button 
-          onClick={() => setIsCollapsed(!isCollapsed)} 
-          className="p-1 hover:bg-gray-100 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {isCollapsed ? '→' : '←'}
-        </button>
+        <div className="flex items-center space-x-2">
+          {/* Mobile Close Button */}
+          <button 
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="lg:hidden p-1 hover:bg-gray-100 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="Close mobile sidebar"
+          >
+            ✕
+          </button>
+          
+          {/* Desktop Collapse Button */}
+          <button 
+            onClick={() => setIsCollapsed(!isCollapsed)} 
+            className="hidden lg:block p-1 hover:bg-gray-100 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isCollapsed ? '→' : '←'}
+          </button>
+        </div>
       </div>
 
       {/* Scrollable Nav - Inline Invisible Scrollbar */}
@@ -657,6 +690,8 @@ export default function Sidebar() {
                     onClick={() => {
                       // Keep the current dropdown open and navigate
                       setOpenDropdowns(prev => ({ ...prev, [item.id]: true }))
+                      // Close mobile sidebar when navigating
+                      setIsMobileSidebarOpen(false)
                       router.push(subItem.path)
                     }}
                     className={`w-full flex items-center px-3 py-2 rounded-xl text-left text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 relative ${
@@ -683,7 +718,10 @@ export default function Sidebar() {
             {/* Buy Plan Block - Show only when data is loaded, license check is complete, and user has no license */}
             {isDataLoaded && isLicenseCheckComplete && !hasLicenseKey && (
               <div 
-                onClick={() => router.push('/dashboard/pricing')}
+                onClick={() => {
+                  setIsMobileSidebarOpen(false)
+                  router.push('/dashboard/pricing')
+                }}
                 className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl p-4 mb-3 text-white shadow-lg cursor-pointer hover:shadow-xl transition-all duration-200"
               > 
                 <h3 className="font-bold text-sm mb-1">Upgrade Your Plan</h3>
@@ -705,7 +743,7 @@ export default function Sidebar() {
                   </div>
                   <div className="flex justify-between text-xs text-purple-100 mt-1">
                     <span>Trial Progress</span>
-                    <span>{daysSinceCreation}/14 days</span>
+                    <span>{daysSinceCreation}/3 days</span>
                   </div>
                 </div>
                 
@@ -726,12 +764,15 @@ export default function Sidebar() {
             {/* Buy Plan Block for collapsed state */}
             {isDataLoaded && isLicenseCheckComplete && !hasLicenseKey && (
               <div 
-                onClick={() => router.push('/dashboard/pricing')}
+                onClick={() => {
+                  setIsMobileSidebarOpen(false)
+                  router.push('/dashboard/pricing')
+                }}
                 className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg p-2 mb-2 text-white text-center cursor-pointer hover:shadow-lg transition-all duration-200"
               >
                 <div className="text-lg mb-1">💎</div>
                 <div className="text-xs text-purple-100 mb-2">
-                  {daysSinceCreation}/14
+                  {daysSinceCreation}/3
                 </div>
                 <div className="w-full bg-white/20 rounded-full h-1 mb-2">
                   <div 

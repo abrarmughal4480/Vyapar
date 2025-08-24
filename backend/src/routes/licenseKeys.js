@@ -5,7 +5,8 @@ import {
   getAllLicenseKeys, 
   activateLicenseKey, 
   checkLicenseStatus, 
-  deleteLicenseKey 
+  deleteLicenseKey,
+  clearUserLicense
 } from '../controllers/licenseKeyController.js';
 
 const router = express.Router();
@@ -33,5 +34,8 @@ router.post('/delete/:key', authMiddleware, deleteLicenseKey); // Fallback for D
 
 // Alternative delete route using PUT method
 router.put('/remove/:key', authMiddleware, deleteLicenseKey);
+
+// Clear current user's license
+router.post('/clear', authMiddleware, clearUserLicense);
 
 export default router; 

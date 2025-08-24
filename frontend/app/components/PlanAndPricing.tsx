@@ -1,8 +1,8 @@
 'use client';
 
-import { CheckCircle, X, DollarSign, Shield, ArrowRight, Loader2 } from 'lucide-react';
+import { CheckCircle, X, DollarSign, Shield, ArrowRight, Loader2, Trash2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
-import { activateLicenseKey, checkLicenseStatus } from '@/http/license-keys';
+import { activateLicenseKey, checkLicenseStatus, clearUserLicense } from '@/http/license-keys';
 
 interface PlanAndPricingProps {
   onGetStarted: () => void;
@@ -17,6 +17,8 @@ export default function PlanAndPricing({ onGetStarted }: PlanAndPricingProps) {
   const [userLicenseStatus, setUserLicenseStatus] = useState<any>(null);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [isEditingLicense, setIsEditingLicense] = useState(false);
+  const [isClearingLicense, setIsClearingLicense] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const handleInputChange = (value: string) => {
     // Remove any non-alphanumeric characters and convert to uppercase
@@ -163,6 +165,32 @@ export default function PlanAndPricing({ onGetStarted }: PlanAndPricingProps) {
 
   const isKeyComplete = licenseKey.length === 16;
 
+  // Clear user's license
+  const handleClearLicense = async () => {
+    if (!confirm('Are you sure you want to clear your license? This action cannot be undone.')) {
+      return;
+    }
+
+    setIsClearingLicense(true);
+    try {
+      const response = await clearUserLicense();
+      if (response.success) {
+        // Refresh license status
+        const statusResponse = await checkLicenseStatus();
+        setUserLicenseStatus(statusResponse.data);
+        setShowClearConfirm(false);
+        
+        // Show success message
+        alert('License cleared successfully!');
+      }
+    } catch (error: any) {
+      console.error('Error clearing license:', error);
+      alert('Failed to clear license: ' + error.message);
+    } finally {
+      setIsClearingLicense(false);
+    }
+  };
+
   // Check user's license status on component mount
   useEffect(() => {
     const checkUserLicense = async () => {
@@ -204,6 +232,35 @@ export default function PlanAndPricing({ onGetStarted }: PlanAndPricingProps) {
 
     checkUserLicense();
   }, []);
+
+  // Show loading state while checking license status
+  if (isCheckingStatus) {
+    return (
+      <section id="pricing" className="py-24 bg-white relative overflow-hidden min-h-screen">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-8">
+              <Loader2 className="w-8 h-8 text-white animate-spin" />
+            </div>
+            <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
+              Loading Pricing
+              <span className="block bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent pb-2 leading-[1.15]">
+                Information
+              </span>
+            </h2>
+            <p className="text-lg text-gray-600 mb-8">
+              Please wait while we load your plan details...
+            </p>
+            <div className="flex justify-center">
+              <div className="w-64 h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-blue-600 to-purple-600 rounded-full animate-pulse"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   if (showLicenseActivation) {
     return (
@@ -428,6 +485,13 @@ export default function PlanAndPricing({ onGetStarted }: PlanAndPricingProps) {
                     Manage License
                   </button>
                   <button
+                    onClick={() => setShowClearConfirm(true)}
+                    className="px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors font-semibold flex items-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Clear License
+                  </button>
+                  <button
                     onClick={() => window.history.back()}
                     className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors font-semibold"
                   >
@@ -446,13 +510,13 @@ export default function PlanAndPricing({ onGetStarted }: PlanAndPricingProps) {
                 <span className="text-sm font-bold text-purple-600">TRANSPARENT PRICING</span>
               </div>
               <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-3">
-                Choose the Perfect
+                Choose Your
                 <span className="block bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent pb-2 leading-[1.15]">
-                  Plan for You
+                  Device Plan
                 </span>
               </h2>
-              <p className="text-lg text-purple-700 mb-2 animate-fadeInUp delay-200">Start free and scale as you grow. No hidden fees, cancel anytime.</p>
-              <p className="text-base text-gray-600 animate-fadeInUp delay-400">Flexible plans for every business size. Upgrade or downgrade anytime.</p>
+              <p className="text-lg text-purple-700 mb-2 animate-fadeInUp delay-200">Flexible device-based licensing for your business needs.</p>
+              <p className="text-base text-gray-600 animate-fadeInUp delay-400">Choose between single device, multi-device, and business pro plans.</p>
               
               {/* License Key Link */}
               <div className="mt-6">
@@ -465,138 +529,241 @@ export default function PlanAndPricing({ onGetStarted }: PlanAndPricingProps) {
               </div>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-12 gap-x-8">
-              {/* Starter Plan */}
-              <div className="w-full max-w-md mx-auto bg-white/80 backdrop-blur-lg rounded-3xl border-2 border-gray-200 p-10 shadow-xl transition-transform duration-300 hover:scale-105 hover:border-indigo-300 animate-fadeInUp" style={{ animationDelay: '400ms', animationFillMode: 'both' }}>
-                <div className="text-center mb-8">
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">Starter</h3>
-                  <p className="text-gray-500 mb-6">Perfect for small businesses</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-y-12 gap-x-6">
+              {/* Single Device - Desktop - 1 Year */}
+              <div className="w-full max-w-md mx-auto bg-white/80 backdrop-blur-lg rounded-3xl border-2 border-gray-200 p-8 shadow-xl transition-transform duration-300 hover:scale-105 hover:border-blue-300 animate-fadeInUp" style={{ animationDelay: '400ms', animationFillMode: 'both' }}>
+                <div className="text-center mb-6">
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Single Device</h3>
+                  <p className="text-gray-500 mb-4 text-sm">Desktop Only</p>
                   <div className="mb-6">
-                    <span className="text-4xl font-bold text-gray-900">PKR 0</span>
-                    <span className="text-gray-500">/month</span>
+                    <span className="text-3xl font-bold text-gray-900">PKR 18,000</span>
+                    <span className="text-gray-500 text-sm block">1 Year</span>
                   </div>
                   <button 
                     onClick={onGetStarted}
-                    className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl hover:bg-gray-200 transition-colors font-semibold"
+                    className="w-full bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 transition-colors font-semibold"
                   >
-                    Get Started Free
+                    Get Started
                   </button>
                 </div>
-                <ul className="space-y-3">
+                <ul className="space-y-2 text-sm">
                   <li className="flex items-center text-gray-600">
-                    <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                    Up to 100 transactions
-                  </li>
-                  <li className="flex items-center text-gray-600">
-                    <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                    Basic invoicing
+                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                    1 Desktop Device
                   </li>
                   <li className="flex items-center text-gray-600">
-                    <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                    Inventory management
+                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                    Full Feature Access
                   </li>
                   <li className="flex items-center text-gray-600">
-                    <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                    Email support
+                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                    Unlimited Transactions
                   </li>
-                  <li className="flex items-center text-gray-400">
-                    <X className="w-5 h-5 text-gray-300 mr-3" />
-                    Advanced analytics
-                  </li>
-                  <li className="flex items-center text-gray-400">
-                    <X className="w-5 h-5 text-gray-300 mr-3" />
-                    API access
+                  <li className="flex items-center text-gray-600">
+                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                    Priority Support
                   </li>
                 </ul>
               </div>
-              {/* Professional Plan */}
-              <div className="w-full max-w-lg mx-auto bg-gradient-to-br from-indigo-600 to-purple-600 rounded-3xl p-12 text-white relative shadow-2xl border-2 border-indigo-400 scale-105 animate-fadeInUp" style={{ animationDelay: '520ms', animationFillMode: 'both' }}>
-                <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-10">
-                  <span className="bg-yellow-400 text-yellow-900 px-4 py-1 rounded-full text-sm font-bold shadow-md">
-                    MOST POPULAR
-                  </span>
-                </div>
-                <div className="text-center mb-8">
-                  <h3 className="text-2xl font-bold mb-2">Professional</h3>
-                  <p className="text-indigo-100 mb-6">For growing businesses</p>
+
+              {/* Single Device - Desktop - 3 Years */}
+              <div className="w-full max-w-md mx-auto bg-white/80 backdrop-blur-lg rounded-3xl border-2 border-gray-200 p-8 shadow-xl transition-transform duration-300 hover:scale-105 hover:border-green-300 animate-fadeInUp" style={{ animationDelay: '520ms', animationFillMode: 'both' }}>
+                <div className="text-center mb-6">
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Single Device</h3>
+                  <p className="text-gray-500 mb-4 text-sm">Desktop Only</p>
                   <div className="mb-6">
-                    <span className="text-4xl font-bold">PKR 999</span>
-                    <span className="text-indigo-200">/month</span>
+                    <span className="text-3xl font-bold text-gray-900">PKR 40,000</span>
+                    <span className="text-gray-500 text-sm block">3 Years</span>
+                    <span className="text-green-600 text-xs font-medium">Save PKR 14,000</span>
                   </div>
                   <button 
                     onClick={onGetStarted}
-                    className="w-full bg-white text-indigo-600 py-3 rounded-xl hover:bg-gray-50 transition-colors font-semibold"
+                    className="w-full bg-green-600 text-white py-3 rounded-xl hover:bg-green-700 transition-colors font-semibold"
                   >
-                    Start Free Trial
+                    Get Started
                   </button>
                 </div>
-                <ul className="space-y-3">
-                  <li className="flex items-center">
-                    <CheckCircle className="w-5 h-5 text-green-400 mr-3" />
-                    Unlimited transactions
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-center text-gray-600">
+                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                    1 Desktop Device
                   </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="w-5 h-5 text-green-400 mr-3" />
-                    Advanced invoicing
+                  <li className="flex items-center text-gray-600">
+                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                    Full Feature Access
                   </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="w-5 h-5 text-green-400 mr-3" />
-                    Full inventory management
+                  <li className="flex items-center text-gray-600">
+                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                    Unlimited Transactions
                   </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="w-5 h-5 text-green-400 mr-3" />
-                    Priority support
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="w-5 h-5 text-green-400 mr-3" />
-                    Advanced analytics
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="w-5 h-5 text-green-400 mr-3" />
-                    Multi-user access
+                  <li className="flex items-center text-gray-600">
+                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                    Priority Support
                   </li>
                 </ul>
               </div>
-              {/* Enterprise Plan */}
-              <div className="w-full max-w-md mx-auto bg-white/80 backdrop-blur-lg rounded-3xl border-2 border-gray-200 p-10 shadow-xl transition-transform duration-300 hover:scale-105 hover:border-purple-300 animate-fadeInUp" style={{ animationDelay: '640ms', animationFillMode: 'both' }}>
-                <div className="text-center mb-8">
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">Enterprise</h3>
-                  <p className="text-gray-500 mb-6">For large organizations</p>
+
+              {/* Desktop + Mobile - 1 Year */}
+              <div className="w-full max-w-lg mx-auto bg-gradient-to-br from-purple-600 to-indigo-600 rounded-3xl p-10 text-white relative shadow-2xl border-2 border-purple-400 scale-105 animate-fadeInUp" style={{ animationDelay: '640ms', animationFillMode: 'both' }}>
+                <div className="text-center mb-6">
+                  <h3 className="text-xl font-bold mb-2">Desktop + Mobile</h3>
+                  <p className="text-purple-100 mb-4 text-sm">1 Desktop + 1 Mobile</p>
                   <div className="mb-6">
-                    <span className="text-4xl font-bold text-gray-900">PKR 2999</span>
-                    <span className="text-gray-500">/month</span>
+                    <span className="text-3xl font-bold">PKR 23,000</span>
+                    <span className="text-purple-200 text-sm block">1 Year</span>
                   </div>
                   <button 
                     onClick={onGetStarted}
-                    className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-3 rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-colors font-semibold"
+                    className="w-full bg-white text-purple-600 py-3 rounded-xl hover:bg-gray-50 transition-colors font-semibold"
                   >
-                    Contact Sales
+                    Get Started
                   </button>
                 </div>
-                <ul className="space-y-3">
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    1 Desktop Device
+                  </li>
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    1 Mobile Device
+                  </li>
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    Full Feature Access
+                  </li>
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    Priority Support
+                  </li>
+                </ul>
+              </div>
+
+              {/* Desktop + Mobile - 3 Years */}
+              <div className="w-full max-w-md mx-auto bg-white/80 backdrop-blur-lg rounded-3xl border-2 border-gray-200 p-8 shadow-xl transition-transform duration-300 hover:scale-105 hover:border-indigo-300 animate-fadeInUp" style={{ animationDelay: '760ms', animationFillMode: 'both' }}>
+                <div className="text-center mb-6">
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Desktop + Mobile</h3>
+                  <p className="text-gray-500 mb-4 text-sm">1 Desktop + 1 Mobile</p>
+                  <div className="mb-6">
+                    <span className="text-3xl font-bold text-gray-900">PKR 45,000</span>
+                    <span className="text-gray-500 text-sm block">3 Years</span>
+                    <span className="text-green-600 text-xs font-medium">Save PKR 24,000</span>
+                  </div>
+                  <button 
+                    onClick={onGetStarted}
+                    className="w-full bg-indigo-600 text-white py-3 rounded-xl hover:bg-indigo-700 transition-colors font-semibold"
+                  >
+                    Get Started
+                  </button>
+                </div>
+                <ul className="space-y-2 text-sm">
                   <li className="flex items-center text-gray-600">
-                    <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                    Everything in Professional
+                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                    1 Desktop Device
                   </li>
                   <li className="flex items-center text-gray-600">
-                    <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                    Custom integrations
+                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                    1 Mobile Device
                   </li>
                   <li className="flex items-center text-gray-600">
-                    <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                    Dedicated account manager
+                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                    Full Feature Access
                   </li>
                   <li className="flex items-center text-gray-600">
-                    <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                    24/7 phone support
+                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                    Priority Support
                   </li>
-                  <li className="flex items-center text-gray-600">
-                    <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                    API access
+                </ul>
+              </div>
+            </div>
+
+            {/* Business Pro Cards - Split into two parts */}
+            <div className="mt-16 grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Business Pro - 1 Year */}
+              <div className="w-full max-w-lg mx-auto bg-gradient-to-r from-orange-500 to-red-500 rounded-3xl p-10 text-white shadow-2xl border-2 border-orange-400 animate-fadeInUp" style={{ animationDelay: '880ms', animationFillMode: 'both' }}>
+                <div className="text-center mb-6">
+                  <h3 className="text-2xl font-bold mb-2">Business Pro</h3>
+                  <p className="text-orange-100 mb-4">2 Desktop + 1 Mobile</p>
+                  <div className="mb-6">
+                    <span className="text-3xl font-bold">PKR 26,500</span>
+                    <span className="text-orange-200 text-sm block">1 Year</span>
+                  </div>
+                  <button 
+                    onClick={onGetStarted}
+                    className="w-full bg-white text-orange-600 py-3 rounded-xl hover:bg-gray-50 transition-colors font-semibold"
+                  >
+                    Get Started
+                  </button>
+                </div>
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    2 Desktop Devices
                   </li>
-                  <li className="flex items-center text-gray-600">
-                    <CheckCircle className="w-5 h-5 text-green-500 mr-3" />
-                    Custom reports
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    1 Mobile Device
+                  </li>
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    Full Feature Access
+                  </li>
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    Priority Support
+                  </li>
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    Multi-User Management
+                  </li>
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    Advanced Analytics
+                  </li>
+                </ul>
+              </div>
+
+              {/* Business Pro - 3 Years */}
+              <div className="w-full max-w-lg mx-auto bg-gradient-to-r from-red-500 to-pink-500 rounded-3xl p-10 text-white shadow-2xl border-2 border-red-400 animate-fadeInUp" style={{ animationDelay: '1000ms', animationFillMode: 'both' }}>
+                <div className="text-center mb-6">
+                  <h3 className="text-2xl font-bold mb-2">Business Pro</h3>
+                  <p className="text-red-100 mb-4">2 Desktop + 1 Mobile</p>
+                  <div className="mb-6">
+                    <span className="text-3xl font-bold">PKR 48,000</span>
+                    <span className="text-red-200 text-sm block">3 Years</span>
+                    <span className="text-yellow-300 text-xs font-medium">Save PKR 31,500</span>
+                  </div>
+                  <button 
+                    onClick={onGetStarted}
+                    className="w-full bg-white text-red-600 py-3 rounded-xl hover:bg-gray-50 transition-colors font-semibold"
+                  >
+                    Get Started
+                  </button>
+                </div>
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    2 Desktop Devices
+                  </li>
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    1 Mobile Device
+                  </li>
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    Full Feature Access
+                  </li>
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    Priority Support
+                  </li>
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    Multi-User Management
+                  </li>
+                  <li className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-400 mr-2" />
+                    Advanced Analytics
                   </li>
                 </ul>
               </div>
@@ -604,6 +771,51 @@ export default function PlanAndPricing({ onGetStarted }: PlanAndPricingProps) {
           </>
         )}
       </div>
+      
+      {/* Clear License Confirmation Dialog */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md mx-4 shadow-2xl">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-8 h-8 text-red-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
+                Clear License
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Are you sure you want to clear your license? This action will remove your current license and you'll need to activate a new one to continue using premium features.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowClearConfirm(false)}
+                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleClearLicense}
+                  disabled={isClearingLicense}
+                  className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+                    isClearingLicense
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-red-600 text-white hover:bg-red-700'
+                  }`}
+                >
+                  {isClearingLicense ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
+                      Clearing...
+                    </>
+                  ) : (
+                    'Clear License'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 } 

@@ -82,6 +82,16 @@ export const checkLicenseStatus = async (): Promise<{ success: boolean; data: Li
   }
 };
 
+// Clear current user's license
+export const clearUserLicense = async (): Promise<{ success: boolean; message: string }> => {
+  try {
+    const response = await api.post('/api/license-keys/clear');
+    return response.data;
+  } catch (error: any) {
+    throw new Error(error.response?.data?.message || 'Failed to clear license');
+  }
+};
+
 // Delete a license key (superadmin only)
 export const deleteLicenseKey = async (key: string): Promise<{ success: boolean; message: string }> => {
   try {

@@ -388,6 +388,65 @@ export const checkLicenseStatus = async (req, res) => {
   }
 };
 
+// Clear current user's license (user can clear their own license)
+export const clearUserLicense = async (req, res) => {
+  try {
+    console.log('🔍 Clear User License - Request received');
+    console.log('🔍 User ID:', req.user.id);
+    
+    const userId = req.user.id;
+
+    // Find the current user
+    const user = await User.findById(userId);
+    if (!user) {
+      console.log('❌ User not found');
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if user has an activated license
+    if (!user.activatedLicenseKey) {
+      console.log('❌ User has no activated license');
+      return res.status(400).json({
+        success: false,
+        message: 'No license to clear'
+      });
+    }
+
+    console.log('✅ User has license, clearing it');
+
+    // Clear the user's license
+    const updateResult = await User.findByIdAndUpdate(
+      userId,
+      { 
+        $unset: { 
+          activatedLicenseKey: 1,
+          licenseActivatedAt: 1,
+          licenseExpiresAt: 1
+        }
+      },
+      { new: true }
+    );
+
+    console.log('✅ License cleared from user:', updateResult);
+
+    res.json({
+      success: true,
+      message: 'License cleared successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error clearing user license:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to clear license',
+      error: error.message
+    });
+  }
+};
+
 // Delete license key (superadmin only)
 export const deleteLicenseKey = async (req, res) => {
   try {

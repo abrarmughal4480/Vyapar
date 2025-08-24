@@ -575,60 +575,64 @@ export default function Dashboard() {
       </div>
 
       {/* Enhanced Header */}
-      <header className="relative bg-white/70 backdrop-blur-xl shadow-lg border-b border-white/20 w-full px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-20">
-          <div className="flex items-center space-x-4">
-            <div className="relative">
-              <div className="w-12 h-12 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-2xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform duration-200">
-                <span className="text-xl font-bold text-white">DD</span>
+      <header className="relative bg-white/70 backdrop-blur-xl shadow-lg border-b border-white/20 w-full px-3 sm:px-4 md:px-6 lg:px-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-3 sm:py-0 sm:h-20 gap-3 sm:gap-0">
+          {/* Logo and Title Section */}
+          <div className="flex items-center space-x-3 sm:space-x-4 w-full sm:w-auto">
+            <div className="relative flex-shrink-0">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-2xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform duration-200">
+                <span className="text-lg sm:text-xl font-bold text-white">DD</span>
               </div>
-              <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full animate-pulse"></div>
+              <div className="absolute -top-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 bg-emerald-500 rounded-full animate-pulse"></div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-lg sm:text-xl md:text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent leading-tight">
                 Devease Digital Dashboard
               </h1>
-              <p className="text-sm text-gray-500 hidden sm:block">Business Management System</p>
+              <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">Business Management System</p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-4">
-            {/* Support Button */}
+          {/* Action Buttons Section */}
+          <div className="flex items-center justify-end space-x-2 sm:space-x-3 w-full sm:w-auto">
+            {/* Support Button - Mobile Optimized */}
             <button
               onClick={openSupportModal}
-              className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-xl hover:from-blue-600 hover:to-cyan-700 transition-all duration-200 shadow-lg hover:shadow-xl group"
+              className="flex items-center justify-center sm:justify-start space-x-1 sm:space-x-2 px-2 sm:px-3 md:px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-lg sm:rounded-xl hover:from-blue-600 hover:to-cyan-700 transition-all duration-200 shadow-lg hover:shadow-xl group flex-1 sm:flex-none"
               title="Get Support"
             >
-              <HelpCircle className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
-              <span className="hidden sm:block font-semibold">Support</span>
+              <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform duration-200" />
+              <span className="text-xs sm:text-sm font-semibold hidden xs:block">Support</span>
             </button>
 
             {/* License Key Generator Button - Only for Superadmin */}
             {showLicenseGenerator && (
               <button
                 onClick={() => router.push('/dashboard/license-generator')}
-                className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl group"
+                className="flex items-center justify-center sm:justify-start space-x-1 sm:space-x-2 px-2 sm:px-3 md:px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg sm:rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl group flex-1 sm:flex-none"
                 title="License Key Generator"
               >
-                <span className="text-lg">🔑</span>
-                <span className="hidden sm:block font-semibold">License Generator</span>
+                <span className="text-base sm:text-lg">🔑</span>
+                <span className="text-xs sm:text-sm font-semibold hidden xs:block">License</span>
               </button>
             )}
 
-            <div className="flex items-center space-x-3 bg-white/50 backdrop-blur-sm rounded-2xl px-4 py-2 border border-white/20">
-              <div className="relative">
-                <div className="w-10 h-10 bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg cursor-pointer"
+            {/* User Profile Section */}
+            <div className="flex items-center space-x-2 sm:space-x-3 bg-white/50 backdrop-blur-sm rounded-xl sm:rounded-2xl px-2 sm:px-3 md:px-4 py-2 border border-white/20">
+              <div className="relative flex-shrink-0">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg cursor-pointer"
                   onClick={() => router.push('/dashboard/profile')}>
-                  <span className="text-white font-semibold text-sm">{user ? user.name[0] : 'U'}</span>
+                  <span className="text-white font-semibold text-xs sm:text-sm">{user ? user.name[0] : 'U'}</span>
                 </div>
-                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
+                <div className="absolute -bottom-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 bg-green-500 rounded-full border-2 border-white"></div>
               </div>
               <div className="hidden sm:block">
-                <p className="text-sm font-semibold text-gray-900">{user ? user.businessName : 'Business'}</p>
-                <p className="text-xs text-gray-500 cursor-pointer" onClick={() => router.push('/dashboard/profile')}>{user ? user.email : 'user@email.com'}</p>
+                <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate max-w-24 lg:max-w-32">{user ? user.businessName : 'Business'}</p>
+                <p className="text-xs text-gray-500 cursor-pointer truncate max-w-24 lg:max-w-32" onClick={() => router.push('/dashboard/profile')}>{user ? user.email : 'user@email.com'}</p>
               </div>
             </div>
 
+            {/* Logout Button */}
             <button
               onClick={() => {
                 localStorage.removeItem('isAuthenticated');
@@ -640,10 +644,10 @@ export default function Dashboard() {
                 localStorage.removeItem('businessId');
                 router.push('/');
               }}
-              className="p-3 text-gray-600 hover:text-red-600 transition-colors duration-200 hover:bg-red-50 rounded-xl group"
+              className="p-2 sm:p-3 text-gray-600 hover:text-red-600 transition-colors duration-200 hover:bg-red-50 rounded-lg sm:rounded-xl group flex-shrink-0"
               title="Logout"
             >
-              <LogOut className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+              <LogOut className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform duration-200" />
             </button>
           </div>
         </div>
@@ -652,71 +656,71 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="relative w-full px-2 sm:px-4 md:px-6 lg:px-8 py-4 md:py-6">
         {/* Enhanced Welcome Section */}
-        <div className="mb-8">
-          <div className="flex items-center space-x-3 mb-3">
-            <Sparkles className="w-7 h-7 text-yellow-500 animate-pulse" />
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-purple-800 bg-clip-text text-transparent">
+        <div className="mb-6 sm:mb-8">
+          <div className="flex items-center space-x-2 sm:space-x-3 mb-2 sm:mb-3">
+            <Sparkles className="w-5 h-5 sm:w-7 sm:h-7 text-yellow-500 animate-pulse" />
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-purple-800 bg-clip-text text-transparent leading-tight">
               Welcome back, {user ? user.businessName : 'Business'}!
             </h2>
           </div>
-          <p className="text-lg text-gray-600 ml-10">Here's what's happening with your business today.</p>
+          <p className="text-sm sm:text-lg text-gray-600 ml-7 sm:ml-10">Here's what's happening with your business today.</p>
         </div>
 
         {/* Enhanced Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5 mb-6 md:mb-10 w-full">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-5 mb-6 md:mb-10 w-full">
           {dashboardStats.map((stat, index) => (
             <div
               key={index}
-              className={`group relative bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-6 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 ${stat.onClick ? 'cursor-pointer' : ''}`}
+              className={`group relative bg-white/70 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg border border-white/20 p-4 sm:p-6 hover:shadow-2xl hover:-translate-y-1 sm:hover:-translate-y-2 transition-all duration-300 ${stat.onClick ? 'cursor-pointer' : ''}`}
               onClick={stat.onClick}
             >
               <div className="flex items-start justify-between">
-                <div className="space-y-3">
-                  <p className="text-sm font-medium text-gray-600 uppercase tracking-wide">{stat.title}</p>
-                  <p className="text-2xl font-bold text-gray-900 group-hover:scale-105 transition-transform duration-200">
+                <div className="space-y-2 sm:space-y-3 flex-1 min-w-0">
+                  <p className="text-xs sm:text-sm font-medium text-gray-600 uppercase tracking-wide">{stat.title}</p>
+                  <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 group-hover:scale-105 transition-transform duration-200 truncate">
                     {stat.value}
                   </p>
                   <div className="flex items-center space-x-2">
-                    <div className={`flex items-center space-x-1 px-2 py-1 rounded-full ${stat.bgLight}`}>
-                      <stat.icon className={`w-3 h-3 ${stat.color}`} />
-                      <span className={`text-sm font-semibold ${stat.color}`}>{stat.change}</span>
+                    <div className={`flex items-center space-x-1 px-1.5 sm:px-2 py-1 rounded-full ${stat.bgLight}`}>
+                      <stat.icon className={`w-2.5 h-2.5 sm:w-3 sm:h-3 ${stat.color}`} />
+                      <span className={`text-xs sm:text-sm font-semibold ${stat.color}`}>{stat.change}</span>
                     </div>
-                    <span className="text-xs text-gray-500">from last month</span>
+                    <span className="text-xs text-gray-500 hidden sm:block">from last month</span>
                   </div>
                 </div>
-                <div className="relative">
-                  <div className={`w-14 h-14 bg-gradient-to-br ${stat.bgGradient} rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300`}>
-                    <stat.icon className="w-7 h-7 text-white" />
+                <div className="relative flex-shrink-0 ml-2">
+                  <div className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 bg-gradient-to-br ${stat.bgGradient} rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300`}>
+                    <stat.icon className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-white" />
                   </div>
-                  <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent rounded-2xl"></div>
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent rounded-xl sm:rounded-2xl"></div>
                 </div>
               </div>
 
               {/* Animated background gradient */}
-              <div className={`absolute inset-0 bg-gradient-to-br ${stat.bgGradient} rounded-3xl opacity-0 group-hover:opacity-5 transition-opacity duration-300`}></div>
+              <div className={`absolute inset-0 bg-gradient-to-br ${stat.bgGradient} rounded-2xl sm:rounded-3xl opacity-0 group-hover:opacity-5 transition-opacity duration-300`}></div>
             </div>
           ))}
         </div>
 
         {/* Enhanced Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-8 sm:mb-10">
           {/* Enhanced Quick Actions Card */}
-          <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg border border-white/20 p-6">
-            <div className="flex items-center space-x-3 mb-5">
-              <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-                <Zap className="w-4 h-4 text-white" />
+          <div className="bg-white/70 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg border border-white/20 p-4 sm:p-6">
+            <div className="flex items-center space-x-2 sm:space-x-3 mb-4 sm:mb-5">
+              <div className="w-7 h-7 sm:w-9 sm:h-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg sm:rounded-xl flex items-center justify-center">
+                <Zap className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Quick Actions</h3>
+              <h3 className="text-base sm:text-lg font-bold text-gray-900">Quick Actions</h3>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
               {quickActions.map((action, index) => (
                 <button
                   key={index}
-                  className={`group relative overflow-hidden bg-gradient-to-br ${action.color} p-3 rounded-2xl text-white shadow-lg hover:shadow-xl transform hover:scale-105 ${action.hoverColor} transition-all duration-300`}
+                  className={`group relative overflow-hidden bg-gradient-to-br ${action.color} p-2 sm:p-3 rounded-xl sm:rounded-2xl text-white shadow-lg hover:shadow-xl transform hover:scale-105 ${action.hoverColor} transition-all duration-300`}
                   onClick={() => router.push(action.path)}
                 >
                   <div className="relative z-10">
-                    <div className="text-xl mb-1 group-hover:scale-110 transition-transform duration-200">
+                    <div className="text-lg sm:text-xl mb-1 group-hover:scale-110 transition-transform duration-200">
                       {action.icon}
                     </div>
                     <span className="text-xs font-semibold block leading-tight">

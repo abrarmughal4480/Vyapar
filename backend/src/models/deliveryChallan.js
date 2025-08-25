@@ -30,6 +30,7 @@ const DeliveryChallanSchema = new mongoose.Schema({
   invoiceNumber: { type: String },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
+  partyBalanceAfterTransaction: { type: Number, default: 0 },
 });
 
 // Create compound index for userId + challanNumber to ensure uniqueness per user

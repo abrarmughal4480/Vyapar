@@ -8,6 +8,7 @@ import { ITEM_CATEGORIES } from '../../../constants/categories'
 import { fetchPartiesByUserId, PartyData } from '../../../../http/parties'
 import { jwtDecode } from 'jwt-decode'
 import ReactDOM from 'react-dom'
+import { useSidebar } from '../../../contexts/SidebarContext'
 
 // Define grouped units with symbols (move to top of file)
 const UNIT_GROUPS = [
@@ -183,6 +184,26 @@ function AddItemPageInner() {
       categoryListRef.current.focus();
     }
   }, [showCategoryDropdown]);
+  
+  // Import sidebar context for auto-collapse
+  const { setIsCollapsed } = useSidebar();
+  const [wasSidebarCollapsed, setWasSidebarCollapsed] = useState(false);
+
+  // Auto-collapse sidebar when page opens and restore when closing
+  useEffect(() => {
+    // Store current sidebar state and collapse it
+    const currentSidebarState = document.body.classList.contains('sidebar-collapsed') || 
+                               document.documentElement.classList.contains('sidebar-collapsed');
+    setWasSidebarCollapsed(currentSidebarState);
+    
+    // Collapse sidebar for better form experience
+    setIsCollapsed(true);
+    
+    // Restore sidebar state when component unmounts
+    return () => {
+      setIsCollapsed(wasSidebarCollapsed);
+    };
+  }, [setIsCollapsed, wasSidebarCollapsed]);
 
   useEffect(() => {
     const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';

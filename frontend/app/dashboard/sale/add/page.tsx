@@ -9,6 +9,7 @@ import { getCustomerParties, getPartyBalance } from '../../../../http/parties';
 import { getUserItems } from '../../../../http/items';
 import api from '../../../../http/api';
 import { API_ENDPOINTS } from '../../../../lib/api';
+import { useSidebar } from '../../../contexts/SidebarContext';
 // Import any other needed components or hooks
 
 interface SaleItem {
@@ -19,6 +20,8 @@ interface SaleItem {
   price: string;
   amount: number;
   customUnit: string;
+  discountPercentage: string;
+  discountAmount: string;
 }
 
 type DropdownOption = { value: string; label: string };
@@ -572,7 +575,78 @@ function ItemRow({
         </div>
       </td>
       <td className="py-2 px-2">
-        <span className="text-gray-900 font-semibold">{isNaN(item.amount) ? '0.00' : item.amount.toFixed(2)} {item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? (typeof item.unit === 'object' ? getUnitDisplay(item.unit) : item.unit) : ''}</span>
+        <div className="grid grid-cols-2 gap-1">
+          <div className="relative">
+            <input
+              type="number"
+              value={item.discountPercentage || ''}
+              min={0}
+              onChange={e => {
+                const value = e.target.value;
+                const qty = parseFloat(item.qty) || 1; // Default to 1 if empty
+                const price = parseFloat(item.price) || 0;
+                const totalAmount = qty * price;
+                
+                // Calculate amount when percentage changes
+                const percentage = parseFloat(value) || 0;
+                const calculatedAmount = (totalAmount * percentage) / 100;
+                
+                // Update both fields simultaneously
+                handleItemChange(item.id, 'discountPercentage', value);
+                handleItemChange(item.id, 'discountAmount', calculatedAmount.toFixed(2));
+              }}
+              className="w-full px-2 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all text-center"
+              placeholder="0.00"
+              autoComplete="off"
+            />
+          </div>
+          <div className="relative">
+            <input
+              type="number"
+              value={item.discountAmount || ''}
+              min={0}
+              onChange={e => {
+                const value = e.target.value;
+                const qty = parseFloat(item.qty) || 1; // Default to 1 if empty
+                const price = parseFloat(item.price) || 0;
+                const totalAmount = qty * price;
+                
+                // Calculate percentage when amount changes
+                const amount = parseFloat(value) || 0;
+                const calculatedPercentage = totalAmount > 0 ? (amount / totalAmount) * 100 : 0;
+                
+                // Update both fields simultaneously
+                handleItemChange(item.id, 'discountAmount', value);
+                handleItemChange(item.id, 'discountPercentage', calculatedPercentage.toFixed(2));
+              }}
+              className="w-full px-2 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all text-center"
+              placeholder="0.00"
+              autoComplete="off"
+            />
+          </div>
+        </div>
+      </td>
+      <td className="py-2 px-2">
+        <span className="text-gray-900 font-semibold">
+          {(() => {
+            const qty = parseFloat(item.qty) || 0;
+            const price = parseFloat(item.price) || 0;
+            const originalAmount = qty * price;
+            
+            // Calculate discount amount
+            let discountAmount = 0;
+            if (item.discountPercentage) {
+              discountAmount = (originalAmount * parseFloat(item.discountPercentage)) / 100;
+            } else if (item.discountAmount) {
+              discountAmount = parseFloat(item.discountAmount);
+            }
+            
+            // Final amount after discount
+            const finalAmount = Math.max(0, originalAmount - discountAmount);
+            
+            return `${finalAmount.toFixed(2)} ${item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? (typeof item.unit === 'object' ? getUnitDisplay(item.unit) : item.unit) : ''}`;
+          })()}
+        </span>
       </td>
       <td className="py-2 px-2 flex gap-1">
         {newSale.items.length > 1 && (
@@ -596,7 +670,7 @@ const AddSalePage = () => {
     partyName: '',
     phoneNo: '',
     items: [
-      { id: 1, item: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
+      { id: 1, item: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0, discountPercentage: '', discountAmount: '' }
     ],
     discount: '',
     discountType: '%',
@@ -647,6 +721,26 @@ const AddSalePage = () => {
   const [nextInvoiceNo, setNextInvoiceNo] = useState<string | null>(null);
   // Add state for customer dropdown highlight
   const [customerDropdownIndex, setCustomerDropdownIndex] = useState(0);
+  
+  // Import sidebar context for auto-collapse
+  const { setIsCollapsed } = useSidebar();
+  const [wasSidebarCollapsed, setWasSidebarCollapsed] = useState(false);
+
+  // Auto-collapse sidebar when page opens and restore when closing
+  useEffect(() => {
+    // Store current sidebar state and collapse it
+    const currentSidebarState = document.body.classList.contains('sidebar-collapsed') || 
+                               document.documentElement.classList.contains('sidebar-collapsed');
+    setWasSidebarCollapsed(currentSidebarState);
+    
+    // Collapse sidebar for better form experience
+    setIsCollapsed(true);
+    
+    // Restore sidebar state when component unmounts
+    return () => {
+      setIsCollapsed(wasSidebarCollapsed);
+    };
+  }, [setIsCollapsed, wasSidebarCollapsed]);
 
   // Fetch items on component mount
   useEffect(() => {
@@ -887,16 +981,33 @@ const AddSalePage = () => {
           discountValue = Number(newSale.discount);
         }
       }
+      
+      // Calculate total discount from all items
+      const totalItemDiscount = newSale.items.reduce((total, item) => {
+        let itemDiscount = 0;
+        if (item.discountPercentage) {
+          const qty = parseFloat(item.qty) || 0;
+          const price = parseFloat(item.price) || 0;
+          itemDiscount = (qty * price * parseFloat(item.discountPercentage)) / 100;
+        } else if (item.discountAmount) {
+          itemDiscount = parseFloat(item.discountAmount) || 0;
+        }
+        return total + itemDiscount;
+      }, 0);
+      
+      // Total discount is item discounts + global discount
+      const totalDiscount = totalItemDiscount + discountValue;
+      
       // Tax calculation
       let taxValue = 0;
       if (newSale.tax && !isNaN(Number(newSale.tax))) {
         if (newSale.taxType === '%') {
-          taxValue = (subTotal - discountValue) * Number(newSale.tax) / 100;
+          taxValue = (subTotal - totalDiscount) * Number(newSale.tax) / 100;
         } else if (newSale.taxType === 'PKR') {
           taxValue = Number(newSale.tax);
         }
       }
-      const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
+      const grandTotal = Math.max(0, subTotal - totalDiscount + taxValue);
 
       const saleData = {
         ...newSale,
@@ -1043,16 +1154,33 @@ const AddSalePage = () => {
           discountValue = Number(newSale.discount);
         }
       }
+      
+      // Calculate total discount from all items
+      const totalItemDiscount = newSale.items.reduce((total, item) => {
+        let itemDiscount = 0;
+        if (item.discountPercentage) {
+          const qty = parseFloat(item.qty) || 0;
+          const price = parseFloat(item.price) || 0;
+          itemDiscount = (qty * price * parseFloat(item.discountPercentage)) / 100;
+        } else if (item.discountAmount) {
+          itemDiscount = parseFloat(item.discountAmount) || 0;
+        }
+        return total + itemDiscount;
+      }, 0);
+      
+      // Total discount is item discounts + global discount
+      const totalDiscount = totalItemDiscount + discountValue;
+      
       // Tax calculation
       let taxValue = 0;
       if (newSale.tax && !isNaN(Number(newSale.tax))) {
         if (newSale.taxType === '%') {
-          taxValue = (subTotal - discountValue) * Number(newSale.tax) / 100;
+          taxValue = (subTotal - totalDiscount) * Number(newSale.tax) / 100;
         } else if (newSale.taxType === 'PKR') {
           taxValue = Number(newSale.tax);
         }
       }
-      const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
+      const grandTotal = Math.max(0, subTotal - totalDiscount + taxValue);
 
       const saleData = {
         ...newSale,
@@ -1213,16 +1341,33 @@ const AddSalePage = () => {
       discountValue = Number(newSale.discount);
     }
   }
+  
+  // Calculate total discount from all items
+  const totalItemDiscount = newSale.items.reduce((total, item) => {
+    let itemDiscount = 0;
+    if (item.discountPercentage) {
+      const qty = parseFloat(item.qty) || 0;
+      const price = parseFloat(item.price) || 0;
+      itemDiscount = (qty * price * parseFloat(item.discountPercentage)) / 100;
+    } else if (item.discountAmount) {
+      itemDiscount = parseFloat(item.discountAmount) || 0;
+    }
+    return total + itemDiscount;
+  }, 0);
+  
+  // Total discount is item discounts + global discount
+  const totalDiscount = totalItemDiscount + discountValue;
+  
   // Tax calculation
   let taxValue = 0;
   if (newSale.tax && !isNaN(Number(newSale.tax))) {
     if (newSale.taxType === '%') {
-      taxValue = (subTotal - discountValue) * Number(newSale.tax) / 100;
+      taxValue = (subTotal - totalDiscount) * Number(newSale.tax) / 100;
     } else if (newSale.taxType === 'PKR') {
       taxValue = Number(newSale.tax);
     }
   }
-  const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
+  const grandTotal = Math.max(0, subTotal - totalDiscount + taxValue);
 
   // UI
   useEffect(() => {
@@ -1439,6 +1584,13 @@ const AddSalePage = () => {
                     <th className="text-left py-3 px-2 font-semibold text-gray-700 w-20">QTY</th>
                     <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">UNIT</th>
                     <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">PRICE/UNIT</th>
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-80">
+                      <div className="grid grid-cols-2 gap-1 text-center">
+                        <div className="col-span-2 text-sm font-semibold">DISCOUNT</div>
+                        <div className="text-xs font-normal text-gray-600 border-r border-gray-300 pr-1">%</div>
+                        <div className="text-xs font-normal text-gray-600 pl-1">AMOUNT</div>
+                      </div>
+                    </th>
                     <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">AMOUNT</th>
                     <th className="text-left py-3 px-2 font-semibold text-gray-700 w-8"></th>
                   </tr>
@@ -1658,8 +1810,16 @@ const AddSalePage = () => {
                       <span>PKR {subTotal.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-xs text-gray-600">
-                      <span>Discount</span>
+                      <span>Global Discount</span>
                       <span>- PKR {discountValue.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-600">
+                      <span>Item Discounts</span>
+                      <span>- PKR {totalItemDiscount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-600">
+                      <span>Total Discount</span>
+                      <span>- PKR {totalDiscount.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-xs text-gray-600">
                       <span>Tax</span>

@@ -6,7 +6,9 @@ const SaleItemSchema = new mongoose.Schema({
   unit: { type: String, required: true },
   price: { type: Number, required: true },
   amount: { type: Number, required: true },
-  customUnit: { type: String }
+  customUnit: { type: String },
+  discountPercentage: { type: String, default: '' },
+  discountAmount: { type: String, default: '' }
 }, { _id: false });
 
 const SaleSchema = new mongoose.Schema({
@@ -28,6 +30,7 @@ const SaleSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   balance: { type: Number, default: 0 },
   received: { type: Number, default: 0 },
+  partyBalanceAfterTransaction: { type: Number, default: 0 },
 });
 
 // Create compound index for userId + invoiceNo to ensure uniqueness per user

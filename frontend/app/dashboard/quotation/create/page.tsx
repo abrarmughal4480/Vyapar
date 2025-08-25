@@ -9,6 +9,7 @@ import { getCustomerParties, getPartyBalance } from '../../../../http/parties'
 import { getToken } from '../../../lib/auth'
 import { getUserItems } from '../../../../http/items'
 import { createQuotation } from '../../../../http/quotations'
+import { useSidebar } from '../../../contexts/SidebarContext'
 
 // Utility functions for unit conversion
 const getUnitDisplay = (unit: any) => {
@@ -138,7 +139,7 @@ interface FormData {
   invoiceDate: string;
   customer: string;
   phone: string;
-  items: { id: number; item: string; qty: number; unit: string; customUnit: string; price: number; amount: number }[];
+  items: { id: number; item: string; qty: number; unit: string; customUnit: string; price: number; amount: number; discountPercentage: string; discountAmount: string }[];
   description: string;
   image: File | null;
   discount: number;
@@ -242,8 +243,8 @@ export default function CreateSalesOrderPage() {
     customer: '',
     phone: '',
     items: [
-      { id: 1, item: '', qty: 0, unit: 'NONE', customUnit: '', price: 0, amount: 0 },
-      { id: 2, item: '', qty: 0, unit: 'NONE', customUnit: '', price: 0, amount: 0 }
+      { id: 1, item: '', qty: 0, unit: 'NONE', customUnit: '', price: 0, amount: 0, discountPercentage: '', discountAmount: '' },
+      { id: 2, item: '', qty: 0, unit: 'NONE', customUnit: '', price: 0, amount: 0, discountPercentage: '', discountAmount: '' }
     ],
     description: '',
     image: null,
@@ -272,6 +273,26 @@ export default function CreateSalesOrderPage() {
   const [itemSuggestions, setItemSuggestions] = useState<any[]>([]);
   const [showItemSuggestions, setShowItemSuggestions] = useState<{[id: number]: boolean}>({});
   const [partyBalance, setPartyBalance] = useState<number | null>(null);
+  
+  // Import sidebar context for auto-collapse
+  const { setIsCollapsed } = useSidebar();
+  const [wasSidebarCollapsed, setWasSidebarCollapsed] = useState(false);
+
+  // Auto-collapse sidebar when page opens and restore when closing
+  useEffect(() => {
+    // Store current sidebar state and collapse it
+    const currentSidebarState = document.body.classList.contains('sidebar-collapsed') || 
+                               document.documentElement.classList.contains('sidebar-collapsed');
+    setWasSidebarCollapsed(currentSidebarState);
+    
+    // Collapse sidebar for better form experience
+    setIsCollapsed(true);
+    
+    // Restore sidebar state when component unmounts
+    return () => {
+      setIsCollapsed(wasSidebarCollapsed);
+    };
+  }, [setIsCollapsed, wasSidebarCollapsed]);
 
   // Unit options
   const unitOptions = ['NONE', 'PCS', 'KG', 'METER', 'LITER', 'BOX', 'DOZEN']
@@ -302,10 +323,25 @@ export default function CreateSalesOrderPage() {
   useEffect(() => {
     setFormData(prev => ({
       ...prev,
-      items: prev.items.map(item => ({
-        ...item,
-        amount: item.qty * item.price
-      }))
+      items: prev.items.map(item => {
+        const originalAmount = item.qty * item.price;
+        
+        // Calculate discount amount
+        let discountAmount = 0;
+        if (item.discountPercentage) {
+          discountAmount = (originalAmount * parseFloat(item.discountPercentage)) / 100;
+        } else if (item.discountAmount) {
+          discountAmount = parseFloat(item.discountAmount);
+        }
+        
+        // Final amount after discount
+        const finalAmount = Math.max(0, originalAmount - discountAmount);
+        
+        return {
+          ...item,
+          amount: finalAmount
+        };
+      })
     }))
   }, [])
 
@@ -329,12 +365,28 @@ export default function CreateSalesOrderPage() {
   }, [formData.customer]);
 
   // Calculate totals
+  const originalSubtotal = formData.items.reduce((sum, item) => sum + (item.qty * item.price), 0)
   const subtotal = formData.items.reduce((sum, item) => sum + item.amount, 0)
+  
+  // Calculate total discount from all items
+  const totalItemDiscount = formData.items.reduce((total, item) => {
+    let itemDiscount = 0;
+    if (item.discountPercentage) {
+      const qty = item.qty || 0;
+      const price = item.price || 0;
+      itemDiscount = (qty * price * parseFloat(item.discountPercentage)) / 100;
+    } else if (item.discountAmount) {
+      itemDiscount = parseFloat(item.discountAmount);
+    }
+    return total + itemDiscount;
+  }, 0);
+  
   const discountValue = formData.discountType === '%' 
-    ? (subtotal * formData.discount / 100) 
+    ? (originalSubtotal * formData.discount / 100) 
     : formData.discount
-  const taxValue = (subtotal * parseFloat(formData.tax) / 100)
-  const grandTotal = Math.max(0, subtotal - discountValue + taxValue)
+  const totalDiscount = totalItemDiscount + discountValue
+  const taxValue = ((originalSubtotal - totalDiscount) * parseFloat(formData.tax) / 100)
+  const grandTotal = Math.max(0, originalSubtotal - totalDiscount + taxValue)
 
   // Update item in the form (by id)
   const updateItem = (id: number, field: string, value: any) => {
@@ -346,8 +398,21 @@ export default function CreateSalesOrderPage() {
           if (field === 'unit' && value !== 'Custom') {
             updated.customUnit = '';
           }
-          if (field === 'qty' || field === 'price') {
-            updated.amount = (field === 'qty' ? value : item.qty) * (field === 'price' ? value : item.price);
+          if (field === 'qty' || field === 'price' || field === 'discountPercentage' || field === 'discountAmount') {
+            const qty = field === 'qty' ? value : item.qty;
+            const price = field === 'price' ? value : item.price;
+            const originalAmount = qty * price;
+            
+            // Calculate discount amount
+            let discountAmount = 0;
+            if (updated.discountPercentage) {
+              discountAmount = (originalAmount * parseFloat(updated.discountPercentage)) / 100;
+            } else if (updated.discountAmount) {
+              discountAmount = parseFloat(updated.discountAmount);
+            }
+            
+            // Final amount after discount
+            updated.amount = Math.max(0, originalAmount - discountAmount);
           }
           return updated;
         }
@@ -367,7 +432,7 @@ export default function CreateSalesOrderPage() {
       ...prev,
       items: [
         ...prev.items,
-        { id: Date.now(), item: '', qty: 0, unit: 'NONE', customUnit: '', price: 0, amount: 0 }
+        { id: Date.now(), item: '', qty: 0, unit: 'NONE', customUnit: '', price: 0, amount: 0, discountPercentage: '', discountAmount: '' }
       ]
     }));
   };
@@ -448,7 +513,9 @@ export default function CreateSalesOrderPage() {
             unit: item.unit,
             customUnit: item.customUnit,
             price: item.price,
-            amount: item.amount
+            amount: item.amount,
+            discountPercentage: item.discountPercentage,
+            discountAmount: item.discountAmount
           })),
         subtotal: subtotal,
         tax: taxValue,
@@ -646,12 +713,19 @@ export default function CreateSalesOrderPage() {
                     <th className="text-left py-3 px-2 font-semibold text-gray-700 w-20">QTY</th>
                     <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">UNIT</th>
                     <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">PRICE/UNIT</th>
+                    <th className="text-left py-3 px-2 font-semibold text-gray-700 w-80">
+                      <div className="grid grid-cols-2 gap-1 text-center">
+                        <div className="col-span-2 text-sm font-semibold">DISCOUNT</div>
+                        <div className="text-xs font-normal text-gray-600 border-r border-gray-300 pr-1">%</div>
+                        <div className="text-xs font-normal text-gray-600 pl-1">AMOUNT</div>
+                      </div>
+                    </th>
                     <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">AMOUNT</th>
                     <th className="text-left py-3 px-2 font-semibold text-gray-700 w-8"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {formData.items.map((item: { id: number; item: string; qty: number; unit: string; customUnit: string; price: number; amount: number }, index: number) => (
+                  {formData.items.map((item: { id: number; item: string; qty: number; unit: string; customUnit: string; price: number; amount: number; discountPercentage: string; discountAmount: string }, index: number) => (
                     <tr key={item.id} className={`border-b border-gray-100 ${index % 2 === 0 ? 'bg-white' : 'bg-blue-50'} hover:bg-blue-100 transition-colors`}>
                       <td className="py-2 px-2 font-medium">{index + 1}</td>
                       <td className="py-2 px-2">
@@ -811,7 +885,78 @@ export default function CreateSalesOrderPage() {
                         />
                       </td>
                       <td className="py-2 px-2">
-                        <div className="text-sm font-medium">PKR {item.amount.toFixed(2)}</div>
+                        <div className="grid grid-cols-2 gap-1">
+                          <div className="relative">
+                            <input
+                              type="number"
+                              value={item.discountPercentage || ''}
+                              min={0}
+                              onChange={e => {
+                                const value = e.target.value;
+                                const qty = item.qty || 1;
+                                const price = item.price || 0;
+                                const totalAmount = qty * price;
+                                
+                                // Calculate amount when percentage changes
+                                const percentage = parseFloat(value) || 0;
+                                const calculatedAmount = (totalAmount * percentage) / 100;
+                                
+                                // Update both fields simultaneously
+                                updateItem(item.id, 'discountPercentage', value);
+                                updateItem(item.id, 'discountAmount', calculatedAmount.toFixed(2));
+                              }}
+                              className="w-full px-2 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all text-center"
+                              placeholder="0.00"
+                              autoComplete="off"
+                            />
+                          </div>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              value={item.discountAmount || ''}
+                              min={0}
+                              onChange={e => {
+                                const value = e.target.value;
+                                const qty = item.qty || 1;
+                                const price = item.price || 0;
+                                const totalAmount = qty * price;
+                                
+                                // Calculate percentage when amount changes
+                                const amount = parseFloat(value) || 0;
+                                const calculatedPercentage = totalAmount > 0 ? (amount / totalAmount) * 100 : 0;
+                                
+                                // Update both fields simultaneously
+                                updateItem(item.id, 'discountAmount', value);
+                                updateItem(item.id, 'discountPercentage', calculatedPercentage.toFixed(2));
+                              }}
+                              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all text-center"
+                              placeholder="0.00"
+                              autoComplete="off"
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-2 px-2">
+                        <div className="text-sm font-medium">
+                          {(() => {
+                            const qty = item.qty || 0;
+                            const price = item.price || 0;
+                            const originalAmount = qty * price;
+                            
+                            // Calculate discount amount
+                            let discountAmount = 0;
+                            if (item.discountPercentage) {
+                              discountAmount = (originalAmount * parseFloat(item.discountPercentage)) / 100;
+                            } else if (item.discountAmount) {
+                              discountAmount = parseFloat(item.discountAmount);
+                            }
+                            
+                            // Final amount after discount
+                            const finalAmount = Math.max(0, originalAmount - discountAmount);
+                            
+                            return `PKR ${finalAmount.toFixed(2)}`;
+                          })()}
+                        </div>
                       </td>
                       <td className="py-2 px-2 flex gap-1">
                         {formData.items.length > 1 && (
@@ -932,9 +1077,9 @@ export default function CreateSalesOrderPage() {
                     <div className="text-xs text-gray-500 min-h-[24px] mt-1">
                       {formData.discount && !isNaN(Number(formData.discount)) ? (
                         <>
-                          Discount: 
+                          Global Discount: 
                           {formData.discountType === '%'
-                            ? `${formData.discount}% = PKR ${(subtotal * formData.discount / 100).toFixed(2)}`
+                            ? `${formData.discount}% = PKR ${(originalSubtotal * formData.discount / 100).toFixed(2)}`
                             : `PKR ${Number(formData.discount).toFixed(2)}`}
                         </>
                       ) : null}
@@ -971,7 +1116,7 @@ export default function CreateSalesOrderPage() {
                 <div className="text-xs text-gray-500 min-h-[24px] mt-1">
                   {formData.tax && !isNaN(Number(formData.tax)) ? (
                     <>
-                      Tax: {formData.tax}% = PKR {((subtotal - (formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount))) * Number(formData.tax) / 100).toFixed(2)}
+                      Tax: {formData.tax}% = PKR {((originalSubtotal - totalDiscount) * Number(formData.tax) / 100).toFixed(2)}
                     </>
                   ) : null}
                 </div>
@@ -1002,15 +1147,23 @@ export default function CreateSalesOrderPage() {
                   <div className="flex flex-col gap-1">
                     <div className="flex justify-between text-xs text-gray-600">
                       <span>Sub Total</span>
-                      <span>PKR {subtotal.toFixed(2)}</span>
+                      <span>PKR {originalSubtotal.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-xs text-gray-600">
-                      <span>Discount</span>
-                      <span>- PKR {(formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount)).toFixed(2)}</span>
+                      <span>Global Discount</span>
+                      <span>- PKR {(formData.discountType === '%' ? (originalSubtotal * formData.discount / 100) : Number(formData.discount)).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-600">
+                      <span>Item Discounts</span>
+                      <span>- PKR {totalItemDiscount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-600">
+                      <span>Total Discount</span>
+                      <span>- PKR {totalDiscount.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-xs text-gray-600">
                       <span>Tax</span>
-                      <span>+ PKR {(formData.taxType === '%' ? ((subtotal - (formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount))) * Number(formData.tax) / 100) : Number(formData.tax)).toFixed(2)}</span>
+                      <span>+ PKR {(formData.taxType === '%' ? ((originalSubtotal - totalDiscount) * Number(formData.tax) / 100) : Number(formData.tax)).toFixed(2)}</span>
                     </div>
                     <div className="border-t border-blue-200 my-2"></div>
                     <div className="flex justify-between text-lg font-bold text-blue-900">

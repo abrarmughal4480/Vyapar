@@ -86,28 +86,54 @@ export const createSale = async (req, res) => {
         await dbItem.save();
       }
     }
-    // Calculate subTotal
-    const subTotal = items.reduce((sum, item) => sum + (item.amount || 0), 0);
-    // Calculate discountValue
+    // Calculate original subtotal (before discounts) and final subtotal
+    const originalSubTotal = items.reduce((sum, item) => {
+      const qty = Number(item.qty) || 0;
+      const price = Number(item.price) || 0;
+      return sum + (qty * price);
+    }, 0);
+    
+    // Calculate item-level discounts
+    const totalItemDiscount = items.reduce((total, item) => {
+      let itemDiscount = 0;
+      if (item.discountPercentage) {
+        const qty = Number(item.qty) || 0;
+        const price = Number(item.price) || 0;
+        itemDiscount = (qty * price * Number(item.discountPercentage)) / 100;
+      } else if (item.discountAmount) {
+        itemDiscount = Number(item.discountAmount) || 0;
+      }
+      return total + itemDiscount;
+    }, 0);
+    
+    // Calculate global discount
     let discountValue = 0;
     if (req.body.discount && !isNaN(Number(req.body.discount))) {
       if (req.body.discountType === '%') {
-        discountValue = subTotal * Number(req.body.discount) / 100;
+        discountValue = originalSubTotal * Number(req.body.discount) / 100;
       } else {
         discountValue = Number(req.body.discount);
       }
     }
+    
+    // Total discount is item discounts + global discount
+    const totalDiscount = totalItemDiscount + discountValue;
+    
+    // Calculate final subtotal after item discounts
+    const finalSubTotal = originalSubTotal - totalItemDiscount;
+    
     // Calculate taxValue
     let taxType = req.body.taxType || '%';
     let tax = req.body.tax || 0;
     let taxValue = 0;
     if (taxType === '%') {
-      taxValue = (subTotal - discountValue) * Number(tax) / 100;
+      taxValue = (originalSubTotal - totalDiscount) * Number(tax) / 100;
     } else if (taxType === 'PKR') {
       taxValue = Number(tax);
     }
+    
     // Calculate grandTotal
-    const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
+    const grandTotal = Math.max(0, originalSubTotal - totalDiscount + taxValue);
     // Generate invoice number for this user
     let invoiceNo = 'INV001';
     const lastSale = await Sale.findOne({ userId: userIdObj }).sort({ createdAt: -1 });
@@ -127,7 +153,7 @@ export const createSale = async (req, res) => {
     const sale = new Sale({
       ...req.body,
       userId: userIdObj,
-      discountValue,
+      discountValue: totalDiscount, // Use total discount (item + global)
       taxType,
       tax,
       taxValue,
@@ -168,19 +194,28 @@ export const createSale = async (req, res) => {
     try {
       const Party = (await import('../models/parties.js')).default;
       const partyDoc = await Party.findOne({ name: sale.partyName, user: userId });
-              if (partyDoc) {
-          if (req.body.paymentType === 'Credit') {
-            // For credit sales, add the remaining balance (credit amount) to party balance
-            // balance = grandTotal - received
-            partyDoc.openingBalance = (partyDoc.openingBalance || 0) + balance;
-          } else if (req.body.paymentType === 'Cash') {
-            // For cash sales, only add remaining balance if there's any unpaid amount
-            if (balance > 0) {
-              partyDoc.openingBalance = (partyDoc.openingBalance || 0) + balance;
-            }
+      if (partyDoc) {
+        // Store party's current balance before transaction
+        const partyCurrentBalance = partyDoc.openingBalance || 0;
+        
+        if (req.body.paymentType === 'Credit') {
+          // For credit sales, add the remaining balance (credit amount) to party balance
+          // balance = grandTotal - received
+          partyDoc.openingBalance = partyCurrentBalance + balance;
+        } else if (req.body.paymentType === 'Cash') {
+          // For cash sales, only add remaining balance if there's any unpaid amount
+          if (balance > 0) {
+            partyDoc.openingBalance = partyCurrentBalance + balance;
           }
-          await partyDoc.save();
         }
+        
+        // Calculate and update partyBalanceAfterTransaction
+        const partyBalanceAfterTransaction = partyDoc.openingBalance;
+        sale.partyBalanceAfterTransaction = partyBalanceAfterTransaction;
+        await sale.save();
+        
+        await partyDoc.save();
+      }
     } catch (err) {
       console.error('Failed to update party openingBalance:', err);
     }
@@ -205,10 +240,32 @@ export const getSalesByUser = async (req, res) => {
     const salesWithUnitString = sales.map(sale => {
       const saleObj = sale.toObject();
       if (Array.isArray(saleObj.items)) {
-        saleObj.items = saleObj.items.map(item => ({
-          ...item,
-          unit: typeof item.unit === 'object' ? getUnitDisplay(item.unit) : item.unit
-        }));
+        // Calculate actual sale amount after item-level discounts
+        let actualSaleAmount = 0;
+        saleObj.items = saleObj.items.map(item => {
+          const originalAmount = (item.qty || 0) * (item.price || 0);
+          let itemDiscount = 0;
+          
+          if (item.discountPercentage) {
+            itemDiscount = (originalAmount * parseFloat(item.discountPercentage)) / 100;
+          } else if (item.discountAmount) {
+            itemDiscount = parseFloat(item.discountAmount) || 0;
+          }
+          
+          const actualAmount = originalAmount - itemDiscount;
+          actualSaleAmount += actualAmount;
+          
+          return {
+            ...item,
+            unit: typeof item.unit === 'object' ? getUnitDisplay(item.unit) : item.unit,
+            originalAmount,
+            itemDiscount,
+            actualAmount
+          };
+        });
+        
+        // Add the calculated actual sale amount
+        saleObj.actualSaleAmount = actualSaleAmount;
       }
       return saleObj;
     });
@@ -533,24 +590,46 @@ export const updateSale = async (req, res) => {
     }
 
     // 3. Calculate new grandTotal
-    const subTotal = newItems.reduce((sum, item) => sum + (item.amount || 0), 0);
+    const originalSubTotal = newItems.reduce((sum, item) => {
+      const qty = Number(item.qty) || 0;
+      const price = Number(item.price) || 0;
+      return sum + (qty * price);
+    }, 0);
+    
+    // Calculate item-level discounts
+    const totalItemDiscount = newItems.reduce((total, item) => {
+      let itemDiscount = 0;
+      if (item.discountPercentage) {
+        const qty = Number(item.qty) || 0;
+        const price = Number(item.price) || 0;
+        itemDiscount = (qty * price * Number(item.discountPercentage)) / 100;
+      } else if (item.discountAmount) {
+        itemDiscount = Number(item.discountAmount) || 0;
+      }
+      return total + itemDiscount;
+    }, 0);
+    
     let discountValue = 0;
     if (updateData.discount && !isNaN(Number(updateData.discount))) {
       if (updateData.discountType === '%') {
-        discountValue = subTotal * Number(updateData.discount) / 100;
+        discountValue = originalSubTotal * Number(updateData.discount) / 100;
       } else {
         discountValue = Number(updateData.discount);
       }
     }
+    
+    // Total discount is item discounts + global discount
+    const totalDiscount = totalItemDiscount + discountValue;
+    
     let taxType = updateData.taxType || '%';
     let tax = updateData.tax || 0;
     let taxValue = 0;
     if (taxType === '%') {
-      taxValue = (subTotal - discountValue) * Number(tax) / 100;
+      taxValue = (originalSubTotal - totalDiscount) * Number(tax) / 100;
     } else if (taxType === 'PKR') {
       taxValue = Number(tax);
     }
-    const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
+    const grandTotal = Math.max(0, originalSubTotal - totalDiscount + taxValue);
 
     // 3. Update party balances based on payment type
     const Party = (await import('../models/parties.js')).default;
@@ -587,7 +666,7 @@ export const updateSale = async (req, res) => {
     const balance = grandTotal - received;
     const sale = await Sale.findOneAndUpdate(
       { _id: saleId, userId },
-      { ...updateData, grandTotal, balance, updatedAt: new Date() },
+      { ...updateData, grandTotal, balance, discountValue: totalDiscount, updatedAt: new Date() },
       { new: true }
     );
     if (!sale) return res.status(404).json({ success: false, message: 'Sale not found' });
@@ -635,25 +714,41 @@ export const getBillWiseProfit = async (req, res) => {
       if (Array.isArray(sale.items)) {
         sale.items.forEach(saleItem => {
           const purchasePrice = getLatestPurchasePrice(saleItem.item);
-          const salePrice = saleItem.price || 0;
+          const originalPrice = saleItem.price || 0;
           const qty = saleItem.qty || 0;
-          const itemProfit = (salePrice - purchasePrice) * qty;
+          
+          // Calculate actual sale price after item-level discount
+          let itemDiscount = 0;
+          if (saleItem.discountPercentage) {
+            itemDiscount = (originalPrice * parseFloat(saleItem.discountPercentage)) / 100;
+          } else if (saleItem.discountAmount) {
+            itemDiscount = parseFloat(saleItem.discountAmount);
+          }
+          
+          const actualSalePrice = originalPrice - itemDiscount;
+          const itemProfit = (actualSalePrice - purchasePrice) * qty;
+          
           billProfit += itemProfit;
           itemDetails.push({
             item: saleItem.item,
             qty: qty,
-            salePrice: salePrice,
+            originalPrice: originalPrice,
+            salePrice: actualSalePrice,
             purchasePrice: purchasePrice,
+            itemDiscount: itemDiscount,
             itemProfit: itemProfit
           });
         });
       }
       totalProfit += billProfit;
+      // Calculate total sale amount from actual sale prices (after discounts)
+      const totalSaleAmount = itemDetails.reduce((sum, item) => sum + item.salePrice * item.qty, 0);
+      
       return {
         date: sale.createdAt,
         refNo: sale.invoiceNo || sale._id,
         party: sale.partyName,
-        totalSaleAmount: sale.grandTotal || 0,
+        totalSaleAmount: totalSaleAmount,
         profit: billProfit,
         details: itemDetails,
       };

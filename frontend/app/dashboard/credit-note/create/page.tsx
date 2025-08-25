@@ -7,6 +7,7 @@ import ReactDOM from 'react-dom';
 import { getCustomerParties, getPartyBalance } from '../../../../http/parties';
 import { getUserItems } from '../../../../http/items';
 import { createCreditNote } from '../../../../http/credit-notes';
+import { useSidebar } from '../../../contexts/SidebarContext';
 
 // Utility functions for unit conversion
 const getUnitDisplay = (unit: any) => {
@@ -549,6 +550,26 @@ const CreateCreditNotePage = () => {
   const [itemSuggestions, setItemSuggestions] = useState<any[]>([]);
   const [partyBalance, setPartyBalance] = useState<number|null>(null);
   const [customerHighlightedIndex, setCustomerHighlightedIndex] = useState(0);
+  
+  // Import sidebar context for auto-collapse
+  const { setIsCollapsed } = useSidebar();
+  const [wasSidebarCollapsed, setWasSidebarCollapsed] = useState(false);
+
+  // Auto-collapse sidebar when page opens and restore when closing
+  useEffect(() => {
+    // Store current sidebar state and collapse it
+    const currentSidebarState = document.body.classList.contains('sidebar-collapsed') || 
+                               document.documentElement.classList.contains('sidebar-collapsed');
+    setWasSidebarCollapsed(currentSidebarState);
+    
+    // Collapse sidebar for better form experience
+    setIsCollapsed(true);
+    
+    // Restore sidebar state when component unmounts
+    return () => {
+      setIsCollapsed(wasSidebarCollapsed);
+    };
+  }, [setIsCollapsed, wasSidebarCollapsed]);
 
   // Fetch items on component mount
   useEffect(() => {

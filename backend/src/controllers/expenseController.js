@@ -4,7 +4,12 @@ import mongoose from 'mongoose';
 // Create new expense
 export const createExpense = async (req, res) => {
   try {
-    const { expenseCategory, party, items, totalAmount, paymentType, expenseDate, description } = req.body;
+    const { expenseCategory, party, partyId, items, totalAmount, paymentType, receivedAmount, expenseDate, description } = req.body;
+    
+    console.log('Received expense data:', req.body);
+    console.log('Party ID:', partyId);
+    console.log('Payment Type:', paymentType);
+    console.log('Received Amount:', receivedAmount);
     
     if (!expenseCategory || !party || !items || !Array.isArray(items) || items.length === 0 || !totalAmount || !paymentType || !expenseDate) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
@@ -23,16 +28,81 @@ export const createExpense = async (req, res) => {
       expenseNumber = `EXP-${String(lastNumber + 1).padStart(3, '0')}`;
     }
 
+    // Calculate received amount and credit amount
+    let finalReceivedAmount = receivedAmount || 0;
+    let creditAmount = 0;
+    
+    if (paymentType === 'Cash') {
+      // For cash payments, received amount is 100% of total
+      finalReceivedAmount = totalAmount;
+      creditAmount = 0;
+    } else if (paymentType === 'Credit') {
+      // For credit payments, calculate remaining amount
+      creditAmount = totalAmount - (finalReceivedAmount || 0);
+    }
+
+    // Get party's current balance and update it
+    let partyBalanceAfterTransaction = 0;
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      
+             if (partyId) {
+         // Find party by ID
+         const partyDoc = await Party.findById(partyId);
+         if (partyDoc) {
+           // Update party's receivable balance
+           const currentReceivable = partyDoc.openingBalance || 0;
+           const newReceivable = currentReceivable + creditAmount;
+           
+           console.log('Updating party balance:', {
+             partyId,
+             partyName: partyDoc.name,
+             currentReceivable,
+             creditAmount,
+             newReceivable
+           });
+           
+           // Update party's receivable balance
+           await Party.findByIdAndUpdate(partyId, {
+             openingBalance: newReceivable
+           });
+           
+           partyBalanceAfterTransaction = newReceivable;
+         } else {
+           console.log('Party not found with ID:', partyId);
+         }
+       } else {
+        // Fallback: find party by name
+        const partyDoc = await Party.findOne({ name: party, user: userId });
+        if (partyDoc) {
+          const currentReceivable = partyDoc.openingBalance || 0;
+          const newReceivable = currentReceivable + creditAmount;
+          
+          await Party.findByIdAndUpdate(partyDoc._id, {
+            openingBalance: newReceivable
+          });
+          
+          partyBalanceAfterTransaction = newReceivable;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to get/update party balance:', err);
+    }
+
     const newExpense = new Expense({
       userId,
       expenseCategory,
       party,
+      partyId,
       items,
       totalAmount,
       paymentType,
+      receivedAmount: finalReceivedAmount,
+      creditAmount,
       expenseDate,
       expenseNumber,
-      description
+      description,
+      partyBalanceAfterTransaction
     });
 
     await newExpense.save();

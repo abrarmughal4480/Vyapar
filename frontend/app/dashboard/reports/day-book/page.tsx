@@ -47,7 +47,7 @@ export default function DayBookPage() {
         ]);
         // Map to unified format with proper payment in/out calculation
         const sales = (salesRes.sales || []).map((s: any) => {
-          const paymentType = s.paymentType || (s.received === s.grandTotal ? 'Cash' : 'Credit');
+          const paymentType = s.paymentType || (s.received === s.actualSaleAmount ? 'Cash' : 'Credit');
           const moneyIn = s.received || 0;
           const moneyOut = 0;
           
@@ -56,7 +56,7 @@ export default function DayBookPage() {
             name: s.partyName,
             ref: s.invoiceNo || s._id,
             type: 'Sale',
-            total: s.grandTotal,
+            total: s.actualSaleAmount || s.grandTotal, // Use actual amount after discounts
             totalIn: moneyIn,
             out: moneyOut,
             date: s.createdAt?.slice(0, 10) || '',
@@ -65,7 +65,7 @@ export default function DayBookPage() {
         });
         
         const purchases = (purchasesRes.purchases || []).map((p: any) => {
-          const paymentType = p.paymentType || (p.paid === p.grandTotal ? 'Cash' : 'Credit');
+          const paymentType = p.paymentType || (p.paid === p.actualPurchaseAmount ? 'Cash' : 'Credit');
           const moneyIn = 0;
           const moneyOut = p.paid || 0;
           
@@ -74,7 +74,7 @@ export default function DayBookPage() {
             name: p.supplierName,
             ref: p.billNo || p._id,
             type: 'Purchase',
-            total: p.grandTotal,
+            total: p.actualPurchaseAmount || p.grandTotal, // Use actual amount after discounts
             totalIn: moneyIn,
             out: moneyOut,
             date: p.createdAt?.slice(0, 10) || '',

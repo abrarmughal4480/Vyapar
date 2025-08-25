@@ -19,6 +19,18 @@ export const createPurchaseOrder = async (req, res) => {
     // Calculate total from items
     const total = data.items.reduce((sum, item) => sum + (item.amount || 0), 0);
     
+    // Get supplier's current balance before creating purchase order
+    let supplierBalance = 0;
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      const supplierDoc = await Party.findOne({ name: data.supplierName, user: userId });
+      if (supplierDoc) {
+        supplierBalance = supplierDoc.openingBalance || 0;
+      }
+    } catch (err) {
+      console.error('Failed to get supplier balance:', err);
+    }
+    
     const purchaseOrder = new PurchaseOrder({
       ...data,
       userId,
@@ -29,6 +41,7 @@ export const createPurchaseOrder = async (req, res) => {
       status: data.status || 'Draft',
       orderDate: data.orderDate || new Date(),
       dueDate: data.dueDate || null,
+      partyBalanceAfterTransaction: supplierBalance, // For purchase orders, balance remains same
     });
     await purchaseOrder.save();
     res.status(201).json({ success: true, data: purchaseOrder });

@@ -13,6 +13,7 @@ import { createExpense } from '../../../http/expenses';
 import { jwtDecode } from 'jwt-decode';
 import { useSearchParams } from 'next/navigation';
 import { getPurchaseById } from '../../../http/purchases';
+import { useSidebar } from '../../contexts/SidebarContext';
 
 // Utility functions for unit conversion
 const getUnitDisplay = (unit: any) => {
@@ -171,6 +172,8 @@ interface Item {
   customUnit: string;
   price: string;
   amount: number;
+  discountPercentage: string;
+  discountAmount: string;
 }
 
 interface BillData extends FormData {
@@ -316,6 +319,10 @@ export default function AddPurchasePage() {
   const [pageType, setPageType] = useState<'purchase-bill' | 'purchase-order'>('purchase-bill');
   const [originalOrderId, setOriginalOrderId] = useState<string | null>(null);
   const [originalOrderDueDate, setOriginalOrderDueDate] = useState<string | null>(null);
+  
+  // Import sidebar context
+  const { setIsCollapsed } = useSidebar();
+  const [wasSidebarCollapsed, setWasSidebarCollapsed] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     billNumber: 'Purchase #1',
     billDate: '19/06/2025',
@@ -330,8 +337,8 @@ export default function AddPurchasePage() {
   });
 
   const [items, setItems] = useState<Item[]>([
-    { id: 1, category: 'ALL', item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 },
-    { id: 2, category: 'ALL', item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
+    { id: 1, category: 'ALL', item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0, discountPercentage: '', discountAmount: '' },
+    { id: 2, category: 'ALL', item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0, discountPercentage: '', discountAmount: '' }
   ]);
 
   const [showPartyDropdown, setShowPartyDropdown] = useState<boolean>(false);
@@ -346,8 +353,8 @@ export default function AddPurchasePage() {
     invoiceDate: new Date().toISOString().split('T')[0],
     dueDate: new Date().toISOString().split('T')[0],
     items: [
-      { id: 1, item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 },
-      { id: 2, item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
+      { id: 1, item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0, discountPercentage: '', discountAmount: '' },
+      { id: 2, item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0, discountPercentage: '', discountAmount: '' }
     ],
     discount: '',
     discountAmount: '',
@@ -355,6 +362,8 @@ export default function AddPurchasePage() {
     tax: '',
     taxAmount: '',
     taxType: '%',
+    taxPartyName: '',
+    taxPartyId: '',
     paymentType: 'Credit',
     paid: '',
     description: '',
@@ -408,6 +417,14 @@ export default function AddPurchasePage() {
     'Legal Fees'
   ]);
   
+  // TAC toggle state
+  const [tacEnabled, setTacEnabled] = useState(false);
+  
+  // Tax party selection state
+  const [showTaxPartySuggestions, setShowTaxPartySuggestions] = useState(false);
+  const [taxPartyDropdownStyle, setTaxPartyDropdownStyle] = useState<React.CSSProperties>({});
+  const [taxPartyDropdownIndex, setTaxPartyDropdownIndex] = useState(-1);
+  
   // 1. Add state for item and unit dropdown keyboard navigation
   const [itemDropdownIndex, setItemDropdownIndex] = useState<{[id: number]: number}>({});
   const [unitDropdownIndex, setUnitDropdownIndex] = useState<{[id: number]: number}>({});
@@ -449,6 +466,22 @@ export default function AddPurchasePage() {
     }
   };
 
+  // Auto-collapse sidebar when page opens and restore when closing
+  useEffect(() => {
+    // Store current sidebar state and collapse it
+    const currentSidebarState = document.body.classList.contains('sidebar-collapsed') || 
+                               document.documentElement.classList.contains('sidebar-collapsed');
+    setWasSidebarCollapsed(currentSidebarState);
+    
+    // Collapse sidebar for better form experience
+    setIsCollapsed(true);
+    
+    // Restore sidebar state when component unmounts
+    return () => {
+      setIsCollapsed(wasSidebarCollapsed);
+    };
+  }, [setIsCollapsed, wasSidebarCollapsed]);
+
   // Check if opened from different contexts
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -487,7 +520,9 @@ export default function AddPurchasePage() {
                 unit: item.unit || 'NONE',
                 customUnit: item.customUnit || '',
                 price: item.price?.toString() || '',
-                amount: item.amount || 0
+                amount: item.amount || 0,
+                discountPercentage: item.discountPercentage || '',
+                discountAmount: item.discountAmount || ''
               })) || prev.items,
               orderDate: orderData.orderDate || new Date().toISOString().split('T')[0],
               dueDate: orderData.dueDate || new Date().toISOString().split('T')[0]
@@ -517,7 +552,9 @@ export default function AddPurchasePage() {
               unit: item.unit || 'NONE',
               customUnit: item.customUnit || '',
               price: item.price?.toString() || '',
-              amount: item.amount || 0
+              amount: item.amount || 0,
+              discountPercentage: item.discountPercentage || '',
+              discountAmount: item.discountAmount || ''
             })) || prev.items,
             discount: orderData.discount || '',
             discountType: orderData.discountType || '%',
@@ -648,7 +685,9 @@ export default function AddPurchasePage() {
                 unit: item.unit || 'NONE',
                 customUnit: item.customUnit || '',
                 price: item.price?.toString() || '',
-                amount: item.amount || 0
+                amount: item.amount || 0,
+                discountPercentage: item.discountPercentage || '',
+                discountAmount: item.discountAmount || ''
               })),
               discount: result.purchase.discount?.toString() || '',
               discountAmount: result.purchase.discountAmount?.toString() || '',
@@ -681,14 +720,22 @@ export default function AddPurchasePage() {
     }
     // Use stored party ID if available, otherwise find by name
     if (newPurchase.partyId) {
-      fetchPartyBalance(newPurchase.partyId);
+      if (isFromExpenses) {
+        fetchPartyReceivableBalance(newPurchase.partyId);
+      } else {
+        fetchPartyBalance(newPurchase.partyId);
+      }
     } else {
       const matchedParty = parties.find(p => p.name === newPurchase.partyName);
       if (matchedParty) {
-        fetchPartyBalance(matchedParty._id);
+        if (isFromExpenses) {
+          fetchPartyReceivableBalance(matchedParty._id);
+        } else {
+          fetchPartyBalance(matchedParty._id);
+        }
       }
     }
-  }, [newPurchase.partyName, newPurchase.partyId, parties]);
+  }, [newPurchase.partyName, newPurchase.partyId, parties, isFromExpenses]);
 
   useEffect(() => {
     if (!newPurchase.partyName || !parties.length) return;
@@ -713,7 +760,9 @@ export default function AddPurchasePage() {
       unit: 'NONE',
       customUnit: '',
       price: '',
-      amount: 0
+      amount: 0,
+      discountPercentage: '',
+      discountAmount: ''
     };
     setItems([...items, newRow]);
   };
@@ -722,10 +771,21 @@ export default function AddPurchasePage() {
     setItems(items.map(item => {
       if (item.id === id) {
         const updatedItem = { ...item, [field]: value };
-        if (field === 'qty' || field === 'price') {
+        if (field === 'qty' || field === 'price' || field === 'discountPercentage' || field === 'discountAmount') {
           const qty = parseFloat(updatedItem.qty) || 0;
           const price = parseFloat(updatedItem.price) || 0;
-          updatedItem.amount = qty * price;
+          const originalAmount = qty * price;
+          
+          // Calculate discount amount
+          let discountAmount = 0;
+          if (updatedItem.discountPercentage) {
+            discountAmount = (originalAmount * parseFloat(updatedItem.discountPercentage)) / 100;
+          } else if (updatedItem.discountAmount) {
+            discountAmount = parseFloat(updatedItem.discountAmount);
+          }
+          
+          // Final amount after discount
+          updatedItem.amount = Math.max(0, originalAmount - discountAmount);
         }
         return updatedItem;
       }
@@ -734,7 +794,27 @@ export default function AddPurchasePage() {
   };
 
   const calculateTotal = () => {
-    return newPurchase.items.reduce((sum, item) => sum + (item.amount || 0), 0);
+    return newPurchase.items.reduce((sum, item) => {
+      if (isFromExpenses) {
+        return sum + (item.amount || 0);
+      } else {
+        const qty = parseFloat(item.qty) || 0;
+        const price = parseFloat(item.price) || 0;
+        const originalAmount = qty * price;
+        
+        // Calculate discount amount
+        let discountAmount = 0;
+        if (item.discountPercentage) {
+          discountAmount = (originalAmount * parseFloat(item.discountPercentage)) / 100;
+        } else if (item.discountAmount) {
+          discountAmount = parseFloat(item.discountAmount);
+        }
+        
+        // Final amount after discount
+        const finalAmount = Math.max(0, originalAmount - discountAmount);
+        return sum + finalAmount;
+      }
+    }, 0);
   };
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -784,7 +864,7 @@ export default function AddPurchasePage() {
       // Validate paid amount for credit purchases
       if (newPurchase.paymentType === 'Credit') {
         const paidAmount = Number(newPurchase.paid) || 0;
-        if (paidAmount > subTotal) {
+        if (paidAmount > grandTotal) {
           errors.paid = 'Paid amount cannot exceed total amount';
         }
       }
@@ -809,17 +889,28 @@ export default function AddPurchasePage() {
             updated.customUnit = '';
           }
           
-          // Always recalculate amount when qty, price, or unit changes
-          if (field === 'qty' || field === 'price' || field === 'unit') {
+          // Always recalculate amount when qty, price, unit, or discount changes
+          if (field === 'qty' || field === 'price' || field === 'unit' || field === 'discountPercentage' || field === 'discountAmount') {
             if (isFromExpenses) {
               // For expenses, amount is just the price (no quantity)
               const price = parseFloat(field === 'price' ? value : item.price) || 0;
               updated.amount = price;
             } else {
-              // For purchases, amount is qty * price
+              // For purchases, amount is qty * price - discount
               const qty = parseFloat(field === 'qty' ? value : item.qty) || 0;
               const price = parseFloat(field === 'price' ? value : item.price) || 0;
-              updated.amount = qty * price;
+              const originalAmount = qty * price;
+              
+              // Calculate discount amount
+              let discountAmount = 0;
+              if (updated.discountPercentage) {
+                discountAmount = (originalAmount * parseFloat(updated.discountPercentage)) / 100;
+              } else if (updated.discountAmount) {
+                discountAmount = parseFloat(updated.discountAmount);
+              }
+              
+              // Final amount after discount
+              updated.amount = Math.max(0, originalAmount - discountAmount);
             }
           }
           
@@ -849,7 +940,7 @@ export default function AddPurchasePage() {
       ...prev,
       items: [
         ...prev.items,
-        { id: Date.now(), item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
+        { id: Date.now(), item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0, discountPercentage: '', discountAmount: '' }
       ]
     }));
   };
@@ -927,6 +1018,33 @@ export default function AddPurchasePage() {
     }
   };
 
+  // Fetch party receivable balance for expenses
+  const fetchPartyReceivableBalance = async (partyId: string) => {
+    try {
+      const token = getToken();
+      if (!token) return;
+      
+      // For expenses, we need to get the party's receivable balance
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/parties/${partyId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.party) {
+          // For expenses, openingBalance represents receivable amount
+          const receivableBalance = data.party.openingBalance || 0;
+          setPartyBalance(receivableBalance);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching party receivable balance:', error);
+      setPartyBalance(null);
+    }
+  };
+
   // Fetch item suggestions (stale-while-revalidate)
   const fetchItemSuggestions = async () => {
     // 1. Try to load from localStorage first
@@ -966,24 +1084,53 @@ export default function AddPurchasePage() {
 
   // Totals calculation
   const subTotal = calculateTotal();
+  
+  // Calculate original subtotal (before discounts) for proper calculations
+  const originalSubTotal = newPurchase.items.reduce((sum, item) => {
+    if (isFromExpenses) {
+      return sum + (item.amount || 0);
+    } else {
+      const qty = parseFloat(item.qty) || 0;
+      const price = parseFloat(item.price) || 0;
+      return sum + (qty * price);
+    }
+  }, 0);
+  
   let discountValue = 0;
   if (newPurchase.discount && !isNaN(Number(newPurchase.discount))) {
     if (newPurchase.discountType === '%') {
-      discountValue = subTotal * Number(newPurchase.discount) / 100;
+      discountValue = originalSubTotal * Number(newPurchase.discount) / 100;
     } else {
       discountValue = Number(newPurchase.discount);
     }
   }
+  
+  // Calculate total discount from all items
+  const totalItemDiscount = newPurchase.items.reduce((total, item) => {
+    let itemDiscount = 0;
+    if (item.discountPercentage) {
+      const qty = parseFloat(item.qty) || 0;
+      const price = parseFloat(item.price) || 0;
+      itemDiscount = (qty * price * parseFloat(item.discountPercentage)) / 100;
+    } else if (item.discountAmount) {
+      itemDiscount = parseFloat(item.discountAmount) || 0;
+    }
+    return total + itemDiscount;
+  }, 0);
+  
+  // Total discount is item discounts + global discount
+  const totalDiscount = totalItemDiscount + discountValue;
+  
   // Tax calculation
   let taxValue = 0;
   if (newPurchase.tax && !isNaN(Number(newPurchase.tax))) {
     if (newPurchase.taxType === '%') {
-      taxValue = (subTotal - discountValue) * Number(newPurchase.tax) / 100;
+      taxValue = (originalSubTotal - totalDiscount) * Number(newPurchase.tax) / 100;
     } else if (newPurchase.taxType === 'PKR') {
       taxValue = Number(newPurchase.tax);
     }
   }
-  const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
+  const grandTotal = Math.max(0, originalSubTotal - totalDiscount + taxValue);
 
   // Submit
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1017,7 +1164,9 @@ export default function AddPurchasePage() {
             unit: item.unit === 'NONE' ? 'Piece' : item.unit,
             price: Number(item.price),
             amount: Number(item.amount),
-            customUnit: item.customUnit || ''
+            customUnit: item.customUnit || '',
+            discountPercentage: item.discountPercentage || '',
+            discountAmount: item.discountAmount || ''
           })),
         discount: newPurchase.discount || 0,
         discountType: newPurchase.discountType || '%',
@@ -1042,7 +1191,8 @@ export default function AddPurchasePage() {
         // Create expense
         const expenseData = {
           expenseCategory: expenseCategory,
-          party: newPurchase.partyName || 'Unknown',
+          party: tacEnabled && newPurchase.taxPartyName ? newPurchase.taxPartyName : (newPurchase.partyName || 'Unknown'),
+          partyId: tacEnabled && newPurchase.taxPartyId ? newPurchase.taxPartyId : null, // Send party ID if tax is enabled
           items: newPurchase.items
             .filter(item => 
               item.item &&
@@ -1055,10 +1205,12 @@ export default function AddPurchasePage() {
             })),
           totalAmount: grandTotal,
           paymentType: newPurchase.paymentType || 'Cash',
+          receivedAmount: newPurchase.paymentType === 'Credit' ? Number(newPurchase.paid) || 0 : grandTotal,
           expenseDate: newPurchase.billDate || new Date().toISOString().split('T')[0],
           description: newPurchase.description || ''
         };
 
+        console.log('Creating expense with data:', expenseData);
         response = await createExpense(expenseData);
         successMessage = 'Expense created successfully!';
         redirectPath = '/dashboard/expenses';
@@ -1173,24 +1325,57 @@ export default function AddPurchasePage() {
           {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
           <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-6">
             {/* Sticky Header - match sale add page */}
-            <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 flex justify-between items-center px-6 py-4">
-              <h1 className="text-xl md:text-2xl font-bold text-gray-900">{pageTitle}</h1>
-              <button
-                type="button"
-                onClick={() => {
-                  // If came from expenses, redirect back to expenses page
-                  if (isFromExpenses) {
-                    router.push('/dashboard/expenses');
-                  } else {
-                    router.push(redirectTo);
-                  }
-                }}
-                className="text-gray-400 hover:text-gray-600 text-2xl"
-                aria-label="Cancel"
-              >
-                ✕
-              </button>
+            <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 px-6 py-4">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center space-x-6">
+                  <h1 className="text-xl md:text-2xl font-bold text-gray-900">{pageTitle}</h1>
+                  {/* Tax Toggle Button */}
+                  <div className="flex items-center space-x-3">
+                    <span className="text-sm font-medium text-gray-700">Tax</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newTaxEnabled = !tacEnabled;
+                        setTacEnabled(newTaxEnabled);
+                        
+                        // If tax is enabled and we're in expenses mode, set payment type to Credit
+                        if (newTaxEnabled && isFromExpenses) {
+                          setNewPurchase(prev => ({ ...prev, paymentType: 'Credit' }));
+                        }
+                        
+                        console.log('Tax Toggled:', newTaxEnabled);
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                        tacEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span className="sr-only">Toggle Tax</span>
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          tacEnabled ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // If came from expenses, redirect back to expenses page
+                    if (isFromExpenses) {
+                      router.push('/dashboard/expenses');
+                    } else {
+                      router.push(redirectTo);
+                    }
+                  }}
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                  aria-label="Cancel"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
+
             {/* Supplier and Date Section - match sale add page */}
             <form ref={formRef} onSubmit={handleSubmit} className="divide-y divide-gray-200 w-full" onKeyDown={e => {
               // Prevent Enter from submitting (except in textarea)
@@ -1203,7 +1388,7 @@ export default function AddPurchasePage() {
                   {/* Supplier and Phone - Full width for purchase bills */}
                   {isFromExpenses ? (
                     // Expense Category Field for Expenses Page
-                    <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
+                    <div className="grid gap-6 grid-cols-1 md:grid-cols-3">
                       <div>
                         <label className="block text-sm font-medium text-blue-600 mb-2">Expense Category *</label>
                         <div className="relative">
@@ -1308,6 +1493,122 @@ export default function AddPurchasePage() {
                           )}
                         </div>
                       </div>
+                      {/* Middle: Select Party Field for Tax (only show when Tax is ON) */}
+                      {tacEnabled && (
+                        <div>
+                          <label className="block text-sm font-medium text-blue-600 mb-2">Select Party</label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              name="taxPartyName"
+                              value={newPurchase.taxPartyName || ''}
+                              onChange={(e) => {
+                                setNewPurchase(prev => ({ ...prev, taxPartyName: e.target.value }));
+                                // Show suggestions when typing
+                                if (e.target.value.trim()) {
+                                  setShowTaxPartySuggestions(true);
+                                }
+                              }}
+                              onFocus={(event) => {
+                                setShowTaxPartySuggestions(true);
+                                // Set dropdown position
+                                const rect = event.target.getBoundingClientRect();
+                                const style: React.CSSProperties = {
+                                  position: 'absolute',
+                                  top: rect.bottom + window.scrollY + 4,
+                                  left: rect.left + window.scrollX,
+                                  width: rect.width,
+                                  zIndex: 9999,
+                                  maxHeight: '200px',
+                                  overflowY: 'auto' as const
+                                };
+                                setTaxPartyDropdownStyle(style);
+                              }}
+                              onBlur={() => setTimeout(() => {
+                                setShowTaxPartySuggestions(false);
+                                // Clean up dropdown style
+                                setTaxPartyDropdownStyle({});
+                              }, 200)}
+                              className="w-full px-4 py-3 border-2 border-blue-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200"
+                              placeholder="Select Party"
+                              autoComplete="off"
+                              onKeyDown={e => {
+                                if (!showTaxPartySuggestions) return;
+                                const optionsCount = parties.length;
+                                if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }
+                                if (e.key === 'ArrowDown') {
+                                  setTaxPartyDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
+                                } else if (e.key === 'ArrowUp') {
+                                  setTaxPartyDropdownIndex(i => Math.max(i - 1, 0));
+                                } else if (e.key === 'Enter') {
+                                  if (taxPartyDropdownIndex >= 0 && taxPartyDropdownIndex < parties.length) {
+                                    const party = parties[taxPartyDropdownIndex];
+                                    setNewPurchase(prev => ({ ...prev, taxPartyName: party.name, taxPartyId: party._id }));
+                                    setShowTaxPartySuggestions(false);
+                                    // Fetch party's receivable balance for expenses
+                                    if (isFromExpenses) {
+                                      fetchPartyReceivableBalance(party._id);
+                                    }
+                                  }
+                                } else if (e.key === 'Escape') {
+                                  setShowTaxPartySuggestions(false);
+                                }
+                              }}
+                            />
+                            {showTaxPartySuggestions && typeof window !== 'undefined' && ReactDOM.createPortal(
+                              <ul
+                                style={taxPartyDropdownStyle}
+                                className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                                tabIndex={-1}
+                                role="listbox"
+                              >
+                                {parties.length > 0 ? (
+                                  parties
+                                    .filter(party => party.name.toLowerCase().includes((newPurchase.taxPartyName || '').toLowerCase()))
+                                    .map((party, idx) => (
+                                      <li
+                                        key={idx}
+                                        className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors ${taxPartyDropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+                                        onMouseDown={e => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          setNewPurchase(prev => ({ ...prev, taxPartyName: party.name, taxPartyId: party._id }));
+                                          setShowTaxPartySuggestions(false);
+                                          // Clean up dropdown style
+                                          setTaxPartyDropdownStyle({});
+                                          // Fetch party's receivable balance for expenses
+                                          if (isFromExpenses) {
+                                            fetchPartyReceivableBalance(party._id);
+                                          }
+                                        }}
+                                        ref={el => { if (taxPartyDropdownIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
+                                        role="option"
+                                        aria-selected={taxPartyDropdownIndex === idx}
+                                      >
+                                        <div className="flex justify-between items-center">
+                                          <span className="font-medium text-gray-800">{party.name}</span>
+                                          <span className="text-xs text-gray-500 text-blue-600">Party</span>
+                                        </div>
+                                      </li>
+                                    ))
+                                ) : (
+                                  <li className="px-4 py-3 text-center">
+                                    <div className="text-gray-500 text-sm">
+                                      <div className="text-gray-400 mb-1">👥</div>
+                                      <div>No parties found</div>
+                                      <div className="text-xs text-gray-400 mt-1">Create some parties first</div>
+                                    </div>
+                                  </li>
+                                )}
+                              </ul>,
+                              document.body
+                            )}
+                          </div>
+                        </div>
+                      )}
                       {/* Right: Date Field for Expenses */}
                       <div className="flex flex-col gap-4 items-end justify-start">
                         <div>
@@ -1434,7 +1735,7 @@ export default function AddPurchasePage() {
                         </div>
                         {partyBalance !== null && (
                           <div className={`text-xs mt-1 font-semibold ${partyBalance < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                            Balance: PKR {Math.abs(partyBalance).toLocaleString()}
+                            {isFromExpenses ? 'Receivable Balance' : 'Balance'}: PKR {Math.abs(partyBalance).toLocaleString()}
                           </div>
                         )}
                         {formErrors.partyName && <p className="text-xs text-red-500 mt-1">{formErrors.partyName}</p>}
@@ -1504,6 +1805,15 @@ export default function AddPurchasePage() {
                         {!isFromExpenses && <th className="text-left py-3 px-2 font-semibold text-gray-700 w-20">QTY</th>}
                         {!isFromExpenses && <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">UNIT</th>}
                         <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">{isFromExpenses ? 'PRICE' : 'PRICE/UNIT'}</th>
+                        {!isFromExpenses && pageType === 'purchase-bill' && (
+                          <th className="text-left py-3 px-2 font-semibold text-gray-700 w-80">
+                            <div className="grid grid-cols-2 gap-1 text-center">
+                              <div className="col-span-2 text-sm font-semibold">DISCOUNT</div>
+                              <div className="text-xs font-normal text-gray-600 border-r border-gray-300 pr-1">%</div>
+                              <div className="text-xs font-normal text-gray-600 pl-1">AMOUNT</div>
+                            </div>
+                          </th>
+                        )}
                         <th className="text-left py-3 px-2 font-semibold text-gray-700 w-32">AMOUNT</th>
                         <th className="text-left py-3 px-2 font-semibold text-gray-700 w-8"></th>
                       </tr>
@@ -1884,7 +2194,7 @@ export default function AddPurchasePage() {
                                           ...prev,
                                           items: [
                                             ...prev.items,
-                                            { id: Date.now(), item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0 }
+                                            { id: Date.now(), item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0, discountPercentage: '', discountAmount: '' }
                                           ]
                                         }));
                                       }, 100);
@@ -1894,10 +2204,84 @@ export default function AddPurchasePage() {
                                 className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
                               />
                             </td>
+                            {!isFromExpenses && pageType === 'purchase-bill' && (
+                              <td className="py-2 px-2">
+                                <div className="grid grid-cols-2 gap-1">
+                                  <div className="relative">
+                                    <input
+                                      type="number"
+                                      value={item.discountPercentage || ''}
+                                      min={0}
+                                      onChange={e => {
+                                        const value = e.target.value;
+                                        const qty = parseFloat(item.qty) || 1; // Default to 1 if empty
+                                        const price = parseFloat(item.price) || 0;
+                                        const totalAmount = qty * price;
+                                        
+                                        // Calculate amount when percentage changes
+                                        const percentage = parseFloat(value) || 0;
+                                        const calculatedAmount = (totalAmount * percentage) / 100;
+                                        
+                                        // Update both fields simultaneously
+                                        handleItemChange(item.id, 'discountPercentage', value);
+                                        handleItemChange(item.id, 'discountAmount', calculatedAmount.toFixed(2));
+                                      }}
+                                      className="w-full px-2 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all text-center"
+                                      placeholder="0.00"
+                                      autoComplete="off"
+                                    />
+                                  </div>
+                                  <div className="relative">
+                                    <input
+                                      type="number"
+                                      value={item.discountAmount || ''}
+                                      min={0}
+                                      onChange={e => {
+                                        const value = e.target.value;
+                                        const qty = parseFloat(item.qty) || 1; // Default to 1 if empty
+                                        const price = parseFloat(item.price) || 0;
+                                        const totalAmount = qty * price;
+                                        
+                                        // Calculate percentage when amount changes
+                                        const amount = parseFloat(value) || 0;
+                                        const calculatedPercentage = totalAmount > 0 ? (amount / totalAmount) * 100 : 0;
+                                        
+                                        // Update both fields simultaneously
+                                        handleItemChange(item.id, 'discountAmount', value);
+                                        handleItemChange(item.id, 'discountPercentage', calculatedPercentage.toFixed(2));
+                                      }}
+                                      className="w-full px-2 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all text-center"
+                                      placeholder="0.00"
+                                      autoComplete="off"
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+                            )}
                             <td className="py-2 px-2">
                               <span className="text-gray-900 font-semibold">
-                                {isNaN(item.amount) ? '0.00' : item.amount.toFixed(2)}
-                                {!isFromExpenses && (item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? item.unit : '')}
+                                {(() => {
+                                  if (isFromExpenses) {
+                                    return isNaN(item.amount) ? '0.00' : item.amount.toFixed(2);
+                                  } else {
+                                    const qty = parseFloat(item.qty) || 0;
+                                    const price = parseFloat(item.price) || 0;
+                                    const originalAmount = qty * price;
+                                    
+                                    // Calculate discount amount
+                                    let discountAmount = 0;
+                                    if (item.discountPercentage) {
+                                      discountAmount = (originalAmount * parseFloat(item.discountPercentage)) / 100;
+                                    } else if (item.discountAmount) {
+                                      discountAmount = parseFloat(item.discountAmount);
+                                    }
+                                    
+                                    // Final amount after discount
+                                    const finalAmount = Math.max(0, originalAmount - discountAmount);
+                                    
+                                    return `${finalAmount.toFixed(2)} ${item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? item.unit : ''}`;
+                                  }
+                                })()}
                               </span>
                             </td>
                             <td className="py-2 px-2 flex gap-1">
@@ -2077,10 +2461,11 @@ export default function AddPurchasePage() {
                     {/* Payment Type */}
                     <div className="min-w-[280px]">
                       <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                        <span>💳</span> Payment Type
+                        Payment Type
                       </label>
                       <CustomDropdown
                         options={isFromExpenses ? [
+                          ...(tacEnabled ? [{ value: 'Credit', label: 'Credit' }] : []),
                           { value: 'Cash', label: 'Cash' },
                           { value: 'Card', label: 'Card' },
                           { value: 'UPI', label: 'UPI' },
@@ -2097,28 +2482,28 @@ export default function AddPurchasePage() {
                         className="mb-1 w-full"
                         dropdownIndex={paymentTypeDropdownIndex}
                         setDropdownIndex={setPaymentTypeDropdownIndex}
-                        optionsCount={isFromExpenses ? 4 : 5}
+                        optionsCount={isFromExpenses ? (tacEnabled ? 5 : 4) : 5}
                       />
                       
                       {/* Received Amount Field for Credit Purchases */}
-                      {newPurchase.paymentType === 'Credit' && (
+                      {tacEnabled && newPurchase.paymentType === 'Credit' && (
                         <div className="mt-3">
-                          <label className="block text-xs font-medium text-green-700 mb-1">Paid Amount</label>
+                          <label className="block text-xs font-medium text-green-700 mb-1">Received Amount</label>
                           <input
                             type="number"
                             name="paid"
                             value={newPurchase.paid}
                             min={0}
-                            max={subTotal}
+                            max={grandTotal}
                             onChange={e => setNewPurchase(prev => ({ ...prev, paid: e.target.value }))}
                             className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 ${
                               formErrors.paid ? 'border-red-300 bg-red-50 focus:ring-red-200' : 'border-green-200 focus:ring-green-200'
                             }`}
-                            placeholder={`Enter amount paid (max PKR ${subTotal.toFixed(2)})`}
+                            placeholder={`Enter amount received (max PKR ${grandTotal.toFixed(2)})`}
                             onBlur={(e) => {
                               const paidAmount = Number(e.target.value);
-                              if (paidAmount > subTotal) {
-                                setNewPurchase(prev => ({ ...prev, paid: subTotal.toString() }));
+                              if (paidAmount > grandTotal) {
+                                setNewPurchase(prev => ({ ...prev, paid: grandTotal.toString() }));
                                 setToast({ message: 'Paid amount cannot exceed total amount', type: 'error' });
                               }
                             }}
@@ -2139,8 +2524,22 @@ export default function AddPurchasePage() {
                         <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full">
                           <div className="flex justify-between text-lg font-bold text-blue-900">
                             <span>Total Amount</span>
-                            <span>PKR {subTotal.toFixed(2)}</span>
+                            <span>PKR {isFromExpenses ? subTotal.toFixed(2) : originalSubTotal.toFixed(2)}</span>
                           </div>
+                          {/* Credit Information for Expenses */}
+                          {tacEnabled && newPurchase.paymentType === 'Credit' && newPurchase.paid && Number(newPurchase.paid) > 0 && (
+                            <>
+                              <div className="border-t border-blue-200 my-2"></div>
+                              <div className="flex justify-between text-sm text-green-700">
+                                <span>Received Amount</span>
+                                <span>PKR {Number(newPurchase.paid).toFixed(2)}</span>
+                              </div>
+                              <div className="flex justify-between text-sm text-red-700 font-semibold">
+                                <span>Credit Amount</span>
+                                <span>PKR {(subTotal - Number(newPurchase.paid)).toFixed(2)}</span>
+                              </div>
+                            </>
+                          )}
                         </div>
                       ) : (
                         // Full totals for purchases
@@ -2148,11 +2547,19 @@ export default function AddPurchasePage() {
                           <div className="flex flex-col gap-1">
                             <div className="flex justify-between text-xs text-gray-600">
                               <span>Sub Total</span>
-                              <span>PKR {subTotal.toFixed(2)}</span>
+                              <span>PKR {originalSubTotal.toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between text-xs text-gray-600">
-                              <span>Discount</span>
+                              <span>Global Discount</span>
                               <span>- PKR {discountValue.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs text-gray-600">
+                              <span>Item Discounts</span>
+                              <span>- PKR {totalItemDiscount.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs text-gray-600">
+                              <span>Total Discount</span>
+                              <span>- PKR {totalDiscount.toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between text-xs text-gray-600">
                               <span>Tax</span>

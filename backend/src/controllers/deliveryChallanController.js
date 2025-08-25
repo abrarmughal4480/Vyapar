@@ -17,6 +17,18 @@ export const createDeliveryChallan = async (req, res) => {
     }
     const challanNumber = `DC${String(nextNumber).padStart(3, '0')}`;
 
+    // Get customer's current balance before creating delivery challan
+    let customerBalance = 0;
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      const customerDoc = await Party.findOne({ name: data.customerName, user: userId });
+      if (customerDoc) {
+        customerBalance = customerDoc.openingBalance || 0;
+      }
+    } catch (err) {
+      console.error('Failed to get customer balance:', err);
+    }
+
     const deliveryChallan = new DeliveryChallan({
       ...data,
       userId,
@@ -24,6 +36,7 @@ export const createDeliveryChallan = async (req, res) => {
       status: data.status || 'Created',
       challanDate: data.date || new Date(),
       dueDate: data.dueDate || null,
+      partyBalanceAfterTransaction: customerBalance, // For delivery challans, balance remains same
     });
     await deliveryChallan.save();
     res.status(201).json({ success: true, data: deliveryChallan });

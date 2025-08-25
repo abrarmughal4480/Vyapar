@@ -455,7 +455,10 @@ export default function Dashboard() {
       color: businessStats.totalOrdersChange !== undefined ? (businessStats.totalOrdersChange >= 0 ? 'text-blue-600' : 'text-red-600') : 'text-blue-600',
       bgGradient: 'from-blue-500 to-indigo-600',
       bgLight: 'bg-blue-50',
-      trend: businessStats.totalOrdersChange !== undefined ? (businessStats.totalOrdersChange >= 0 ? 'up' : 'down') : 'up'
+      trend: businessStats.totalOrdersChange !== undefined ? (businessStats.totalOrdersChange >= 0 ? 'up' : 'down') : 'up',
+      onClick: () => {
+        router.push('/dashboard/items');
+      },
     },
     {
       title: 'Low Stock Summary',

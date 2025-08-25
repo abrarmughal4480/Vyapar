@@ -380,7 +380,10 @@ export default function ExpensesPage() {
                         PKR {expense.totalAmount.toLocaleString()}
                       </td>
                       <td className="px-4 py-3 text-sm text-right font-medium text-orange-600">
-                        PKR 0
+                        {expense.paymentType === 'Credit' && expense.creditAmount ? 
+                          `PKR ${expense.creditAmount.toLocaleString()}` : 
+                          'PKR 0'
+                        }
                       </td>
                     </tr>
                   ))

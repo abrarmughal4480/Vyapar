@@ -82,12 +82,20 @@ export const createCreditNote = async (req, res) => {
       console.log(`Party found:`, partyDoc ? 'Yes' : 'No');
       
       if (partyDoc) {
+        // Store party's current balance before transaction
+        const partyCurrentBalance = partyDoc.openingBalance || 0;
+        
         // Subtract only the remaining balance (grandTotal - paid) from party balance
         const balanceAmount = creditNote.balance || 0;
-        const previousBalance = partyDoc.openingBalance || 0;
-        partyDoc.openingBalance = previousBalance - balanceAmount;
+        partyDoc.openingBalance = partyCurrentBalance - balanceAmount;
+        
+        // Calculate and update partyBalanceAfterTransaction
+        const partyBalanceAfterTransaction = partyDoc.openingBalance;
+        creditNote.partyBalanceAfterTransaction = partyBalanceAfterTransaction;
+        await creditNote.save();
+        
         await partyDoc.save();
-        console.log(`Updated party balance: ${creditNote.partyName}, Previous: ${previousBalance}, New: ${partyDoc.openingBalance}, Deducted: ${balanceAmount}`);
+        console.log(`Updated party balance: ${creditNote.partyName}, Previous: ${partyCurrentBalance}, New: ${partyDoc.openingBalance}, Deducted: ${balanceAmount}`);
         // Clear all cache for this user after party balance update
         clearAllCacheForUser(userId);
         console.log(`Cleared cache for user: ${userId}`);

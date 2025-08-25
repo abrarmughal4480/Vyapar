@@ -178,7 +178,7 @@ const BillWiseProfitPage = () => {
         {/* Summary Section */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-2 mb-2">
           <div className="text-sm font-bold">
-            Total Sale Amount: <span className="text-blue-700">{formatCurrency(totalSaleAmount)}</span>
+            Total Sale Amount (After Discounts): <span className="text-blue-700">{formatCurrency(totalSaleAmount)}</span>
           </div>
           <div className="text-sm font-bold">
             Total Profit(+)/Loss(-): {netProfit === 0 ? (
@@ -202,7 +202,7 @@ const BillWiseProfitPage = () => {
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Date</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Ref No</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Party</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Total Sale Amount</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Total Sale Amount (After Discounts)</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Profit / Loss</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Details</th>
               </tr>
@@ -210,11 +210,11 @@ const BillWiseProfitPage = () => {
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-gray-500 text-sm font-medium">Loading...</td>
+                  <td colSpan={8} className="px-4 py-6 text-center text-gray-500 text-sm font-medium">Loading...</td>
                 </tr>
               ) : filteredBills.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-gray-500 text-sm font-medium">No bills found.</td>
+                  <td colSpan={8} className="px-4 py-6 text-center text-gray-500 text-sm font-medium">No bills found.</td>
                 </tr>
               ) : (
                 filteredBills.map((bill, idx) => (
@@ -267,7 +267,7 @@ const BillWiseProfitPage = () => {
             <div className="mb-3 text-sm">
               <p><strong>Party:</strong> {selectedBill.party}</p>
               <p><strong>Date:</strong> {selectedBill.date ? new Date(selectedBill.date).toLocaleDateString('en-GB') : '-'}</p>
-              <p><strong>Total Sale Amount:</strong> {formatCurrency(selectedBill.totalSaleAmount)}</p>
+              <p><strong>Total Sale Amount (After Item Discounts):</strong> {formatCurrency(selectedBill.totalSaleAmount)}</p>
               <p><strong>Total Profit/Loss:</strong> {selectedBill.profit > 0 ? <span className="text-green-600">{formatCurrency(selectedBill.profit)}</span> : <span className="text-red-600">{formatCurrency(selectedBill.profit)}</span>}</p>
             </div>
 
@@ -280,6 +280,8 @@ const BillWiseProfitPage = () => {
                       <tr className="bg-gray-50">
                         <th className="border px-3 py-1.5 text-left text-xs">Item</th>
                         <th className="border px-3 py-1.5 text-center text-xs">Qty</th>
+                        <th className="border px-3 py-1.5 text-center text-xs">Original Price</th>
+                        <th className="border px-3 py-1.5 text-center text-xs">Discount</th>
                         <th className="border px-3 py-1.5 text-center text-xs">Sale Price</th>
                         <th className="border px-3 py-1.5 text-center text-xs">Purchase Price</th>
                         <th className="border px-3 py-1.5 text-center text-xs">Profit/Loss</th>
@@ -290,7 +292,9 @@ const BillWiseProfitPage = () => {
                         <tr key={idx} className="border-b">
                           <td className="border px-3 py-1.5 text-xs">{item.item}</td>
                           <td className="border px-3 py-1.5 text-center text-xs">{item.qty}</td>
-                          <td className="border px-3 py-1.5 text-center text-xs">{formatCurrency(item.salePrice)}</td>
+                          <td className="border px-3 py-1.5 text-center text-xs">{formatCurrency(item.originalPrice)}</td>
+                          <td className="border px-3 py-1.5 text-center text-xs text-red-600">-{formatCurrency(item.itemDiscount)}</td>
+                          <td className="border px-3 py-1.5 text-center text-xs font-semibold">{formatCurrency(item.salePrice)}</td>
                           <td className="border px-3 py-1.5 text-center text-xs">{formatCurrency(item.purchasePrice)}</td>
                           <td className={`border px-3 py-1.5 text-center text-xs ${item.itemProfit > 0 ? 'text-green-600' : 'text-red-600'}`}>
                             {formatCurrency(item.itemProfit)}

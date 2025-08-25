@@ -85,31 +85,51 @@ export const createPurchase = async (req, res) => {
       }
     }
     
-    // Calculate subTotal
-    const subTotal = items.reduce((sum, item) => sum + (item.amount || 0), 0);
+    // Calculate original subtotal (before discounts) and final subtotal
+    const originalSubTotal = items.reduce((sum, item) => {
+      const qty = Number(item.qty) || 0;
+      const price = Number(item.price) || 0;
+      return sum + (qty * price);
+    }, 0);
+    
+    // Calculate item-level discounts
+    const totalItemDiscount = items.reduce((total, item) => {
+      let itemDiscount = 0;
+      if (item.discountPercentage) {
+        const qty = Number(item.qty) || 0;
+        const price = Number(item.price) || 0;
+        itemDiscount = (qty * price * Number(item.discountPercentage)) / 100;
+      } else if (item.discountAmount) {
+        itemDiscount = Number(item.discountAmount) || 0;
+      }
+      return total + itemDiscount;
+    }, 0);
     
     // Calculate discountValue
     let discountValue = 0;
     if (req.body.discount && !isNaN(Number(req.body.discount))) {
       if (req.body.discountType === '%') {
-        discountValue = subTotal * Number(req.body.discount) / 100;
+        discountValue = originalSubTotal * Number(req.body.discount) / 100;
       } else {
         discountValue = Number(req.body.discount);
       }
     }
+    
+    // Total discount is item discounts + global discount
+    const totalDiscount = totalItemDiscount + discountValue;
     
     // Calculate taxValue
     let taxType = req.body.taxType || '%';
     let tax = req.body.tax || 0;
     let taxValue = 0;
     if (taxType === '%') {
-      taxValue = (subTotal - discountValue) * Number(tax) / 100;
+      taxValue = (originalSubTotal - totalDiscount) * Number(tax) / 100;
     } else if (taxType === 'PKR') {
       taxValue = Number(tax);
     }
     
     // Calculate grandTotal
-    const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
+    const grandTotal = Math.max(0, originalSubTotal - totalDiscount + taxValue);
     
     // Generate bill number for this user (unique per user)
     let billNo = 'PO001';
@@ -131,7 +151,7 @@ export const createPurchase = async (req, res) => {
     const purchase = new Purchase({
       ...req.body,
       userId,
-      discountValue,
+      discountValue: totalDiscount, // Use total discount (item + global)
       taxType,
       tax,
       taxValue,
@@ -161,14 +181,26 @@ export const createPurchase = async (req, res) => {
       const Party = (await import('../models/parties.js')).default;
       const supplierDoc = await Party.findOne({ name: purchase.supplierName, user: userId });
       if (supplierDoc) {
+        // Store supplier's current balance before transaction
+        const supplierCurrentBalance = supplierDoc.openingBalance || 0;
+        
         // Only update balance for credit payments (cash payments are 100% paid, no balance change needed)
         if (req.body.paymentType !== 'Cash') {
           // For Credit payment: decrease by unpaid amount (grandTotal - paid)
           const unpaidAmount = purchase.grandTotal - (purchase.paid || 0);
-          supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) - unpaidAmount;
+          supplierDoc.openingBalance = supplierCurrentBalance - unpaidAmount;
+          
+          // Calculate and update partyBalanceAfterTransaction
+          const partyBalanceAfterTransaction = supplierDoc.openingBalance;
+          purchase.partyBalanceAfterTransaction = partyBalanceAfterTransaction;
+          await purchase.save();
+          
           await supplierDoc.save();
           console.log(`Updated supplier ${purchase.supplierName} balance: -${unpaidAmount} (credit payment, unpaid amount)`);
         } else {
+          // For cash payments, set partyBalanceAfterTransaction to current balance (no change)
+          purchase.partyBalanceAfterTransaction = supplierCurrentBalance;
+          await purchase.save();
           console.log(`No balance update needed for ${purchase.supplierName} (cash payment - 100% paid)`);
         }
       }
@@ -191,7 +223,40 @@ export const getPurchasesByUser = async (req, res) => {
     const { userId } = req.params;
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
     const purchases = await Purchase.find({ userId }).sort({ createdAt: -1 });
-    res.json({ success: true, purchases });
+    
+    // Calculate actual purchase amounts after item-level discounts
+    const purchasesWithActualAmounts = purchases.map(purchase => {
+      const purchaseObj = purchase.toObject();
+      if (Array.isArray(purchaseObj.items)) {
+        let actualPurchaseAmount = 0;
+        purchaseObj.items = purchaseObj.items.map(item => {
+          const originalAmount = (item.qty || 0) * (item.price || 0);
+          let itemDiscount = 0;
+          
+          if (item.discountPercentage) {
+            itemDiscount = (originalAmount * parseFloat(item.discountPercentage)) / 100;
+          } else if (item.discountAmount) {
+            itemDiscount = parseFloat(item.discountAmount) || 0;
+          }
+          
+          const actualAmount = originalAmount - itemDiscount;
+          actualPurchaseAmount += actualAmount;
+          
+          return {
+            ...item,
+            originalAmount,
+            itemDiscount,
+            actualAmount
+          };
+        });
+        
+        // Add the calculated actual purchase amount
+        purchaseObj.actualPurchaseAmount = actualPurchaseAmount;
+      }
+      return purchaseObj;
+    });
+    
+    res.json({ success: true, purchases: purchasesWithActualAmounts });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

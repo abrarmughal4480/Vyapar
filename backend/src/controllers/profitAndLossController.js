@@ -38,13 +38,47 @@ export const getProfitAndLoss = async (req, res) => {
     ]);
     const creditNoteTotal = creditNotes[0]?.total || 0;
 
-    // Sales
+    // Sales - Calculate actual sale amounts after item-level discounts
     const sales = await Sale.aggregate([
       { $match: { userId: objectUserId, ...(from || to ? { createdAt: dateFilter } : {}) } },
       {
+        $addFields: {
+          // Calculate actual sale amount for each item (after discounts)
+          itemsWithActualPrices: {
+            $map: {
+              input: '$items',
+              as: 'item',
+              in: {
+                $let: {
+                  vars: {
+                    originalPrice: { $multiply: ['$$item.qty', '$$item.price'] },
+                    itemDiscount: {
+                      $cond: {
+                        if: { $ne: ['$$item.discountPercentage', ''] },
+                        then: { $divide: [{ $multiply: [{ $multiply: ['$$item.qty', '$$item.price'] }, { $toDouble: '$$item.discountPercentage' }] }, 100] },
+                        else: {
+                          $cond: {
+                            if: { $ne: ['$$item.discountAmount', ''] },
+                            then: { $toDouble: '$$item.discountAmount' },
+                            else: 0
+                          }
+                        }
+                      }
+                    }
+                  },
+                  in: {
+                    $subtract: ['$$originalPrice', '$$itemDiscount']
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      {
         $group: {
           _id: null,
-          total: { $sum: '$grandTotal' },
+          total: { $sum: { $sum: '$itemsWithActualPrices' } },
           saleFA: { $sum: 0 }, // Placeholder for Sale FA
           creditNote: { $sum: 0 }, // Placeholder for Credit Note
           debitNote: { $sum: 0 }, // Placeholder for Debit Note
@@ -56,13 +90,47 @@ export const getProfitAndLoss = async (req, res) => {
     ]);
     const saleTotal = sales[0]?.total || 0;
 
-    // Purchases
+    // Purchases - Calculate actual purchase amounts after item-level discounts
     const purchases = await Purchase.aggregate([
       { $match: { userId: objectUserId, ...(from || to ? { createdAt: dateFilter } : {}) } },
       {
+        $addFields: {
+          // Calculate actual purchase amount for each item (after discounts)
+          itemsWithActualPrices: {
+            $map: {
+              input: '$items',
+              as: 'item',
+              in: {
+                $let: {
+                  vars: {
+                    originalPrice: { $multiply: ['$$item.qty', '$$item.price'] },
+                    itemDiscount: {
+                      $cond: {
+                        if: { $ne: ['$$item.discountPercentage', ''] },
+                        then: { $divide: [{ $multiply: [{ $multiply: ['$$item.qty', '$$item.price'] }, { $toDouble: '$$item.discountPercentage' }] }, 100] },
+                        else: {
+                          $cond: {
+                            if: { $ne: ['$$item.discountAmount', ''] },
+                            then: { $toDouble: '$$item.discountAmount' },
+                            else: 0
+                          }
+                        }
+                      }
+                    }
+                  },
+                  in: {
+                    $subtract: ['$$originalPrice', '$$itemDiscount']
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      {
         $group: {
           _id: null,
-          total: { $sum: '$grandTotal' },
+          total: { $sum: { $sum: '$itemsWithActualPrices' } },
           purchaseFA: { $sum: 0 }, // Placeholder for Purchase FA
         }
       }

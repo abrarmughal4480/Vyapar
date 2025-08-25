@@ -55,7 +55,14 @@ export const createPaymentOut = async (req, res) => {
       const Party = (await import('../models/parties.js')).default;
       const supplierDoc = await Party.findOne({ name: purchase.supplierName, user: userId });
       if (supplierDoc) {
-        supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + amount;
+        const supplierCurrentBalance = supplierDoc.openingBalance || 0;
+        supplierDoc.openingBalance = supplierCurrentBalance + amount;
+        
+        // Calculate and update partyBalanceAfterTransaction for payment out
+        const partyBalanceAfterTransaction = supplierDoc.openingBalance;
+        paymentOut.partyBalanceAfterTransaction = partyBalanceAfterTransaction;
+        await paymentOut.save();
+        
         await supplierDoc.save();
       }
     } catch (err) {

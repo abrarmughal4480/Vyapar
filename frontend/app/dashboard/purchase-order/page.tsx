@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import TableActionMenu from '../../components/TableActionMenu';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { getCurrentUserInfo, canEditData, canDeleteData, canAddData } from '../../../lib/roleAccessControl';
+import { useSidebar } from '../../contexts/SidebarContext';
 
 // Purchase Form Page Component
 function PurchaseFormPage({ onClose, onSave }: { onClose: () => void; onSave?: (data: any) => void }) {
@@ -1112,6 +1113,26 @@ export default function PurchaseOrderPage() {
   const [orderToDelete, setOrderToDelete] = useState<any | null>(null);
   const [userInfo, setUserInfo] = useState<any>(null);
   const [isClient, setIsClient] = useState(false);
+  
+  // Import sidebar context for auto-collapse
+  const { setIsCollapsed } = useSidebar();
+  const [wasSidebarCollapsed, setWasSidebarCollapsed] = useState(false);
+
+  // Auto-collapse sidebar when page opens and restore when closing
+  useEffect(() => {
+    // Store current sidebar state and collapse it
+    const currentSidebarState = document.body.classList.contains('sidebar-collapsed') || 
+                               document.documentElement.classList.contains('sidebar-collapsed');
+    setWasSidebarCollapsed(currentSidebarState);
+    
+    // Collapse sidebar for better form experience
+    setIsCollapsed(true);
+    
+    // Restore sidebar state when component unmounts
+    return () => {
+      setIsCollapsed(wasSidebarCollapsed);
+    };
+  }, [setIsCollapsed, wasSidebarCollapsed]);
 
   // Get current user info for role-based access
   useEffect(() => {

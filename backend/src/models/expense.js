@@ -9,14 +9,18 @@ const ExpenseSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   expenseCategory: { type: String, required: true },
   party: { type: String, required: true },
+  partyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Party' }, // Reference to party
   items: { type: [ExpenseItemSchema], required: true },
   totalAmount: { type: Number, required: true },
-  paymentType: { type: String, enum: ['Cash', 'Card', 'UPI', 'Cheque'], required: true },
+  paymentType: { type: String, enum: ['Cash', 'Card', 'UPI', 'Cheque', 'Credit'], required: true },
+  receivedAmount: { type: Number, default: 0 }, // Amount received for credit payments
+  creditAmount: { type: Number, default: 0 }, // Remaining amount to be paid
   expenseDate: { type: Date, required: true },
   expenseNumber: { type: String, required: true },
   description: { type: String },
   createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  updatedAt: { type: Date, default: Date.now },
+  partyBalanceAfterTransaction: { type: Number, default: 0 },
 });
 
 // Create compound index for userId + expenseNumber to ensure uniqueness per user

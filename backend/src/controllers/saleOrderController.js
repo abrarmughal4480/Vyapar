@@ -17,6 +17,18 @@ export const createSaleOrder = async (req, res) => {
     }
     const orderNumber = `SO${String(nextNumber).padStart(3, '0')}`;
 
+    // Get customer's current balance before creating sale order
+    let customerBalance = 0;
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      const customerDoc = await Party.findOne({ name: data.customerName, user: userId });
+      if (customerDoc) {
+        customerBalance = customerDoc.openingBalance || 0;
+      }
+    } catch (err) {
+      console.error('Failed to get customer balance:', err);
+    }
+
     const saleOrder = new SaleOrder({
       ...data,
       userId,
@@ -25,6 +37,7 @@ export const createSaleOrder = async (req, res) => {
       status: data.status || 'Draft',
       orderDate: data.orderDate || new Date(),
       dueDate: data.dueDate || null,
+      partyBalanceAfterTransaction: customerBalance, // For sale orders, balance remains same
     });
     await saleOrder.save();
     res.status(201).json({ success: true, data: saleOrder });

@@ -2,9 +2,16 @@ import api from './api';
 
 // Purchase Orders API for frontend
 
-export async function getPurchaseOrders(userId: string) {
-  const res = await fetch(`http://localhost:4000/purchase-orders/${userId}`);
-  return res.json();
+export async function getPurchaseOrders(token: string) {
+  try {
+    const { data } = await api.get('/api/purchase-orders', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return data;
+  } catch (error) {
+    console.error('Error fetching purchase orders:', error);
+    return { success: false, data: [] };
+  }
 }
 
 export async function addPurchaseOrder(userId: string, purchaseOrder: any) {

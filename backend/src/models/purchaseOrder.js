@@ -20,6 +20,7 @@ const PurchaseOrderSchema = new mongoose.Schema({
   tax: { type: Number, default: 0 },
   total: { type: Number, default: 0 },
   balance: { type: Number, default: 0 },
+  partyBalanceAfterTransaction: { type: Number, default: 0 },
   status: { type: String, enum: ['Draft', 'Created', 'Completed', 'Cancelled'], default: 'Draft' },
   orderDate: { type: Date, default: null },
   dueDate: { type: Date, default: null },

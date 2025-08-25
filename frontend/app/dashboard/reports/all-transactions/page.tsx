@@ -7,6 +7,7 @@ import { getSalesByUser } from '../../../../http/sales';
 import { getPurchasesByUser, getPayments, getPaymentOutsByUser } from '../../../../http/purchases';
 import { getCreditNotesByUser } from '../../../../http/credit-notes';
 import { getDeliveryChallans } from '../../../../http/deliveryChallan';
+import { getExpenses } from '../../../../http/expenses';
 
 export default function AllTransactionsPage() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -33,13 +34,14 @@ export default function AllTransactionsPage() {
           throw new Error('User ID not found in token. Please login again.');
         }
         // Fetch all data with error handling
-        const [salesRes, purchasesRes, creditNotesRes, deliveryChallansRes, paymentsRes, paymentOutsRes] = await Promise.allSettled([
+        const [salesRes, purchasesRes, creditNotesRes, deliveryChallansRes, paymentsRes, paymentOutsRes, expensesRes] = await Promise.allSettled([
           getSalesByUser(userId, token),
           getPurchasesByUser(userId, token),
           getCreditNotesByUser(userId, token),
           getDeliveryChallans(token),
           getPayments(token),
           getPaymentOutsByUser(userId, token),
+          getExpenses(),
         ]);
         
         // Log any failed requests for debugging
@@ -49,9 +51,10 @@ export default function AllTransactionsPage() {
         if (deliveryChallansRes.status === 'rejected') console.error('Delivery challans fetch failed:', deliveryChallansRes.reason);
         if (paymentsRes.status === 'rejected') console.error('Payments fetch failed:', paymentsRes.reason);
         if (paymentOutsRes.status === 'rejected') console.error('Payment outs fetch failed:', paymentOutsRes.reason);
+        if (expensesRes.status === 'rejected') console.error('Expenses fetch failed:', expensesRes.reason);
         // Map all to unified format
         const sales = (salesRes.status === 'fulfilled' ? (salesRes.value.sales || []) : []).map((s: any) => {
-          const paymentType = s.paymentType || (s.received === s.grandTotal ? 'Cash' : 'Credit');
+          const paymentType = s.paymentType || (s.received === s.actualSaleAmount ? 'Cash' : 'Credit');
           return {
             id: s._id,
             date: s.createdAt?.slice(0, 10) || '',
@@ -59,7 +62,7 @@ export default function AllTransactionsPage() {
             partyName: s.partyName,
             type: 'Sale',
             paymentType: paymentType,
-            amount: s.grandTotal,
+            amount: s.actualSaleAmount || s.grandTotal, // Use actual amount after discounts
             paid: s.received,
             balance: s.balance,
             status: s.balance === 0 ? 'Paid' : (s.received > 0 ? 'Partial' : 'Unpaid'),
@@ -70,11 +73,11 @@ export default function AllTransactionsPage() {
         // This prevents duplicate entries when invoice number is same and type is cash
         const paymentIns = (salesRes.status === 'fulfilled' ? (salesRes.value.sales || []) : [])
           .filter((s: any) => {
-            const paymentType = s.paymentType || (s.received === s.grandTotal ? 'Cash' : 'Credit');
+            const paymentType = s.paymentType || (s.received === (s.actualSaleAmount || s.grandTotal) ? 'Cash' : 'Credit');
             return s.received && s.received > 0 && paymentType !== 'Cash';
           })
           .map((s: any) => {
-            const paymentType = s.paymentType || (s.received === s.grandTotal ? 'Cash' : 'Credit');
+            const paymentType = s.paymentType || (s.received === (s.actualSaleAmount || s.grandTotal) ? 'Cash' : 'Credit');
             return {
               id: s._id + '-paymentin',
               date: s.updatedAt?.slice(0, 10) || s.createdAt?.slice(0, 10) || '',
@@ -90,7 +93,7 @@ export default function AllTransactionsPage() {
             };
           });
         const purchases = (purchasesRes.status === 'fulfilled' ? (purchasesRes.value.purchases || []) : []).map((p: any) => {
-          const paymentType = p.paymentType || (p.paid === p.grandTotal ? 'Cash' : 'Credit');
+          const paymentType = p.paymentType || (p.paid === p.actualPurchaseAmount ? 'Cash' : 'Credit');
           return {
             id: p._id,
             date: p.createdAt?.slice(0, 10) || '',
@@ -98,7 +101,7 @@ export default function AllTransactionsPage() {
             partyName: p.supplierName,
             type: 'Purchase',
             paymentType: paymentType,
-            amount: p.grandTotal,
+            amount: p.actualPurchaseAmount || p.grandTotal, // Use actual amount after discounts
             paid: p.paid,
             balance: p.balance,
             status: p.balance === 0 ? 'Paid' : (p.paid > 0 ? 'Partial' : 'Unpaid'),
@@ -110,11 +113,11 @@ export default function AllTransactionsPage() {
         // This prevents duplicate entries when bill number is same and type is cash
         const purchasePaymentOuts = (purchasesRes.status === 'fulfilled' ? (purchasesRes.value.purchases || []) : [])
           .filter((p: any) => {
-            const paymentType = p.paymentType || (p.paid === p.grandTotal ? 'Cash' : 'Credit');
+            const paymentType = p.paymentType || (p.paid === (p.actualPurchaseAmount || p.grandTotal) ? 'Cash' : 'Credit');
             return p.paid && p.paid > 0 && paymentType !== 'Cash';
           })
           .map((p: any) => {
-            const paymentType = p.paymentType || (p.paid === p.grandTotal ? 'Cash' : 'Credit');
+            const paymentType = p.paymentType || (p.paid === (p.actualPurchaseAmount || p.grandTotal) ? 'Cash' : 'Credit');
             return {
               id: p._id + '-paymentout',
               date: p.updatedAt?.slice(0, 10) || p.createdAt?.slice(0, 10) || '',
@@ -155,6 +158,27 @@ export default function AllTransactionsPage() {
           status: '-',
           firm: d.firmName || 'Vyapar Pvt Ltd',
         }));
+
+        // Map expenses
+        const expenses = (expensesRes.status === 'fulfilled' ? (expensesRes.value.data || []) : []).map((e: any) => {
+          // Determine if this is a loss (unknown party) or receivable (known party)
+          const isLoss = !e.partyId || e.party === 'Unknown';
+          const partyName = isLoss ? 'Unknown' : e.party;
+          
+          return {
+            id: e._id,
+            date: e.expenseDate?.slice(0, 10) || e.createdAt?.slice(0, 10) || '',
+            ref: e.expenseNumber || e._id,
+            partyName: partyName,
+            type: isLoss ? 'Expense' : 'Expense',
+            paymentType: e.paymentType || 'Cash',
+            amount: e.totalAmount,
+            paid: e.receivedAmount || e.totalAmount,
+            balance: e.creditAmount || 0,
+            status: e.creditAmount > 0 ? 'Credit' : 'Paid',
+            firm: 'Vyapar Pvt Ltd',
+          };
+        });
         // Filter out Payment Out entries when payment type is cash to avoid duplicates
         const payments = (paymentsRes.status === 'fulfilled' ? (paymentsRes.value.payments || []) : [])
           .filter((p: any) => p.paymentType !== 'Cash')
@@ -198,6 +222,7 @@ export default function AllTransactionsPage() {
           ...purchasePaymentOuts,
           ...creditNotes,
           ...deliveryChallans,
+          ...expenses,
           ...payments,
           ...standalonePaymentOuts
         ];

@@ -6,7 +6,9 @@ const itemSchema = new mongoose.Schema({
   unit: String,
   customUnit: String,
   price: Number,
-  amount: Number
+  amount: Number,
+  discountPercentage: { type: String, default: '' },
+  discountAmount: { type: String, default: '' }
 }, { _id: false });
 
 const quotationSchema = new mongoose.Schema({
@@ -25,6 +27,7 @@ const quotationSchema = new mongoose.Schema({
   discount: { type: Number, default: 0 },
   description: { type: String },
   customerBalance: { type: Number, default: 0 },
+  partyBalanceAfterTransaction: { type: Number, default: 0 },
   convertedToSale: { type: String },
   convertedToSaleOrder: { type: String },
 }, { timestamps: true });

@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { getBillWiseProfit } from '@/http/sales';
 import { fetchPartiesByUserId } from '@/http/parties';
+import { getExpenses } from '@/http/expenses';
 
 const dateRanges = [
   { value: 'All', label: 'All Time' },
@@ -42,10 +43,16 @@ const PartyWiseProfitAndLossPage = () => {
           });
         }
         setPartyPhones(phoneMap);
-        // Fetch bill-wise profit
-        const res = await getBillWiseProfit(token);
+        // Fetch bill-wise profit and expenses
+        const [res, expensesRes] = await Promise.all([
+          getBillWiseProfit(token),
+          getExpenses()
+        ]);
+        
         if (res && res.bills) {
           const partyMap: Record<string, { party: string, totalSale: number, totalProfit: number, billCount: number, bills: any[] }> = {};
+          
+          // Process sales bills
           res.bills.forEach((bill: any) => {
             const party = bill.party || 'Unknown';
             if (!partyMap[party]) {
@@ -56,6 +63,37 @@ const PartyWiseProfitAndLossPage = () => {
             partyMap[party].billCount += 1;
             partyMap[party].bills.push(bill);
           });
+          
+          // Process expenses
+          if (expensesRes && expensesRes.success && expensesRes.data) {
+            expensesRes.data.forEach((expense: any) => {
+              const party = expense.party || 'Unknown';
+              const isLoss = !expense.partyId || expense.party === 'Unknown';
+              
+              // Skip expenses with unknown party (business losses) - don't show them as parties
+              if (isLoss) {
+                return; // Skip this expense, don't add to partyMap
+              }
+              
+              if (!partyMap[party]) {
+                partyMap[party] = { party, totalSale: 0, totalProfit: 0, billCount: 0, bills: [] };
+              }
+              
+              // For expenses with known parties: no sale amount, no profit impact (just track for party)
+              partyMap[party].totalSale += 0; // No sale for expenses
+              partyMap[party].totalProfit += 0; // No profit/loss impact for known party expenses
+              partyMap[party].billCount += 1;
+              partyMap[party].bills.push({
+                ...expense,
+                type: 'Expense',
+                totalSaleAmount: 0,
+                profit: 0, // No profit/loss for known party expenses
+                isExpense: true,
+                isLoss: false
+              });
+            });
+          }
+          
           setData(Object.values(partyMap));
         } else {
           setData([]);

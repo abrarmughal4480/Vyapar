@@ -148,12 +148,26 @@ export const createQuotation = async (req, res) => {
         throw new Error('Failed to generate quotation number');
       }
       
+      // Get customer's current balance before creating quotation
+      let customerBalance = 0;
+      try {
+        const Party = (await import('../models/parties.js')).default;
+        const customerDoc = await Party.findOne({ name: req.body.customerName, user: userId });
+        if (customerDoc) {
+          customerBalance = customerDoc.openingBalance || 0;
+        }
+      } catch (err) {
+        console.error('Failed to get customer balance:', err);
+      }
+
       const quotation = new Quotation({
         ...req.body,
         userId,
         quotationNo,
         quotationNumber: quotationNo, // Set both fields to same value
         status: 'Quotation Open',
+        customerBalance,
+        partyBalanceAfterTransaction: customerBalance, // For quotations, balance remains same
       });
       await quotation.save();
       console.log('Quotation saved successfully:', quotation._id);

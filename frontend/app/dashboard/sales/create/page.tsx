@@ -8,6 +8,7 @@ import { getCustomerParties, getPartyBalance } from '../../../../http/parties'
 import { getUserItems } from '../../../../http/items'
 import ReactDOM from 'react-dom'
 import Toast from '../../../components/Toast'
+import { useSidebar } from '../../../contexts/SidebarContext'
 
 // Utility functions for unit conversion
 const getUnitDisplay = (unit: any) => {
@@ -158,6 +159,26 @@ export default function CreateSalesOrderPage() {
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  
+  // Import sidebar context for auto-collapse
+  const { setIsCollapsed } = useSidebar();
+  const [wasSidebarCollapsed, setWasSidebarCollapsed] = useState(false);
+
+  // Auto-collapse sidebar when page opens and restore when closing
+  useEffect(() => {
+    // Store current sidebar state and collapse it
+    const currentSidebarState = document.body.classList.contains('sidebar-collapsed') || 
+                               document.documentElement.classList.contains('sidebar-collapsed');
+    setWasSidebarCollapsed(currentSidebarState);
+    
+    // Collapse sidebar for better form experience
+    setIsCollapsed(true);
+    
+    // Restore sidebar state when component unmounts
+    return () => {
+      setIsCollapsed(wasSidebarCollapsed);
+    };
+  }, [setIsCollapsed, wasSidebarCollapsed]);
 
   // Handle quotation data from URL parameters
   useEffect(() => {

@@ -16,7 +16,8 @@ const PaymentOutSchema = new mongoose.Schema({
   category: { type: String, default: 'Purchase Payment Out' },
   status: { type: String, enum: ['Paid', 'Partial', 'Pending'], default: 'Paid' },
   createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  updatedAt: { type: Date, default: Date.now },
+  partyBalanceAfterTransaction: { type: Number, default: 0 },
 });
 
 // Create indexes for efficient querying

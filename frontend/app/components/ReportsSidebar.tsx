@@ -133,7 +133,7 @@ const ReportsSidebar: React.FC<ReportsSidebarProps> = ({ activeTab, onTabChange 
       <Link
         key={item.id}
         href={item.path}
-        className={`group flex items-center space-x-3 px-4 py-3 text-sm transition-all duration-200 border-l-4 hover:bg-blue-50 hover:border-blue-200 ${
+        className={`group flex items-center space-x-2 px-3 py-2 text-xs transition-all duration-200 border-l-4 hover:bg-blue-50 hover:border-blue-200 ${
           isActive 
             ? 'bg-blue-50 border-blue-500 text-blue-700 font-semibold' 
             : 'border-transparent text-gray-700 hover:text-gray-900'
@@ -156,12 +156,12 @@ const ReportsSidebar: React.FC<ReportsSidebarProps> = ({ activeTab, onTabChange 
   };
 
   return (
-    <aside className="w-56 min-h-full bg-white border-r border-gray-200 shadow-sm flex flex-col">
+    <aside className="w-48 min-h-full bg-white border-r border-gray-200 shadow-sm flex flex-col">
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto">
         {/* Transaction Reports Section */}
-        <div className="py-4">
-          <div className="px-4 mb-3">
+        <div className="py-3">
+          <div className="px-3 mb-2">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Transaction Reports
             </h3>
@@ -172,8 +172,8 @@ const ReportsSidebar: React.FC<ReportsSidebarProps> = ({ activeTab, onTabChange 
         </div>
 
         {/* Party Reports Section */}
-        <div className="py-4 border-t border-gray-100">
-          <div className="px-4 mb-3">
+        <div className="py-3 border-t border-gray-100">
+          <div className="px-3 mb-2">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Party Reports
             </h3>
@@ -185,8 +185,8 @@ const ReportsSidebar: React.FC<ReportsSidebarProps> = ({ activeTab, onTabChange 
       </div>
 
       {/* Footer */}
-      <div className="border-t border-gray-200 p-4">
-        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-3">
+      <div className="border-t border-gray-200 p-3">
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-2">
           <div className="flex items-center space-x-2">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
             <span className="text-xs font-medium text-green-700">Reports Updated</span>

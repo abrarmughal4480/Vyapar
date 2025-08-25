@@ -113,28 +113,28 @@ const ProfitAndLossPage = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6" style={{ fontFamily: 'system-ui, Arial, sans-serif' }}>
+    <div className="min-h-screen bg-gray-50 p-3" style={{ fontFamily: 'system-ui, Arial, sans-serif' }}>
       {/* Sticky Header */}
-      <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
-        <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+      <div className="bg-white/80 backdrop-blur-xl rounded-xl shadow-md p-3 mb-4 sticky top-0 z-30 border border-gray-100">
+        <div className="flex flex-col space-y-3 md:flex-row md:items-center md:justify-between md:space-y-0">
           <div className="text-center md:text-left">
-            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Profit and Loss Report</h1>
-            <p className="text-sm text-gray-500 mt-1">View your business profit and loss statement</p>
+            <h1 className="text-lg md:text-xl font-bold text-gray-900">Profit and Loss Report</h1>
+            <p className="text-xs text-gray-500 mt-1">View your business profit and loss statement</p>
           </div>
         </div>
       </div>
 
       {/* Filters Section */}
-      <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-4 md:p-6 mb-6 border border-gray-100 z-[1] flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="bg-white/80 backdrop-blur-xl rounded-xl shadow p-3 mb-4 border border-gray-100 z-[1] flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         {/* Search Bar */}
-        <div className="relative w-full md:w-80">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-lg">🔍</span>
+        <div className="relative w-full md:w-72">
+          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm">🔍</span>
           <input
             type="text"
             placeholder="Search particulars..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-full bg-white/80 shadow focus:ring-2 focus:ring-blue-500 focus:border-blue-500 border border-gray-200 transition-all placeholder-gray-400 text-gray-900"
+            className="w-full pl-8 pr-3 py-2 rounded-lg bg-white/80 shadow focus:ring-2 focus:ring-blue-500 focus:border-blue-500 border border-gray-200 transition-all placeholder-gray-400 text-gray-900 text-sm"
           />
         </div>
         {/* Date Range */}
@@ -143,97 +143,97 @@ const ProfitAndLossPage = () => {
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="px-4 py-2 rounded-full bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[140px]"
+            className="px-3 py-1.5 rounded-lg bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[130px] text-xs"
             placeholder="From Date"
           />
-          <span className="text-gray-500">to</span>
+          <span className="text-gray-500 text-xs">to</span>
           <input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="px-4 py-2 rounded-full bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[140px]"
+            className="px-3 py-1.5 rounded-lg bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[130px] text-xs"
             placeholder="To Date"
           />
         </div>
       </div>
 
       {/* Loading/Error States */}
-      {loading && <div className="text-center py-8 text-blue-600 font-semibold">Loading...</div>}
-      {error && <div className="text-center py-8 text-red-600 font-semibold">{error}</div>}
+      {loading && <div className="text-center py-6 text-blue-600 font-semibold text-sm">Loading...</div>}
+      {error && <div className="text-center py-6 text-red-600 font-semibold text-sm">{error}</div>}
 
       {/* Table Section */}
       {!loading && !error && (
         <div className="w-full">
-          <div className="overflow-x-auto rounded-2xl shadow border border-gray-200 bg-white" style={{ fontFamily: 'system-ui, Arial, sans-serif' }}>
-            <table className="w-full min-w-[600px] text-sm">
+          <div className="overflow-x-auto rounded-xl shadow border border-gray-200 bg-white" style={{ fontFamily: 'system-ui, Arial, sans-serif' }}>
+            <table className="w-full min-w-[600px] text-xs">
               <thead className="sticky top-0 z-10 bg-gray-100">
                 <tr>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Particulars</th>
-                  <th className="text-right py-3 px-4 font-semibold text-gray-700">Amount</th>
+                  <th className="text-left py-2 px-3 font-semibold text-gray-700 text-xs">Particulars</th>
+                  <th className="text-right py-2 px-3 font-semibold text-gray-700 text-xs">Amount</th>
                 </tr>
               </thead>
               <tbody>
                 {/* Operating/Trading Account Section */}
                 <tr>
-                  <td colSpan={2} className="py-2 px-4 bg-blue-50 text-blue-700 font-bold text-base border-b border-blue-200">Operating / Trading Account</td>
+                  <td colSpan={2} className="py-1.5 px-3 bg-blue-50 text-blue-700 font-bold text-sm border-b border-blue-200">Operating / Trading Account</td>
                 </tr>
                 {/* Sales/Income */}
                 {filteredParticulars
                   .filter((p) => ["Sale (+)", "Credit Note (-)", "Sale FA (+)", "Debit Note (+)", "Purchase (-)", "Purchase FA (-)", "Opening Stock (-)", "Closing Stock (+)", "Opening Stock FA (-)", "Closing Stock FA (+)"].includes(p.name))
                   .map((p, idx) => (
                     <tr key={p.name} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                      <td className="py-3 px-4 border-b border-gray-100">{p.name}</td>
-                      <td className="py-3 px-4 border-b border-gray-100 text-right">{formatAmount(p.amount)}</td>
+                      <td className="py-2 px-3 border-b border-gray-100 text-xs">{p.name}</td>
+                      <td className="py-2 px-3 border-b border-gray-100 text-right text-xs">{formatAmount(p.amount)}</td>
                     </tr>
                   ))}
                 {/* Direct Expenses Subheading */}
                 <tr>
-                  <td colSpan={2} className="py-2 px-4 bg-gray-100 text-gray-700 font-semibold border-b border-gray-200">Direct Expenses</td>
+                  <td colSpan={2} className="py-1.5 px-3 bg-gray-100 text-gray-700 font-semibold border-b border-gray-200 text-xs">Direct Expenses</td>
                 </tr>
                 {filteredParticulars
                   .filter((p) => ["Direct Expenses(-)", "Other Direct Expenses (-)", "Payment-in Discount (-)"].includes(p.name))
                   .map((p, idx) => (
                     <tr key={p.name} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                      <td className="py-3 px-4 border-b border-gray-100">{p.name}</td>
-                      <td className="py-3 px-4 border-b border-gray-100 text-right">{formatAmount(p.amount)}</td>
+                      <td className="py-2 px-3 border-b border-gray-100 text-xs">{p.name}</td>
+                      <td className="py-2 px-3 border-b border-gray-100 text-right text-xs">{formatAmount(p.amount)}</td>
                     </tr>
                   ))}
                 {/* Tax Payable Subheading */}
                 <tr>
-                  <td colSpan={2} className="py-2 px-4 bg-gray-100 text-gray-700 font-semibold border-b border-gray-200">Tax Payable</td>
+                  <td colSpan={2} className="py-1.5 px-3 bg-gray-100 text-gray-700 font-semibold border-b border-gray-200 text-xs">Tax Payable</td>
                 </tr>
                 {filteredParticulars
                   .filter((p) => ["Tax Payable (-)", "TCS Payable (-)", "TDS Payable (-)"].includes(p.name))
                   .map((p, idx) => (
                     <tr key={p.name} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                      <td className="py-3 px-4 border-b border-gray-100">{p.name}</td>
-                      <td className="py-3 px-4 border-b border-gray-100 text-right">{formatAmount(p.amount)}</td>
+                      <td className="py-2 px-3 border-b border-gray-100 text-xs">{p.name}</td>
+                      <td className="py-2 px-3 border-b border-gray-100 text-right text-xs">{formatAmount(p.amount)}</td>
                     </tr>
                   ))}
                 {/* Tax Receivable Subheading */}
                 <tr>
-                  <td colSpan={2} className="py-2 px-4 bg-gray-100 text-gray-700 font-semibold border-b border-gray-200">Tax Receivable</td>
+                  <td colSpan={2} className="py-1.5 px-3 bg-gray-100 text-gray-700 font-semibold border-b border-gray-200 text-xs">Tax Receivable</td>
                 </tr>
                 {filteredParticulars
                   .filter((p) => ["Tax Receivable (+)", "TCS Receivable (+)", "TDS Receivable (+)"].includes(p.name))
                   .map((p, idx) => (
                     <tr key={p.name} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                      <td className="py-3 px-4 border-b border-gray-100">{p.name}</td>
-                      <td className="py-3 px-4 border-b border-gray-100 text-right">{formatAmount(p.amount)}</td>
+                      <td className="py-2 px-3 border-b border-gray-100 text-xs">{p.name}</td>
+                      <td className="py-2 px-3 border-b border-gray-200 text-right text-xs">{formatAmount(p.amount)}</td>
                     </tr>
                   ))}
                 {/* Gross Profit Row */}
                 <tr>
-                  <td className="py-3 px-4 border-b border-gray-200 font-bold">Gross Profit</td>
+                  <td className="py-2 px-3 border-b border-gray-200 font-bold text-xs">Gross Profit</td>
                   <td
-                    className={`py-3 px-4 border-b border-gray-200 text-right font-bold ${grossProfit < 0 ? 'text-red-600' : grossProfit > 0 ? 'text-green-600' : ''}`}
+                    className={`py-2 px-3 border-b border-gray-200 text-right font-bold text-xs ${grossProfit < 0 ? 'text-red-600' : grossProfit > 0 ? 'text-green-600' : ''}`}
                   >
                     {formatAmount(grossProfit)}
                   </td>
                 </tr>
                 {/* Profit & Loss Account Section */}
                 <tr>
-                  <td colSpan={2} className="py-2 px-4 bg-green-50 text-green-700 font-bold text-base border-b border-green-200">Profit & Loss Account</td>
+                  <td colSpan={2} className="py-1.5 px-3 bg-green-50 text-green-700 font-bold text-sm border-b border-green-200">Profit & Loss Account</td>
                 </tr>
                 {filteredParticulars
                   .filter((p) => [
@@ -241,15 +241,15 @@ const ProfitAndLossPage = () => {
                   ].includes(p.name))
                   .map((p, idx) => (
                     <tr key={p.name} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                      <td className="py-3 px-4 border-b border-gray-100">{p.name}</td>
-                      <td className="py-3 px-4 border-b border-gray-100 text-right">{formatAmount(p.amount)}</td>
+                      <td className="py-2 px-3 border-b border-gray-100 text-xs">{p.name}</td>
+                      <td className="py-2 px-3 border-b border-gray-100 text-right text-xs">{formatAmount(p.amount)}</td>
                     </tr>
                   ))}
                 {/* Net Profit Row */}
                 <tr>
-                  <td className="py-3 px-4 border-b border-gray-200 font-bold">Net Profit</td>
+                  <td className="py-2 px-3 border-b border-gray-200 font-bold text-xs">Net Profit</td>
                   <td
-                    className={`py-3 px-4 border-b border-gray-200 text-right font-bold ${netProfit < 0 ? 'text-red-600' : netProfit > 0 ? 'text-green-600' : ''}`}
+                    className={`py-2 px-3 border-b border-gray-200 text-right font-bold text-xs ${netProfit < 0 ? 'text-red-600' : netProfit > 0 ? 'text-green-600' : ''}`}
                   >
                     {formatAmount(netProfit)}
                   </td>

@@ -16,7 +16,7 @@ import creditNoteRoutes from './creditNote.js';
 import licenseKeyRoutes from './licenseKeys.js';
 import expenseRoutes from './expense.js';
 import cashBankRoutes from './cashBank.js';
-import { getDashboardStats, getSalesOverview, getRecentActivity, getProfile, updateProfile, getReceivablesList, getPayablesList, getDashboardPerformanceStats, testStockValue, getStockSummary } from '../controllers/dashboardController.js';
+import { getDashboardStats, getSalesOverview, getRecentActivity, getProfile, updateProfile, getReceivablesList, getPayablesList, getDashboardPerformanceStats, testStockValue, getStockSummary, createDashboardIndexes } from '../controllers/dashboardController.js';
 import sessionCheckRoutes from './sessionCheck.js';
 import { sendUserInvite, getUserInvites, getInvitesForMe, respondToInvite, deleteUserInvite, updateUserInvite, updateUserCompanyContext } from '../controllers/userInviteController.js';
 
@@ -81,6 +81,9 @@ router.get('/items/stats/performance', authMiddleware, getItemsPerformanceStats)
 
 // Dashboard performance monitoring route
 router.get('/dashboard/stats/performance', authMiddleware, getDashboardPerformanceStats);
+
+// Create database indexes for better performance
+router.post('/dashboard/create-indexes', authMiddleware, createDashboardIndexes);
 
 // Test stock value calculation route
 router.get('/dashboard/test-stock-value', authMiddleware, testStockValue);

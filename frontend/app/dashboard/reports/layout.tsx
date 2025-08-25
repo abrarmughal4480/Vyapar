@@ -12,7 +12,7 @@ const ReportsLayout: React.FC<ReportsLayoutProps> = ({ children }) => {
   return (
     <div className="w-full min-h-screen flex">
       {/* Sidebar - Fixed width, scrollable */}
-      <div className="hidden md:block w-56 h-screen sticky top-0 overflow-y-auto scrollbar-hide">
+      <div className="hidden md:block w-48 h-screen sticky top-0 overflow-y-auto scrollbar-hide">
         <ReportsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
       </div>
       

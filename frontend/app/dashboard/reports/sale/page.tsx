@@ -880,81 +880,81 @@ Your Business Name`;
 
   return (
     <>
-      <div className="p-6 bg-gray-50 min-h-screen">
+      <div className="p-3 bg-gray-50 min-h-screen">
         {/* Header - sticky, card-like, shadow, rounded (copied from parties page) */}
-        <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
-          <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+        <div className="bg-white/80 backdrop-blur-xl rounded-xl shadow-md p-3 mb-4 sticky top-0 z-30 border border-gray-100">
+          <div className="flex flex-col space-y-3 md:flex-row md:items-center md:justify-between md:space-y-0">
             <div className="text-center md:text-left">
-              <h1 className="text-xl md:text-2xl font-bold text-gray-900">Sale Invoices</h1>
-              <p className="text-sm text-gray-500 mt-1">Manage your sales, invoices, and payments</p>
+              <h1 className="text-lg md:text-xl font-bold text-gray-900">Sale Invoices</h1>
+              <p className="text-xs text-gray-500 mt-1">Manage your sales, invoices, and payments</p>
             </div>
-            <div className="flex flex-col md:flex-row gap-2 md:gap-4">
+            <div className="flex flex-col md:flex-row gap-2 md:gap-3">
               {isClient && canAddData() ? (
                 <button
                   onClick={() => window.location.href = '/dashboard/sale/add'}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg font-medium flex items-center gap-2 transition-colors shadow text-xs"
                   disabled={loading}
                 >
                   + Add Sale
                 </button>
               ) : (
-                <div className="bg-gray-100 text-gray-500 px-6 py-2 rounded-lg font-medium flex items-center gap-2">
+                <div className="bg-gray-100 text-gray-500 px-3 py-1 rounded-lg font-medium flex items-center gap-2 text-xs">
                   + Add Sale (Restricted)
                 </div>
               )}
-              <button className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
-                <Settings className="w-5 h-5 text-gray-600" />
+              <button className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                <Settings className="w-3 h-3 text-gray-600" />
               </button>
             </div>
           </div>
         </div>
         {/* Stats Grid (full width, responsive) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6">
-          <div className="bg-gradient-to-br from-blue-100 to-blue-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
-            <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-blue-500 text-white mb-3 text-xl">💰</div>
-            <div className="text-2xl font-bold text-blue-700">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+          <div className="bg-gradient-to-br from-blue-100 to-blue-50 p-3 rounded-xl shadow group hover:shadow-md transition-all flex flex-col items-start">
+            <div className="w-6 h-6 flex items-center justify-center rounded-lg bg-blue-500 text-white mb-1.5 text-sm">💰</div>
+            <div className="text-sm font-bold text-blue-700">
               PKR {Number(filteredStats.totalGrandTotal || 0).toLocaleString()}
             </div>
-            <div className="text-sm text-gray-500">Total Sales</div>
+            <div className="text-xs text-gray-500">Total Sales</div>
           </div>
-          <div className="bg-gradient-to-br from-green-100 to-green-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
-            <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-green-500 text-white mb-3 text-xl">⬆️</div>
-            <div className="text-2xl font-bold text-green-700">
+          <div className="bg-gradient-to-br from-green-100 to-green-50 p-3 rounded-xl shadow group hover:shadow-md transition-all flex flex-col items-start">
+            <div className="w-6 h-6 flex items-center justify-center rounded-lg bg-green-500 text-white mb-1.5 text-sm">⬆️</div>
+            <div className="text-sm font-bold text-green-700">
               PKR {Number(filteredStats.totalReceived || 0).toLocaleString()}
             </div>
-            <div className="text-sm text-gray-500">Total Received</div>
+            <div className="text-xs text-gray-500">Total Received</div>
           </div>
-          <div className="bg-gradient-to-br from-orange-100 to-orange-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
-            <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-orange-500 text-white mb-3 text-xl">🧾</div>
-            <div className="text-2xl font-bold text-orange-700">
+          <div className="bg-gradient-to-br from-orange-100 to-orange-50 p-3 rounded-xl shadow group hover:shadow-md transition-all flex flex-col items-start">
+            <div className="w-6 h-6 flex items-center justify-center rounded-lg bg-orange-500 text-white mb-1.5 text-sm">🧾</div>
+            <div className="text-sm font-bold text-orange-700">
               PKR {Number(filteredStats.totalBalance || 0).toLocaleString()}
             </div>
-            <div className="text-sm text-gray-500">Total Balance</div>
+            <div className="text-xs text-gray-500">Total Balance</div>
           </div>
         </div>
 
         <>
           {/* Search & Filters Section (full width) */}
-          <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-4 md:p-6 mb-6 border border-gray-100 z-[1]">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+          <div className="bg-white/80 backdrop-blur-xl rounded-xl shadow p-3 mb-4 border border-gray-100 z-[1]">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
               {/* Modern Search Bar */}
-              <div className="relative w-full md:w-80">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-lg">🔍</span>
+              <div className="relative w-full md:w-72">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm">🔍</span>
                 <input
                   type="text"
                   placeholder="Search invoices..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-full bg-white/80 shadow focus:ring-2 focus:ring-blue-500 focus:border-blue-500 border border-gray-200 transition-all placeholder-gray-400 text-gray-900"
+                  className="w-full pl-7 pr-3 py-2 rounded-lg bg-white/80 shadow focus:ring-2 focus:ring-blue-500 focus:border-blue-500 border border-gray-200 transition-all placeholder-gray-400 text-gray-900 text-sm"
                 />
               </div>
               {/* Filter Tabs/Pills */}
-              <div className="flex gap-2 md:gap-4">
+              <div className="flex gap-2 md:gap-3">
                 {['All', 'Paid', 'Pending', 'Overdue'].map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setSaleStatus(tab)}
-                    className={`px-4 py-2 rounded-full font-medium transition-colors text-sm border-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors text-xs border-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                       saleStatus === tab
                         ? 'bg-blue-600 text-white border-blue-600 shadow scale-105'
                         : 'bg-white text-gray-700 border-gray-200 hover:bg-blue-50'
@@ -967,17 +967,17 @@ Your Business Name`;
               {/* Enhanced Date Range & Quick Filter Dropdown */}
               <div className="flex flex-col sm:flex-row gap-2 items-center mt-2">
                 {/* Modern Dropdown for Date Range */}
-                <div ref={dateDropdownRef} className="relative w-full sm:w-56">
+                <div ref={dateDropdownRef} className="relative w-full sm:w-40">
                   <button
                     ref={dateDropdownButtonRef}
                     type="button"
-                    className="w-full flex items-center justify-between px-4 py-2.5 rounded-full bg-white/80 shadow border border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all group"
+                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white/80 shadow border border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all group text-xs"
                     onClick={() => setShowDateDropdown((v) => !v)}
                     aria-haspopup="listbox"
                     aria-expanded={showDateDropdown ? 'true' : 'false'}
                   >
                     <span className="truncate">{dateRanges.find(r => r.value === filterType)?.label || 'All Time'}</span>
-                    <svg className={`w-5 h-5 ml-2 transition-transform ${showDateDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                    <svg className={`w-3 h-3 ml-1.5 transition-transform ${showDateDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                   </button>
                   {showDateDropdown && (
                     <ul
@@ -989,7 +989,7 @@ Your Business Name`;
                       {dateRanges.map((range) => (
                         <li
                           key={range.value}
-                          className={`px-4 py-2 cursor-pointer rounded-lg transition-all hover:bg-blue-50 ${filterType === range.value ? 'font-semibold text-blue-600 bg-blue-100' : 'text-gray-700'}`}
+                          className={`px-2.5 py-1 cursor-pointer rounded-md transition-all hover:bg-blue-50 text-xs ${filterType === range.value ? 'font-semibold text-blue-600 bg-blue-100' : 'text-gray-700'}`}
                           onClick={() => {
                             handleFilterTypeChange(range.value);
                             // Auto-fill date pickers for quick ranges
@@ -1046,11 +1046,11 @@ Your Business Name`;
                     setDateFrom(e.target.value);
                     if (filterType !== 'Custom') handleFilterTypeChange('Custom');
                   }}
-                  className="px-4 py-2 rounded-full bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[140px]"
+                  className="px-3 py-1.5 rounded-lg bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[120px] text-xs"
                   placeholder="From Date"
                   disabled={filterType !== 'Custom' && filterType !== 'All'}
                 />
-                <span className="text-gray-500">to</span>
+                <span className="text-gray-500 text-xs">to</span>
                 <input
                   type="date"
                   value={dateTo}
@@ -1058,7 +1058,7 @@ Your Business Name`;
                     setDateTo(e.target.value);
                     if (filterType !== 'Custom') handleFilterTypeChange('Custom');
                   }}
-                  className="px-4 py-2 rounded-full bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[140px]"
+                  className="px-3 py-1.5 rounded-lg bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[120px] text-xs"
                   placeholder="To Date"
                   disabled={filterType !== 'Custom' && filterType !== 'All'}
                 />
@@ -1066,26 +1066,26 @@ Your Business Name`;
             </div>
           </div>
           {/* Transactions Section (full width, enhanced) */}
-          <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100 mb-8">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-6 border-b border-gray-200 gap-4">
-              <h2 className="text-lg font-semibold text-gray-900">Transactions</h2>
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 mb-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-3 border-b border-gray-200 gap-2">
+              <h2 className="text-sm font-semibold text-gray-900">Transactions</h2>
               <div className="flex gap-2">
                 <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <Search className="w-3 h-3 absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   <input
                     type="text"
                     placeholder="Search transactions..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-full text-sm w-full md:w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                    className="pl-7 pr-2 py-1 border border-gray-300 rounded-md text-xs w-full md:w-44 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                   />
                 </div>
                 <button
                   onClick={handlePrint}
-                  className="p-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
+                  className="p-1 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
                   title="Print"
                 >
-                  <Printer className="w-4 h-4 text-gray-600" />
+                  <Printer className="w-3 h-3 text-gray-600" />
                 </button>
               </div>
             </div>
@@ -1093,23 +1093,23 @@ Your Business Name`;
             {/* Table */}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px]">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Date</th>
-                    <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Invoice no</th>
-                    <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Party Name</th>
-                    <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Transaction</th>
-                    <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Payment Type</th>
-                    <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Amount</th>
-                    <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Balance</th>
-                    <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Status</th>
-                    <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Actions</th>
-                  </tr>
-                </thead>
+                              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Date</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Invoice no</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Party Name</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Transaction</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Payment Type</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Amount</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Balance</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Status</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Actions</th>
+                </tr>
+              </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredTransactions.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-8 text-center text-gray-500 text-lg font-medium">
+                      <td colSpan={8} className="px-4 py-6 text-center text-gray-500 text-sm font-medium">
                         {searchTerm
                           ? `No sales found matching "${searchTerm}".`
                           : "No sales found."}
@@ -1126,33 +1126,33 @@ Your Business Name`;
                       }
                       return (
                         <tr key={transaction._id || transaction.id || idx} className={`hover:bg-blue-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}> 
-                          <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">
+                          <td className="px-4 py-3 text-xs text-gray-900 whitespace-nowrap text-center">
                             {transaction.date
                               ? new Date(transaction.date).toLocaleDateString('en-GB')
                               : transaction.createdAt
                                 ? new Date(transaction.createdAt).toLocaleDateString('en-GB')
                                 : '-'}
                           </td>
-                          <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">
+                          <td className="px-4 py-3 text-xs text-blue-700 font-bold whitespace-nowrap text-center">
                             {transaction.invoiceNo ? (
                               <a href={`/dashboard/sale/invoice/${transaction._id}`} className="underline hover:text-blue-900">{transaction.invoiceNo}</a>
                             ) : (
                               <span className="text-gray-400">-</span>
                             )}
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{transaction.partyName}</td>
-                          <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
+                          <td className="px-4 py-3 text-xs text-gray-900 whitespace-nowrap text-center">{transaction.partyName}</td>
+                          <td className="px-4 py-3 text-xs whitespace-nowrap text-center">
                             <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${transaction.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>{transaction.transaction ? transaction.transaction : 'Sale'}</span>
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{transaction.paymentType}</td>
-                          <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">
+                          <td className="px-4 py-3 text-xs text-gray-900 whitespace-nowrap text-center">{transaction.paymentType}</td>
+                          <td className="px-4 py-3 text-xs font-semibold text-blue-700 whitespace-nowrap text-center">
                             PKR {typeof transaction.grandTotal === 'number' ? transaction.grandTotal.toLocaleString() : (transaction.amount ? transaction.amount.toLocaleString() : '0')}
                           </td>
-                          <td className="px-6 py-4 text-sm font-semibold text-orange-600 whitespace-nowrap text-center">PKR {typeof transaction.balance === 'number' ? transaction.balance.toLocaleString() : '0'}</td>
-                          <td className="px-6 py-4 text-sm font-semibold text-center">
+                          <td className="px-4 py-3 text-xs font-semibold text-orange-600 whitespace-nowrap text-center">PKR {typeof transaction.balance === 'number' ? transaction.balance.toLocaleString() : '0'}</td>
+                          <td className="px-4 py-3 text-xs font-semibold text-center">
                             <PaymentStatusBadge status={paymentStatus} />
                           </td>
-                          <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
+                          <td className="px-4 py-3 text-xs font-medium whitespace-nowrap text-center">
                             <div className="flex justify-center gap-2 relative">
                               {/* View button outside dropdown */}
                               <button
@@ -1165,8 +1165,8 @@ Your Business Name`;
                               {isClient && (canEditData() || canDeleteData()) ? (
                                 <TableActionMenu
                                   transaction={transaction}
-                                  onEdit={canEditData() ? () => handleEditTransaction(transaction) : undefined}
-                                  onDelete={canDeleteData() ? () => handleDeleteTransaction(transaction._id || transaction.id) : undefined}
+                                  onEdit={canEditData() ? () => handleEditTransaction(transaction) : () => {}}
+                                  onDelete={canDeleteData() ? () => handleDeleteTransaction(transaction._id || transaction.id) : () => {}}
                                   onReceivePayment={() => handleReceivePayment(transaction)}
                                 />
                               ) : (

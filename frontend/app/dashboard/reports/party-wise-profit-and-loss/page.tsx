@@ -143,47 +143,47 @@ const PartyWiseProfitAndLossPage = () => {
   }, [showDateDropdown]);
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-3 bg-gray-50 min-h-screen">
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 border border-gray-100">
+      <div className="bg-white/80 backdrop-blur-xl rounded-xl shadow-md p-3 mb-4 border border-gray-100">
         <div className="flex flex-col space-y-2 md:space-y-0 md:flex-row md:items-center md:justify-between">
           <div className="text-center md:text-left">
-            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Party Wise Profit and Loss</h1>
-            <p className="text-sm text-gray-500 mt-1">View profit and loss summary for each party</p>
+            <h1 className="text-lg md:text-xl font-bold text-gray-900">Party Wise Profit and Loss</h1>
+            <p className="text-xs text-gray-500 mt-1">View profit and loss summary for each party</p>
           </div>
         </div>
       </div>
       {/* Filters Section */}
-      <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-4 md:p-6 mb-6 border border-gray-100 z-[1]">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+      <div className="bg-white/80 backdrop-blur-xl rounded-xl shadow p-3 mb-4 border border-gray-100 z-[1]">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
           {/* Search Bar */}
-          <div className="relative w-full md:w-80">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-lg">🔍</span>
+          <div className="relative w-full md:w-72">
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm">🔍</span>
             <input
               type="text"
               placeholder="Search party or phone..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-full bg-white/80 shadow focus:ring-2 focus:ring-blue-500 focus:border-blue-500 border border-gray-200 transition-all placeholder-gray-400 text-gray-900"
+              className="w-full pl-8 pr-3 py-2 rounded-lg bg-white/80 shadow focus:ring-2 focus:ring-blue-500 focus:border-blue-500 border border-gray-200 transition-all placeholder-gray-400 text-gray-900 text-sm"
             />
           </div>
           {/* Date Range Dropdown */}
           <div className="flex flex-col sm:flex-row gap-2 items-center mt-2">
-            <div ref={dateDropdownRef} className="relative w-full sm:w-56">
+            <div ref={dateDropdownRef} className="relative w-full sm:w-48">
               <button
                 ref={dateDropdownButtonRef}
                 type="button"
-                className="w-full flex items-center justify-between px-4 py-2.5 rounded-full bg-white/80 shadow border border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all group"
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/80 shadow border border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all group text-sm"
                 onClick={() => setShowDateDropdown((v) => !v)}
                 aria-haspopup="listbox"
                 aria-expanded={showDateDropdown ? 'true' : 'false'}
               >
                 <span className="truncate">{dateRanges.find(r => r.value === filterType)?.label || 'All Time'}</span>
-                <svg className={`w-5 h-5 ml-2 transition-transform ${showDateDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                <svg className={`w-4 h-4 ml-2 transition-transform ${showDateDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
               </button>
               {showDateDropdown && (
                 <ul
-                  className="absolute z-[100] bg-white rounded-xl shadow-lg border border-gray-100 py-1 max-h-60 overflow-auto animate-fadeinup w-full"
+                  className="absolute z-[100] bg-white rounded-lg shadow-lg border border-gray-100 py-1 max-h-60 overflow-auto animate-fadeinup w-full"
                   style={{ top: '110%', left: 0 }}
                   tabIndex={-1}
                   role="listbox"
@@ -191,7 +191,7 @@ const PartyWiseProfitAndLossPage = () => {
                   {dateRanges.map((range) => (
                     <li
                       key={range.value}
-                      className={`px-4 py-2 cursor-pointer rounded-lg transition-all hover:bg-blue-50 ${filterType === range.value ? 'font-semibold text-blue-600 bg-blue-100' : 'text-gray-700'}`}
+                      className={`px-3 py-1.5 cursor-pointer rounded-md transition-all hover:bg-blue-50 text-xs ${filterType === range.value ? 'font-semibold text-blue-600 bg-blue-100' : 'text-gray-700'}`}
                       onClick={() => {
                         setFilterType(range.value);
                         // Auto-fill date pickers for quick ranges
@@ -248,11 +248,11 @@ const PartyWiseProfitAndLossPage = () => {
                 setDateFrom(e.target.value);
                 if (filterType !== 'Custom') setFilterType('Custom');
               }}
-              className="px-4 py-2 rounded-full bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[140px]"
+              className="px-3 py-1.5 rounded-lg bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[130px] text-xs"
               placeholder="From Date"
               disabled={filterType !== 'Custom' && filterType !== 'All'}
             />
-            <span className="text-gray-500">to</span>
+            <span className="text-gray-500 text-xs">to</span>
             <input
               type="date"
               value={dateTo}
@@ -260,7 +260,7 @@ const PartyWiseProfitAndLossPage = () => {
                 setDateTo(e.target.value);
                 if (filterType !== 'Custom') setFilterType('Custom');
               }}
-              className="px-4 py-2 rounded-full bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[140px]"
+              className="px-3 py-1.5 rounded-lg bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[130px] text-xs"
               placeholder="To Date"
               disabled={filterType !== 'Custom' && filterType !== 'All'}
             />
@@ -268,36 +268,36 @@ const PartyWiseProfitAndLossPage = () => {
         </div>
       </div>
       {/* Table Section */}
-      <div className="bg-white rounded-2xl shadow-sm overflow-x-auto border border-gray-100 mb-8 relative pb-24">
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Profit/Loss Summary</h2>
+      <div className="bg-white rounded-xl shadow-sm overflow-x-auto border border-gray-100 mb-6 relative pb-20">
+        <div className="p-4 border-b border-gray-200">
+          <h2 className="text-base font-semibold text-gray-900">Profit/Loss Summary</h2>
         </div>
         <div className="overflow-x-auto">
           {loading ? (
-            <div className="p-6">Loading...</div>
+            <div className="p-4 text-sm">Loading...</div>
           ) : error ? (
-            <div className="p-6 text-red-500">{error}</div>
+            <div className="p-4 text-red-500 text-sm">{error}</div>
           ) : (
             <table className="w-full min-w-[900px]">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Party</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Phone</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Total Sale</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Profit(+) / Loss(-)</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Bill Count</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Party</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Phone</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Total Sale</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Profit(+) / Loss(-)</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Bill Count</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredData.length === 0 ? (
-                  <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500 text-lg font-medium">No data</td></tr>
+                  <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-500 text-sm font-medium">No data</td></tr>
                 ) : filteredData.map((row, idx) => (
                   <tr key={row.party} className={`hover:bg-blue-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                    <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{row.party}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{partyPhones[row.party] || 'N/A'}</td>
-                    <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">{formatCurrency(row.totalSale)}</td>
-                    <td className={`px-6 py-4 text-sm font-semibold whitespace-nowrap text-center ${row.totalProfit < 0 ? 'text-red-600' : 'text-green-700'}`}>{formatCurrency(row.totalProfit)}</td>
-                    <td className="px-6 py-4 text-sm font-semibold text-center">{row.billCount}</td>
+                    <td className="px-4 py-3 text-xs text-gray-900 whitespace-nowrap text-center">{row.party}</td>
+                    <td className="px-4 py-3 text-xs text-gray-900 whitespace-nowrap text-center">{partyPhones[row.party] || 'N/A'}</td>
+                    <td className="px-4 py-3 text-xs font-semibold text-blue-700 whitespace-nowrap text-center">{formatCurrency(row.totalSale)}</td>
+                    <td className={`px-4 py-3 text-xs font-semibold whitespace-nowrap text-center ${row.totalProfit < 0 ? 'text-red-600' : 'text-green-700'}`}>{formatCurrency(row.totalProfit)}</td>
+                    <td className="px-4 py-3 text-xs font-semibold text-center">{row.billCount}</td>
                   </tr>
                 ))}
               </tbody>
@@ -305,9 +305,9 @@ const PartyWiseProfitAndLossPage = () => {
           )}
         </div>
         {/* Summary Bar (fixed at bottom of card) */}
-        <div className="absolute left-0 right-0 bottom-0 bg-gray-50 border-t border-gray-200 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-b-2xl">
-          <div className="text-base font-semibold text-gray-700">Total Sale Amount: <span className="text-blue-700">{formatCurrency(summary.totalSale)}</span></div>
-          <div className="text-base font-semibold text-gray-700">Total Profit(+) / Loss (-): <span className={summary.totalProfit < 0 ? 'text-red-600' : 'text-green-700'}>{formatCurrency(summary.totalProfit)}</span></div>
+        <div className="absolute left-0 right-0 bottom-0 bg-gray-50 border-t border-gray-200 p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-b-xl">
+          <div className="text-sm font-semibold text-gray-700">Total Sale Amount: <span className="text-blue-700">{formatCurrency(summary.totalSale)}</span></div>
+          <div className="text-sm font-semibold text-gray-700">Total Profit(+) / Loss (-): <span className={summary.totalProfit < 0 ? 'text-red-600' : 'text-green-700'}>{formatCurrency(summary.totalProfit)}</span></div>
         </div>
       </div>
     </div>

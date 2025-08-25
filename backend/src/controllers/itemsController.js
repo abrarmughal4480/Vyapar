@@ -4,6 +4,9 @@ import Item from '../models/items.js';
 const itemsCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// Import dashboard cache invalidation function
+import { invalidateDashboardCache } from './dashboardController.js';
+
 // Add this helper at the top after imports
 function getUnitDisplay(unit) {
   if (!unit) return '';
@@ -174,6 +177,10 @@ export const addItem = async (req, res) => {
     const item = new Item({ ...processedData, itemId });
     await item.save();
     const itemObj = item.toObject();
+    
+    // Invalidate dashboard cache to ensure stats update immediately
+    invalidateDashboardCache(userId);
+    
     // Keep the original unit object structure for frontend price conversion
     // Log what was actually saved
     console.log('SAVED openingQuantity:', itemObj.openingQuantity, 'minStock:', itemObj.minStock, 'location:', itemObj.location);
@@ -348,6 +355,9 @@ export const bulkImportItems = async (req, res) => {
     const endTime = Date.now();
     const processingTime = endTime - startTime;
     
+    // Invalidate dashboard cache to ensure stats update immediately after bulk import
+    invalidateDashboardCache(userId);
+    
     console.log(`[${importId}] Bulk import completed in ${processingTime}ms. Success: ${successCount}, Errors: ${errorCount}`);
     console.log(`[${importId}] Sending response to client...`);
 
@@ -419,6 +429,10 @@ export const deleteItem = async (req, res) => {
   try {
     const { userId, itemId } = req.params;
     await Item.deleteOne({ userId, itemId });
+    
+    // Invalidate dashboard cache to ensure stats update immediately
+    invalidateDashboardCache(userId);
+    
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -513,6 +527,10 @@ export const updateItem = async (req, res) => {
 
     const updated = await Item.findOneAndUpdate({ userId, itemId }, processedData, { new: true });
     const updatedObj = updated.toObject();
+    
+    // Invalidate dashboard cache to ensure stats update immediately
+    invalidateDashboardCache(userId);
+    
     // Keep the original unit object structure for frontend price conversion
     // Log what was actually updated
     console.log('UPDATED openingQuantity:', updatedObj.openingQuantity, 'minStock:', updatedObj.minStock, 'location:', updatedObj.location);

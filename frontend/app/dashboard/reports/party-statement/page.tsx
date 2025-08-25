@@ -37,6 +37,7 @@ const PartyStatementPage = () => {
   const [currentBalance, setCurrentBalance] = useState(0);
   const [openingBalance, setOpeningBalance] = useState(0);
   const [filterType, setFilterType] = useState('All');
+  const [showDateDropdown, setShowDateDropdown] = useState(false);
   const [summaryTotals, setSummaryTotals] = useState({
     totalSale: 0,
     totalPurchase: 0,
@@ -46,6 +47,7 @@ const PartyStatementPage = () => {
   });
 
   const router = useRouter();
+  const dateDropdownRef = useRef<HTMLDivElement>(null);
 
   const dateRanges = [
     { value: 'All', label: 'All Time' },
@@ -74,6 +76,24 @@ const PartyStatementPage = () => {
   useEffect(() => {
     filterTransactions();
   }, [transactions, searchTerm, dateFrom, dateTo]);
+
+  // Date dropdown outside click handler
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        dateDropdownRef.current &&
+        !dateDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowDateDropdown(false);
+      }
+    }
+    if (showDateDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    } else {
+      document.removeEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showDateDropdown]);
 
 
 
@@ -445,45 +465,45 @@ const PartyStatementPage = () => {
   };
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-3 bg-gray-50 min-h-screen">
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
-        <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+      <div className="bg-white/80 backdrop-blur-xl rounded-xl shadow-md p-3 mb-4 sticky top-0 z-30 border border-gray-100">
+        <div className="flex flex-col space-y-3 md:flex-row md:items-center md:justify-between md:space-y-0">
           <div className="text-center md:text-left">
-            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Party Statement</h1>
-            <p className="text-sm text-gray-500 mt-1">View detailed transaction history for any party</p>
+            <h1 className="text-lg md:text-xl font-bold text-gray-900">Party Statement</h1>
+            <p className="text-xs text-gray-500 mt-1">View detailed transaction history for any party</p>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrintStatement}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
             >
-              <Printer size={16} />
+              <Printer size={12} />
               Print
             </button>
             <button
               onClick={handleExportStatement}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
             >
-              <Download size={16} />
+              <Download size={12} />
               Export
             </button>
             <button
               onClick={handleShareStatement}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
             >
-              <Share2 size={16} />
+              <Share2 size={12} />
               Share
             </button>
           </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-4 md:p-6 mb-6 border border-gray-100 z-[1]">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+      {/* Search & Filters Section (full width) */}
+      <div className="bg-white/80 backdrop-blur-xl rounded-xl shadow p-3 mb-4 border border-gray-100 z-[1]">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
           {/* Party Selection */}
-          <div className="w-full md:w-80">
+          <div className="w-full md:w-72">
             <KeyboardDropdown
               options={parties.map(party => ({ value: party.name, label: party.name, phone: party.phone }))}
               value={selectedParty}
@@ -498,120 +518,138 @@ const PartyStatementPage = () => {
               }}
               renderOption={(option, isSelected, isFocused) => (
                 <div>
-                  <div className="font-medium text-sm">{option.label}</div>
+                  <div className="font-medium text-xs">{option.label}</div>
                   <div className="text-xs text-gray-500">{option.phone}</div>
                 </div>
               )}
             />
           </div>
-
-          {/* Date Range - Right Aligned */}
-          <div className="flex flex-col md:flex-row gap-2 items-end ml-auto">
-            <div className="w-full md:w-56">
-              <KeyboardDropdown
-                options={dateRanges}
-                value={filterType}
-                onChange={(value) => {
-                  handleFilterTypeChange(value);
-                  // Auto-fill date pickers for quick ranges
-                  const today = new Date();
-                  let from = '', to = '';
-                  if (value === 'Today') {
-                    from = to = today.toISOString().slice(0, 10);
-                  } else if (value === 'Yesterday') {
-                    const yest = new Date(today);
-                    yest.setDate(today.getDate() - 1);
-                    from = to = yest.toISOString().slice(0, 10);
-                  } else if (value === 'This Week') {
-                    const first = new Date(today);
-                    first.setDate(today.getDate() - today.getDay());
-                    from = first.toISOString().slice(0, 10);
-                    to = today.toISOString().slice(0, 10);
-                  } else if (value === 'This Month') {
-                    const first = new Date(today.getFullYear(), today.getMonth(), 1);
-                    from = first.toISOString().slice(0, 10);
-                    to = today.toISOString().slice(0, 10);
-                  } else if (value === 'Last Month') {
-                    const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                    const last = new Date(today.getFullYear(), today.getMonth(), 0);
-                    from = first.toISOString().slice(0, 10);
-                    to = last.toISOString().slice(0, 10);
-                  } else if (value === 'This Year') {
-                    const first = new Date(today.getFullYear(), 0, 1);
-                    from = first.toISOString().slice(0, 10);
-                    to = today.toISOString().slice(0, 10);
-                  } else if (value === 'All') {
-                    from = '';
-                    to = '';
-                  }
-                  if (value !== 'Custom') {
-                    setDateFrom(from);
-                    setDateTo(to);
-                  }
-                }}
-                placeholder="Select date range"
-                label="Date Range"
-              />
+          {/* Enhanced Date Range & Quick Filter Dropdown */}
+          <div className="flex flex-col sm:flex-row gap-2 items-center mt-2">
+            {/* Modern Dropdown for Date Range */}
+            <div ref={dateDropdownRef} className="relative w-full sm:w-40">
+              <button
+                type="button"
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white/80 shadow border border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all group text-xs"
+                onClick={() => setShowDateDropdown(!showDateDropdown)}
+                aria-haspopup="listbox"
+                aria-expanded={showDateDropdown ? 'true' : 'false'}
+              >
+                <span className="truncate">{dateRanges.find(r => r.value === filterType)?.label || 'All Time'}</span>
+                <svg className={`w-3 h-3 ml-1.5 transition-transform ${showDateDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {showDateDropdown && (
+                <ul
+                  className="absolute z-[100] bg-white rounded-xl shadow-lg border border-gray-100 py-1 max-h-60 overflow-auto animate-fadeinup w-full"
+                  style={{ top: '110%', left: 0 }}
+                  tabIndex={-1}
+                  role="listbox"
+                >
+                  {dateRanges.map((range) => (
+                    <li
+                      key={range.value}
+                      className={`px-2.5 py-1 cursor-pointer rounded-md transition-all hover:bg-blue-50 text-xs ${filterType === range.value ? 'font-semibold text-blue-600 bg-blue-100' : 'text-gray-700'}`}
+                      onClick={() => {
+                        handleFilterTypeChange(range.value);
+                        // Auto-fill date pickers for quick ranges
+                        const today = new Date();
+                        let from = '', to = '';
+                        if (range.value === 'Today') {
+                          from = to = today.toISOString().slice(0, 10);
+                        } else if (range.value === 'Yesterday') {
+                          const yest = new Date(today);
+                          yest.setDate(today.getDate() - 1);
+                          from = to = yest.toISOString().slice(0, 10);
+                        } else if (range.value === 'This Week') {
+                          const first = new Date(today);
+                          first.setDate(today.getDate() - today.getDay());
+                          from = first.toISOString().slice(0, 10);
+                          to = today.toISOString().slice(0, 10);
+                        } else if (range.value === 'This Month') {
+                          const first = new Date(today.getFullYear(), today.getMonth(), 1);
+                          from = first.toISOString().slice(0, 10);
+                          to = today.toISOString().slice(0, 10);
+                        } else if (range.value === 'Last Month') {
+                          const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                          const last = new Date(today.getFullYear(), today.getMonth(), 0);
+                          from = first.toISOString().slice(0, 10);
+                          to = last.toISOString().slice(0, 10);
+                        } else if (range.value === 'This Year') {
+                          const first = new Date(today.getFullYear(), 0, 1);
+                          from = first.toISOString().slice(0, 10);
+                          to = today.toISOString().slice(0, 10);
+                        } else if (range.value === 'All') {
+                          from = '';
+                          to = '';
+                        }
+                        if (range.value !== 'Custom') {
+                          setDateFrom(from);
+                          setDateTo(to);
+                        }
+                        setShowDateDropdown(false);
+                      }}
+                      role="option"
+                      aria-selected={filterType === range.value}
+                    >
+                      {range.label}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-
-            {/* Custom Date Range */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">From</label>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => {
-                  setDateFrom(e.target.value);
-                  if (filterType !== 'Custom') handleFilterTypeChange('Custom');
-                }}
-                className="px-4 py-2 rounded-full bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[140px]"
-                placeholder="From Date"
-                disabled={filterType !== 'Custom' && filterType !== 'All'}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">To</label>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => {
-                  setDateTo(e.target.value);
-                  if (filterType !== 'Custom') handleFilterTypeChange('Custom');
-                }}
-                className="px-4 py-2 rounded-full bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[140px]"
-                placeholder="To Date"
-                disabled={filterType !== 'Custom' && filterType !== 'All'}
-              />
-            </div>
+            {/* Date Pickers */}
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => {
+                setDateFrom(e.target.value);
+                if (filterType !== 'Custom') handleFilterTypeChange('Custom');
+              }}
+              className="px-2.5 py-1.5 rounded-lg bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[120px] text-xs"
+              placeholder="From Date"
+              disabled={filterType !== 'Custom' && filterType !== 'All'}
+            />
+            <span className="text-gray-500 text-xs">to</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => {
+                setDateTo(e.target.value);
+                if (filterType !== 'Custom') handleFilterTypeChange('Custom');
+              }}
+              className="px-2.5 py-1.5 rounded-lg bg-white border-2 border-gray-200 text-gray-700 focus:outline-none focus:ring-blue-500 shadow-sm min-w-[120px] text-xs"
+              placeholder="To Date"
+              disabled={filterType !== 'Custom' && filterType !== 'All'}
+            />
           </div>
         </div>
       </div>
 
       {/* Balance Summary */}
       {selectedParty && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <div className="bg-gradient-to-br from-blue-100 to-blue-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
-            <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-blue-500 text-white mb-3 text-xl">💰</div>
-            <div className="text-2xl font-bold text-blue-700">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <div className="bg-gradient-to-br from-blue-100 to-blue-50 p-4 rounded-xl shadow group hover:shadow-md transition-all flex flex-col items-start">
+            <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-blue-500 text-white mb-2 text-lg">💰</div>
+            <div className="text-lg font-bold text-blue-700">
               {formatCurrency(openingBalance)}
             </div>
-            <div className="text-sm text-gray-500">Opening Balance</div>
+            <div className="text-xs text-gray-500">Opening Balance</div>
           </div>
-          <div className="bg-gradient-to-br from-green-100 to-green-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
-            <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-green-500 text-white mb-3 text-xl">
+          <div className="bg-gradient-to-br from-green-100 to-green-50 p-4 rounded-xl shadow group hover:shadow-md transition-all flex flex-col items-start">
+            <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-green-500 text-white mb-2 text-lg">
               {currentBalance >= 0 ? '📈' : '📉'}
             </div>
-            <div className={`text-2xl font-bold ${currentBalance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+            <div className={`text-lg font-bold ${currentBalance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
               {formatCurrency(currentBalance)}
             </div>
-            <div className="text-sm text-gray-500">Current Balance</div>
+            <div className="text-xs text-gray-500">Current Balance</div>
           </div>
-          <div className="bg-gradient-to-br from-purple-100 to-purple-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
-            <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-purple-500 text-white mb-3 text-xl">📊</div>
-            <div className="text-2xl font-bold text-purple-700">
+          <div className="bg-gradient-to-br from-purple-100 to-purple-50 p-4 rounded-xl shadow group hover:shadow-md transition-all flex flex-col items-start">
+            <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-purple-500 text-white mb-2 text-lg">📊</div>
+            <div className="text-lg font-bold text-purple-700">
               {filteredTransactions.length}
             </div>
-            <div className="text-sm text-gray-500">Total Transactions</div>
+            <div className="text-xs text-gray-500">Total Transactions</div>
           </div>
         </div>
       )}
@@ -620,30 +658,30 @@ const PartyStatementPage = () => {
 
       {/* Transactions Table */}
       {loading ? (
-        <div className="flex items-center justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="flex items-center justify-center py-6">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
         </div>
       ) : selectedParty ? (
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100 mb-8">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-6 border-b border-gray-200 gap-4">
-            <h2 className="text-lg font-semibold text-gray-900">Transactions</h2>
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 mb-6">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-3 border-b border-gray-200 gap-2">
+            <h2 className="text-sm font-semibold text-gray-900">Transactions</h2>
             <div className="flex gap-2">
               <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <Search className="w-3 h-3 absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
                   placeholder="Search transactions..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-full text-sm w-full md:w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                  className="pl-7 pr-2 py-1 border border-gray-300 rounded-md text-xs w-full md:w-44 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 />
               </div>
               <button
                 onClick={handlePrintStatement}
-                className="p-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
+                className="p-1 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
                 title="Print"
               >
-                <Printer className="w-4 h-4 text-gray-600" />
+                <Printer className="w-3 h-3 text-gray-600" />
               </button>
             </div>
           </div>
@@ -653,21 +691,21 @@ const PartyStatementPage = () => {
             <table className="w-full min-w-[900px]">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Date</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Txn Type</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Ref No</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Payment Type</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Total</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Received/Paid</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Txn Balance</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Payable Balance</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Actions</th>
+                          <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Date</th>
+        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Txn Type</th>
+        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Ref No</th>
+        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Payment Type</th>
+        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Total</th>
+        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Received/Paid</th>
+        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Txn Balance</th>
+        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Payable Balance</th>
+        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredTransactions.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-8 text-center text-gray-500 text-lg font-medium">
+                    <td colSpan={9} className="px-4 py-6 text-center text-gray-500 text-sm font-medium">
                       {searchTerm
                         ? `No transactions found matching "${searchTerm}".`
                         : "No transactions found."}
@@ -691,44 +729,44 @@ const PartyStatementPage = () => {
 
                     return (
                       <tr key={transaction.id} className={`hover:bg-blue-50/40 transition-all ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                        <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">
+                        <td className="px-4 py-3 text-xs text-gray-900 whitespace-nowrap text-center">
                           {formatDate(transaction.date)}
                         </td>
-                        <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
+                        <td className="px-4 py-3 text-xs whitespace-nowrap text-center">
                           <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getTxnTypeColor(transaction.txnType)}`}>
                             {transaction.txnType}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">
+                        <td className="px-4 py-3 text-xs text-blue-700 font-bold whitespace-nowrap text-center">
                           {transaction.refNo}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">
+                        <td className="px-4 py-3 text-xs text-gray-900 whitespace-nowrap text-center">
                           {transaction.paymentType}
                         </td>
-                        <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">
+                        <td className="px-4 py-3 text-xs font-semibold text-blue-700 whitespace-nowrap text-center">
                           {formatCurrency(transaction.total)}
                         </td>
-                        <td className="px-6 py-4 text-sm font-semibold text-green-600 whitespace-nowrap text-center">
+                        <td className="px-4 py-3 text-xs font-semibold text-green-600 whitespace-nowrap text-center">
                           {transaction.txnType === 'Sale Invoice' || transaction.txnType === 'Payment In' 
                             ? formatCurrency(transaction.received)
                             : formatCurrency(transaction.paid)
                           }
                         </td>
-                        <td className="px-6 py-4 text-sm font-semibold text-orange-600 whitespace-nowrap text-center">
+                        <td className="px-4 py-3 text-xs font-semibold text-orange-600 whitespace-nowrap text-center">
                           {(transaction.txnType === 'Payment In' || transaction.txnType === 'Payment Out') ? '' : formatCurrency(transaction.balance)}
                         </td>
-                        <td className="px-6 py-4 text-sm font-semibold text-center">
+                        <td className="px-4 py-3 text-xs font-semibold text-center">
                           <span className={runningBalance >= 0 ? 'text-green-600' : 'text-red-600'}>
                             {formatCurrency(runningBalance)}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-sm font-medium whitespace-nowrap text-center">
+                        <td className="px-4 py-3 text-xs font-medium whitespace-nowrap text-center">
                           <div className="flex justify-center gap-2">
                             <button className="text-blue-600 hover:text-blue-800">
-                              <Eye size={16} />
+                              <Eye size={14} />
                             </button>
                             <button className="text-gray-600 hover:text-gray-800">
-                              <Printer size={16} />
+                              <Printer size={14} />
                             </button>
                           </div>
                         </td>
@@ -741,8 +779,8 @@ const PartyStatementPage = () => {
           </div>
         </div>
       ) : (
-        <div className="text-center py-8">
-          <div className="text-gray-500">Please select a party to view their statement</div>
+        <div className="text-center py-6">
+          <div className="text-gray-500 text-sm">Please select a party to view their statement</div>
         </div>
       )}
 
@@ -757,36 +795,36 @@ const PartyStatementPage = () => {
 
       {/* Party Statement Summary */}
       {selectedParty && (
-        <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-6 mb-6 border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">Party Statement Summary</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 text-center">
+        <div className="bg-white/80 backdrop-blur-xl rounded-xl shadow-md p-4 mb-4 border border-gray-100">
+          <h3 className="text-base font-semibold text-gray-900 mb-2">Party Statement Summary</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 text-center">
             <div>
-              <div className="text-sm text-gray-600 mb-1">Total Sale</div>
-              <div className="text-lg font-bold text-green-600">{formatCurrency(summaryTotals.totalSale)}</div>
+              <div className="text-xs text-gray-600 mb-1">Total Sale</div>
+              <div className="text-sm font-bold text-green-600">{formatCurrency(summaryTotals.totalSale)}</div>
               <div className="text-xs text-gray-500">(Sale - Sale Return)</div>
             </div>
             
             <div>
-              <div className="text-sm text-gray-600 mb-1">Total Purchase</div>
-              <div className="text-lg font-bold text-red-600">{formatCurrency(summaryTotals.totalPurchase)}</div>
+              <div className="text-xs text-gray-600 mb-1">Total Purchase</div>
+              <div className="text-sm font-bold text-red-600">{formatCurrency(summaryTotals.totalPurchase)}</div>
               <div className="text-xs text-gray-500">(Purchase - Purchase Return)</div>
             </div>
             
             <div>
-              <div className="text-sm text-gray-600 mb-1">Total Receivable</div>
-              <div className="text-lg font-bold text-indigo-600">{formatCurrency(summaryTotals.totalReceivable)}</div>
+              <div className="text-xs text-gray-600 mb-1">Total Receivable</div>
+              <div className="text-sm font-bold text-indigo-600">{formatCurrency(summaryTotals.totalReceivable)}</div>
               <div className="text-xs text-gray-500">Outstanding amount</div>
             </div>
             
             <div>
-              <div className="text-sm text-gray-600 mb-1">Total Payment In</div>
-              <div className="text-lg font-bold text-blue-600">{formatCurrency(summaryTotals.totalMoneyIn)}</div>
+              <div className="text-xs text-gray-600 mb-1">Total Payment In</div>
+              <div className="text-sm font-bold text-blue-600">{formatCurrency(summaryTotals.totalMoneyIn)}</div>
               <div className="text-xs text-gray-500">Payments received</div>
             </div>
             
             <div>
-              <div className="text-sm text-gray-600 mb-1">Total Payment Out</div>
-              <div className="text-lg font-bold text-purple-600">{formatCurrency(summaryTotals.totalMoneyOut)}</div>
+              <div className="text-xs text-gray-600 mb-1">Total Payment Out</div>
+              <div className="text-sm font-bold text-purple-600">{formatCurrency(summaryTotals.totalMoneyOut)}</div>
               <div className="text-xs text-gray-500">Payments made</div>
             </div>
           </div>

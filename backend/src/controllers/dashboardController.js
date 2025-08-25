@@ -28,13 +28,21 @@ const _getDashboardCacheKey = (userId, type) => {
   return `dashboard_${userId}_${type}`;
 };
 
-// Helper function to get expense stats using existing controller logic
+// Fast cache invalidation - only clear specific cache types
+const _invalidateSpecificCache = (userId, cacheType) => {
+  const cacheKey = _getDashboardCacheKey(userId, cacheType);
+  dashboardCache.delete(cacheKey);
+  console.log(`Fast cache invalidation: ${cacheKey}`);
+};
+
+// Optimized helper function to get expense stats using existing controller logic
 const _getExpenseStatsForUser = async (userId) => {
   try {
+    // Use aggregation with lean() for better performance
     const totalExpenses = await Expense.aggregate([
       { $match: { userId: new mongoose.Types.ObjectId(userId) } },
       { $group: { _id: null, total: { $sum: '$totalAmount' } } }
-    ]);
+    ]).allowDiskUse(true); // Allow disk usage for large datasets
     return totalExpenses[0]?.total || 0;
   } catch (error) {
     console.error('Error getting expense stats:', error);
@@ -42,74 +50,80 @@ const _getExpenseStatsForUser = async (userId) => {
   }
 };
 
-// Helper function to get cash in hand using existing controller logic
+// Optimized helper function to get cash in hand using existing controller logic
 const _getCashInHandForUser = async (userId) => {
   try {
     // Convert userId to ObjectId for aggregation
     const objectUserId = new mongoose.Types.ObjectId(userId);
     
-    // Get sales data
-    const sales = await Sale.find({ userId })
-      .select('grandTotal received balance paymentType createdAt')
-      .lean();
+    // Use aggregation pipeline for better performance with large datasets
+    const cashFlowData = await Sale.aggregate([
+      { $match: { userId: objectUserId } },
+      { $group: { 
+        _id: null, 
+        totalReceived: { $sum: { $ifNull: ['$received', 0] } },
+        totalSalesBalance: { $sum: { $ifNull: ['$balance', 0] } }
+      }}
+    ]).allowDiskUse(true);
 
-    // Get purchases data
-    const purchases = await Purchase.find({ userId })
-      .select('grandTotal paid balance paymentType createdAt')
-      .lean();
+    const purchaseData = await Purchase.aggregate([
+      { $match: { userId: objectUserId } },
+      { $group: { 
+        _id: null, 
+        totalPaid: { $sum: { $ifNull: ['$paid', 0] } },
+        totalPurchaseBalance: { $sum: { $ifNull: ['$balance', 0] } }
+      }}
+    ]).allowDiskUse(true);
 
-    // Get credit notes data
-    const creditNotes = await CreditNote.find({ userId })
-      .select('amount type createdAt')
-      .lean();
+    const expenseData = await Expense.aggregate([
+      { $match: { userId: objectUserId } },
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$totalAmount', 0] } } }}
+    ]).allowDiskUse(true);
 
-    // Get expenses data
-    const expenses = await Expense.find({ userId })
-      .select('totalAmount paymentType expenseDate createdAt')
-      .lean();
+    const creditNotesData = await CreditNote.aggregate([
+      { $match: { userId: objectUserId } },
+      { $group: { 
+        _id: '$type', 
+        total: { $sum: { $ifNull: ['$amount', 0] } }
+      }}
+    ]).allowDiskUse(true);
 
-    // Get cash bank transactions (adjustments)
-    const cashAdjustments = await CashBank.find({ userId })
-      .select('type amount description date createdAt')
-      .sort({ createdAt: 1 })
-      .lean();
+    const cashAdjustmentsData = await CashBank.aggregate([
+      { $match: { userId: objectUserId } },
+      { $group: { 
+        _id: '$type', 
+        total: { $sum: { $ifNull: ['$amount', 0] } }
+      }}
+    ]).allowDiskUse(true);
 
-    // Calculate totals from sales
-    const totalReceived = sales.reduce((sum, sale) => sum + (sale.received || 0), 0);
-    const totalSalesBalance = sales.reduce((sum, sale) => sum + (sale.balance || 0), 0);
-
-    // Calculate totals from purchases
-    const totalPaid = purchases.reduce((sum, purchase) => sum + (purchase.paid || 0), 0);
-    const totalPurchaseBalance = purchases.reduce((sum, purchase) => sum + (purchase.balance || 0), 0);
-
-    // Calculate total expenses
-    const totalExpenses = expenses.reduce((sum, expense) => sum + (expense.totalAmount || 0), 0);
-
-    // Calculate net effect of credit notes
-    const totalCreditNotes = creditNotes.reduce((sum, note) => {
-      const amount = Number(note.amount) || 0;
-      if (isNaN(amount)) return sum;
-      
-      if (note.type === 'Sale') {
-        return sum + amount; // Credit note reduces sales (adds to cash)
-      } else {
-        return sum - amount; // Credit note reduces purchases (reduces cash)
-      }
-    }, 0);
-
-    // Calculate net cash flow from business operations
-    // Net Cash Flow = Total Received - Total Expenses + Credit Notes effect
-    const netCashFlow = totalReceived - totalExpenses + totalCreditNotes;
+    // Extract values with fallbacks
+    const totalReceived = cashFlowData[0]?.totalReceived || 0;
+    const totalExpenses = expenseData[0]?.total || 0;
     
-    // Calculate total cash adjustments
-    const totalCashAdjustments = cashAdjustments.reduce((sum, adjustment) => {
-      if (adjustment.type === 'Income') {
-        return sum + adjustment.amount;
-      } else if (adjustment.type === 'Expense') {
-        return sum - adjustment.amount;
+    // Calculate net effect of credit notes
+    let totalCreditNotes = 0;
+    creditNotesData.forEach(note => {
+      const amount = Number(note.total) || 0;
+      if (note._id === 'Sale') {
+        totalCreditNotes += amount; // Credit note reduces sales (adds to cash)
+      } else {
+        totalCreditNotes -= amount; // Credit note reduces purchases (reduces cash)
       }
-      return sum;
-    }, 0);
+    });
+
+    // Calculate total cash adjustments
+    let totalCashAdjustments = 0;
+    cashAdjustmentsData.forEach(adjustment => {
+      const amount = Number(adjustment.total) || 0;
+      if (adjustment._id === 'Income') {
+        totalCashAdjustments += amount;
+      } else if (adjustment._id === 'Expense') {
+        totalCashAdjustments -= amount;
+      }
+    });
+    
+    // Calculate net cash flow from business operations
+    const netCashFlow = totalReceived - totalExpenses + totalCreditNotes;
     
     // Final cash in hand = Business net cash flow + total cash adjustments
     const finalCashInHand = netCashFlow + totalCashAdjustments;
@@ -131,6 +145,7 @@ const _getCashInHandForUser = async (userId) => {
   }
 };
 
+// Optimized dashboard stats with lazy loading for expensive calculations
 export const getDashboardStats = async (req, res) => {
   try {
     const userId = req.user && (req.user._id || req.user.id);
@@ -163,23 +178,30 @@ export const getDashboardStats = async (req, res) => {
     const now = new Date();
     const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 0, 23, 59, 59, 999);
 
     // Optimize queries by using lean() and specific field selection
+    // Use allowDiskUse for large datasets and add timeout
+    const queryOptions = { 
+      allowDiskUse: true,
+      maxTimeMS: 30000 // 30 second timeout
+    };
+
+    // Parallel execution of optimized aggregations
     const [sales, purchases, customers, items, revenueAgg, thisMonthAgg, lastMonthAgg, thisMonthOrders, lastMonthOrders, thisMonthProducts, lastMonthProducts, thisMonthCustomers, lastMonthCustomers, totalOrders, totalReceivableAgg, totalPayableAgg, creditNotesAgg, stockValueAgg, lowStockItems] = await Promise.all([
-      Sale.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
-      Purchase.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
+      Sale.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }], queryOptions),
+      Purchase.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }], queryOptions),
       Party.countDocuments({ user: userId }).lean(),
       Item.countDocuments({ userId }).lean(),
-      Sale.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, totalRevenue: { $sum: '$grandTotal' } } }]),
+      Sale.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, totalRevenue: { $sum: '$grandTotal' } } }], queryOptions),
       Sale.aggregate([
         { $match: { userId: objectUserId, createdAt: { $gte: startOfThisMonth } } },
         { $group: { _id: null, total: { $sum: '$grandTotal' } } }
-      ]),
+      ], queryOptions),
       Sale.aggregate([
         { $match: { userId: objectUserId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } } },
         { $group: { _id: null, total: { $sum: '$grandTotal' } } }
-      ]),
+      ], queryOptions),
       Sale.countDocuments({ userId: objectUserId, createdAt: { $gte: startOfThisMonth } }).lean(),
       Sale.countDocuments({ userId: objectUserId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }).lean(),
       Item.countDocuments({ userId, createdAt: { $gte: startOfThisMonth } }).lean(),
@@ -188,11 +210,11 @@ export const getDashboardStats = async (req, res) => {
       Party.countDocuments({ user: userId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }).lean(),
       Sale.countDocuments({ userId: objectUserId }).lean(), // <-- total orders
       // New: total receivable and payable
-      Sale.aggregate([{ $match: { userId: objectUserId, balance: { $gt: 0 } } }, { $group: { _id: null, total: { $sum: '$balance' } } }]),
-      Purchase.aggregate([{ $match: { userId: objectUserId, balance: { $gt: 0 } } }, { $group: { _id: null, total: { $sum: '$balance' } } }]),
+      Sale.aggregate([{ $match: { userId: objectUserId, balance: { $gt: 0 } } }, { $group: { _id: null, total: { $sum: '$balance' } } }], queryOptions),
+      Purchase.aggregate([{ $match: { userId: objectUserId, balance: { $gt: 0 } } }, { $group: { _id: null, total: { $sum: '$balance' } } }], queryOptions),
       // New: total credit notes
-      CreditNote.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }]),
-      // New: stock value calculation (stock quantity * purchase price)
+      CreditNote.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }], queryOptions),
+      // New: stock value calculation (stock quantity * purchase price) - optimized
       Item.aggregate([
         { $match: { userId: userId } },
         { 
@@ -255,7 +277,7 @@ export const getDashboardStats = async (req, res) => {
           } 
         },
         { $group: { _id: null, totalStockValue: { $sum: '$stockValue' } } }
-      ]),
+      ], queryOptions),
       // Count items with stock issues (using aggregation for proper field comparison)
       Item.aggregate([
         { $match: { userId: userId } },
@@ -288,9 +310,9 @@ export const getDashboardStats = async (req, res) => {
         },
         { $match: { hasStockIssue: true } },
         { $count: "total" }
-      ]),
+      ], queryOptions),
       // New: Get total expenses amount using existing controller logic
-      Expense.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$totalAmount' } } }]),
+      Expense.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$totalAmount' } } }], queryOptions),
       // New: Get cash in hand using existing controller logic
       CashBank.findOne({ userId: objectUserId }).sort({ createdAt: -1 }).select('cashInHand').lean(),
     ]);
@@ -842,8 +864,9 @@ export const getPayablesList = async (req, res) => {
 
 // Cache invalidation functions for other controllers to call
 export const invalidateDashboardCache = (userId) => {
-  _clearUserDashboardCache(userId);
-  console.log(`Dashboard cache cleared for user: ${userId}`);
+  // Fast invalidation - only clear stats cache, keep other caches
+  _invalidateSpecificCache(userId, 'stats');
+  console.log(`Fast dashboard cache invalidation for user: ${userId}`);
 };
 
 // Utility function to clear all cache for a user
@@ -882,6 +905,51 @@ export const getDashboardPerformanceStats = async (req, res) => {
     return res.json({ success: true, data: stats });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to get performance stats', error: err.message });
+  }
+};
+
+// Function to create database indexes for better performance
+export const createDashboardIndexes = async (req, res) => {
+  try {
+    console.log('🔧 Creating database indexes for dashboard performance...');
+    
+    // Create indexes for better aggregation performance
+    await Promise.all([
+      // Sale indexes
+      Sale.collection.createIndex({ userId: 1, createdAt: -1 }),
+      Sale.collection.createIndex({ userId: 1, balance: 1 }),
+      Sale.collection.createIndex({ userId: 1, grandTotal: 1 }),
+      
+      // Purchase indexes
+      Purchase.collection.createIndex({ userId: 1, createdAt: -1 }),
+      Purchase.collection.createIndex({ userId: 1, balance: 1 }),
+      Purchase.collection.createIndex({ userId: 1, grandTotal: 1 }),
+      
+      // Item indexes
+      Item.collection.createIndex({ userId: 1, stock: 1 }),
+      Item.collection.createIndex({ userId: 1, purchasePrice: 1 }),
+      Item.collection.createIndex({ userId: 1, minStock: 1 }),
+      
+      // Party indexes
+      Party.collection.createIndex({ user: 1, createdAt: -1 }),
+      
+      // Expense indexes
+      Expense.collection.createIndex({ userId: 1, totalAmount: 1 }),
+      
+      // Credit Note indexes
+      CreditNote.collection.createIndex({ userId: 1, type: 1 }),
+      CreditNote.collection.createIndex({ userId: 1, amount: 1 }),
+      
+      // Cash Bank indexes
+      CashBank.collection.createIndex({ userId: 1, type: 1 }),
+      CashBank.collection.createIndex({ userId: 1, amount: 1 }),
+    ]);
+    
+    console.log('✅ Database indexes created successfully');
+    return res.json({ success: true, message: 'Database indexes created successfully' });
+  } catch (err) {
+    console.error('❌ Error creating database indexes:', err);
+    return res.status(500).json({ success: false, message: 'Failed to create indexes', error: err.message });
   }
 };
 

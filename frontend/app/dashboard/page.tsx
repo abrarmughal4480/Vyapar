@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BarChart3,
@@ -125,6 +125,22 @@ const quickActions = [
     path: '/dashboard/payment-out?openPaymentModal=true'
   },
 ];
+
+// Optimized number formatting utility for large amounts
+const formatLargeAmount = (amount: number): string => {
+  if (amount === 0) return 'PKR 0';
+  
+  // For amounts in lakhs and crores, use abbreviated format
+  if (amount >= 10000000) { // 1 crore
+    return `PKR ${(amount / 10000000).toFixed(2)} Cr`;
+  } else if (amount >= 100000) { // 1 lakh
+    return `PKR ${(amount / 100000).toFixed(2)} L`;
+  } else if (amount >= 1000) { // 1 thousand
+    return `PKR ${(amount / 1000).toFixed(1)} K`;
+  } else {
+    return `PKR ${amount.toLocaleString()}`;
+  }
+};
 
 export default function Dashboard() {
   const router = useRouter();

@@ -28,20 +28,26 @@ export const getSaleById = async (saleId: string, token: string) => {
   return data;
 };
 
-export const receivePayment = async (saleId: string, amount: number, paymentType?: string, paymentDate?: string) => {
+export const receivePayment = async (saleId: string, amount: number, token: string, discount?: number, discountType?: string, paymentType?: string, paymentDate?: string) => {
   const res = await api.post('/api/sales/receive-payment', { 
     saleId, 
     amount, 
+    discount,
+    discountType,
     paymentType, 
     paymentDate 
+  }, {
+    headers: { Authorization: `Bearer ${token}` }
   });
   return res.data;
 };
 
-export const receivePartyPayment = async (partyName: string, amount: number, token: string, paymentType?: string, paymentDate?: string) => {
+export const receivePartyPayment = async (partyName: string, amount: number, token: string, discount?: number, discountType?: string, paymentType?: string, paymentDate?: string) => {
   const res = await api.post('/api/sales/receive-party-payment', { 
     partyName, 
     amount, 
+    discount,
+    discountType,
     paymentType, 
     paymentDate 
   }, {

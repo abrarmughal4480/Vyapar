@@ -16,6 +16,7 @@ interface PaymentOutModalProps {
   dueBalance: number;
   purchaseId?: string; // Made optional for party payments
   onSave?: (data: any) => void;
+  showDiscount?: boolean; // New prop to control discount field visibility
 }
 
 const paymentTypeOptions = [
@@ -96,10 +97,12 @@ function PaymentTypeDropdown({ value, onChange }: { value: string; onChange: (va
   );
 }
 
-const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, partyName: initialPartyName, total, dueBalance, purchaseId, onSave }) => {
+const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, partyName: initialPartyName, total, dueBalance, purchaseId, onSave, showDiscount = true }) => {
   const [paymentType, setPaymentType] = useState('Cash');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [paidAmount, setPaidAmount] = useState('');
+  const [discount, setDiscount] = useState('');
+  const [discountType, setDiscountType] = useState<'percentage' | 'pkr'>('pkr');
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageName, setImageName] = useState<string>('');
@@ -263,16 +266,46 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
 
   const handleSave = async () => {
     const amount = parseFloat(paidAmount) || 0;
+    const discountAmount = parseFloat(discount) || 0;
     
-    if (amount <= 0) {
-      setToast({ message: 'Please enter a valid payment amount', type: 'error' });
+    // If discount reduces balance to 0, set received amount to 0
+    let finalPaidAmount = amount;
+    if (discountAmount > 0) {
+      if (discountType === 'percentage') {
+        const discountInPkr = (selectedParty ? partyDueBalance : dueBalance) * discountAmount / 100;
+        if (discountInPkr >= (selectedParty ? partyDueBalance : dueBalance)) {
+          finalPaidAmount = 0; // Discount covers entire balance
+        } else {
+          finalPaidAmount = Math.max(0, amount - discountInPkr);
+        }
+      } else {
+        if (discountAmount >= (selectedParty ? partyDueBalance : dueBalance)) {
+          finalPaidAmount = 0; // Discount covers entire balance
+        } else {
+          finalPaidAmount = Math.max(0, amount - discountAmount);
+        }
+      }
+    }
+    
+    // Allow 0 amount if discount covers everything, otherwise require positive amount
+    if (finalPaidAmount < 0 || (finalPaidAmount === 0 && discountAmount === 0)) {
+      setToast({ message: 'Please enter a valid payment amount or discount', type: 'error' });
       return;
     }
     
-    // Validate against party due balance for party payments
-    if (selectedParty && !purchaseId && amount > partyDueBalance) {
-      setToast({ message: `Payment amount cannot exceed party due balance of PKR ${partyDueBalance.toLocaleString()}`, type: 'error' });
-      return;
+    // Validate against party due balance for party payments (after discount)
+    if (selectedParty && !purchaseId) {
+      const currentBalance = selectedParty ? partyDueBalance : dueBalance;
+      const balanceAfterDiscount = discountAmount > 0 ? 
+        (discountType === 'percentage' ? 
+          currentBalance - (currentBalance * discountAmount / 100) : 
+          currentBalance - discountAmount) : 
+        currentBalance;
+      
+      if (finalPaidAmount > Math.max(0, balanceAfterDiscount)) {
+        setToast({ message: `Payment amount cannot exceed party due balance of PKR ${Math.max(0, balanceAfterDiscount).toLocaleString()}`, type: 'error' });
+        return;
+      }
     }
     
     try {
@@ -283,7 +316,9 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
         // NEW: Bulk payment to party
         const paymentData = {
           supplierName: selectedParty.name,
-          amount,
+          amount: finalPaidAmount,
+          discount: discountAmount > 0 ? discountAmount : undefined,
+          discountType: discountAmount > 0 ? (discountType === 'percentage' ? '%' : 'PKR') : undefined,
           paymentType,
           description: `Bulk payment for ${selectedParty.name}`,
           imageUrl: imagePreview || ''
@@ -291,7 +326,14 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
         
         const result = await makeBulkPaymentToParty(paymentData, token);
         if (result && result.success) {
-          setToast({ message: result.message || 'Bulk payment successful!', type: 'success' });
+          let message = result.message || 'Bulk payment successful!';
+          if (discountAmount > 0) {
+            message += ` with ${discountType === 'percentage' ? discountAmount + '%' : 'PKR ' + discountAmount} discount`;
+          }
+          if (finalPaidAmount === 0) {
+            message += ' - Full amount covered by discount';
+          }
+          setToast({ message, type: 'success' });
           // Refresh party totals after payment
           await fetchPartyTotals(selectedParty.name);
           if (onSave) onSave({ 
@@ -300,7 +342,9 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
             date, 
             total: partyTotal, 
             dueBalance: partyDueBalance, 
-            paidAmount: amount, 
+            paidAmount: finalPaidAmount, 
+            discount: discountAmount,
+            discountType,
             image,
             bulkPayment: true,
             updatedPurchases: result.updatedPurchases
@@ -313,7 +357,9 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
         // OLD: Individual purchase payment
         const paymentData = {
           purchaseId,
-          amount,
+          amount: finalPaidAmount,
+          discount: discountAmount > 0 ? discountAmount : undefined,
+          discountType: discountAmount > 0 ? (discountType === 'percentage' ? '%' : 'PKR') : undefined,
           paymentType,
           description: `Payment for ${selectedParty?.name || ''}`,
           imageUrl: imagePreview || ''
@@ -321,7 +367,25 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
         
         const result = await makePayment(paymentData, token);
         if (result && result.success) {
-          if (onSave) onSave({ partyName: selectedParty?.name || '', paymentType, date, total, dueBalance, paidAmount: amount, image });
+          let message = 'Payment successful!';
+          if (discountAmount > 0) {
+            message += ` with ${discountType === 'percentage' ? discountAmount + '%' : 'PKR ' + discountAmount} discount`;
+          }
+          if (finalPaidAmount === 0) {
+            message += ' - Full amount covered by discount';
+          }
+          setToast({ message, type: 'success' });
+          if (onSave) onSave({ 
+            partyName: selectedParty?.name || '', 
+            paymentType, 
+            date, 
+            total, 
+            dueBalance, 
+            paidAmount: finalPaidAmount, 
+            discount: discountAmount,
+            discountType,
+            image 
+          });
           onClose();
         } else {
           setToast({ message: result?.message || 'Failed to make payment', type: 'error' });
@@ -500,7 +564,64 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
                 <div style={{ fontSize: 28, fontWeight: 800, color: '#2563eb', marginBottom: 18 }}>PKR {(selectedParty ? partyTotal : total).toLocaleString()}</div>
                 <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>Party Due Balance</div>
                 <div style={{ fontSize: 22, fontWeight: 700, color: '#ea580c' }}>PKR {(selectedParty ? partyDueBalance : dueBalance).toLocaleString()}</div>
+                {showDiscount && discount && parseFloat(discount) > 0 && (
+                  <>
+                    <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px', marginTop: 18 }}>After Discount</div>
+                    <div style={{ fontSize: 18, fontWeight: 600, color: '#059669', marginBottom: 8 }}>
+                      PKR {(() => {
+                        const discountAmount = parseFloat(discount) || 0;
+                        const currentBalance = selectedParty ? partyDueBalance : dueBalance;
+                        if (discountType === 'percentage') {
+                          const discountInPkr = currentBalance * discountAmount / 100;
+                          return Math.max(0, currentBalance - discountInPkr).toLocaleString();
+                        } else {
+                          return Math.max(0, currentBalance - discountAmount).toLocaleString();
+                        }
+                      })()}
+                    </div>
+                  </>
+                )}
               </div>
+              {showDiscount && (
+                <div>
+                  <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Discount</label>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input 
+                      type="number" 
+                      value={discount} 
+                      onChange={e => setDiscount(e.target.value)} 
+                      style={{ 
+                        flex: 1, 
+                        padding: 12, 
+                        border: '1.5px solid #e2e8f0', 
+                        borderRadius: 8, 
+                        background: '#fff', 
+                        color: '#334155', 
+                        fontSize: 15, 
+                        fontWeight: 500 
+                      }} 
+                      placeholder="Enter discount" 
+                    />
+                    <select 
+                      value={discountType} 
+                      onChange={e => setDiscountType(e.target.value as 'percentage' | 'pkr')}
+                      style={{ 
+                        padding: 12, 
+                        border: '1.5px solid #e2e8f0', 
+                        borderRadius: 8, 
+                        background: '#fff', 
+                        color: '#334155', 
+                        fontSize: 15, 
+                        fontWeight: 500,
+                        minWidth: 80
+                    }}
+                    >
+                      <option value="pkr">PKR</option>
+                      <option value="percentage">%</option>
+                    </select>
+                  </div>
+                </div>
+              )}
               <div>
                 <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Paid Amount</label>
                 <input type="number" value={paidAmount} onChange={e => setPaidAmount(e.target.value)} style={{ width: '100%', padding: 12, border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#334155', fontSize: 15, fontWeight: 500 }} placeholder="Enter amount paid" />

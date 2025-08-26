@@ -265,9 +265,9 @@ export const getPurchasesByUser = async (req, res) => {
 // Make payment for a purchase
 export const makePayment = async (req, res) => {
   try {
-    const { purchaseId, amount, paymentType = 'Cash', description = '', imageUrl = '' } = req.body;
-    if (!purchaseId || typeof amount !== 'number') {
-      return res.status(400).json({ success: false, message: 'Missing purchaseId or amount' });
+    const { purchaseId, amount, discount, discountType, paymentType = 'Cash', description = '', imageUrl = '' } = req.body;
+    if (!purchaseId || (typeof amount !== 'number' && amount !== 0)) {
+      return res.status(400).json({ success: false, message: 'Missing purchaseId or invalid amount' });
     }
     
     const userId = req.user && req.user._id;
@@ -280,64 +280,114 @@ export const makePayment = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Purchase not found' });
     }
     
-    // Validate payment amount
-    if (amount <= 0) {
-      return res.status(400).json({ success: false, message: 'Payment amount must be greater than 0' });
+    // Calculate discount and update purchase totals
+    let discountValue = 0;
+    let newGrandTotal = purchase.grandTotal;
+    let newBalance = purchase.balance;
+
+    if (discount && discount > 0 && discountType) {
+      if (discountType === '%') {
+        // Percentage discount
+        discountValue = (purchase.grandTotal * discount) / 100;
+      } else if (discountType === 'PKR') {
+        // Fixed PKR discount
+        discountValue = discount;
+      }
+      
+      // Update purchase totals after discount
+      newGrandTotal = Math.max(0, purchase.grandTotal - discountValue);
+      newBalance = Math.max(0, purchase.balance - discountValue);
+      
+      // Update purchase with new totals
+      purchase.grandTotal = newGrandTotal;
+      purchase.balance = newBalance;
+      purchase.discount = discount;
+      purchase.discountType = discountType;
+      purchase.discountValue = discountValue;
     }
-    
-    const currentBalance = purchase.balance || 0;
-    const currentPaid = purchase.paid || 0;
-    
-    // Check if payment amount exceeds remaining balance
-    if (amount > currentBalance) {
+
+    // Validate payment amount after discount
+    if (amount > 0 && amount > newBalance) {
       return res.status(400).json({ 
         success: false, 
-        message: `Payment amount (${amount}) cannot exceed remaining balance (${currentBalance})` 
+        message: `Payment amount (${amount}) cannot exceed remaining balance (${newBalance})` 
       });
     }
     
-    // Update purchase payment and balance
-    purchase.paid = currentPaid + amount;
-    purchase.balance = Math.max(0, currentBalance - amount); // Ensure balance doesn't go negative
+    // If amount is 0, ensure there's a discount applied
+    if (amount === 0 && (!discount || discount <= 0)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Payment amount cannot be 0 unless a discount is applied' 
+      });
+    }
+    
+    const currentBalance = newBalance;
+    const currentPaid = purchase.paid || 0;
+    
+    // Process payment (amount can be 0 if discount covers everything)
+    if (amount > 0) {
+      purchase.paid = currentPaid + amount;
+      purchase.balance = Math.max(0, currentBalance - amount);
+    } else {
+      // If amount is 0, the discount has already been applied above
+      purchase.balance = currentBalance;
+    }
     
     await purchase.save();
     
-    // Create payment record
-    const payment = new Payment({
-      userId,
-      purchaseId,
-      billNo: purchase.billNo,
-      supplierName: purchase.supplierName,
-      phoneNo: purchase.phoneNo,
-      amount,
-      paymentType,
-      paymentDate: new Date(),
-      description,
-      imageUrl,
-      category: 'Purchase Payment',
-      status: purchase.balance === 0 ? 'Paid' : 'Partial'
-    });
-    
-    await payment.save();
+    // Create payment record only if there's an actual payment
+    let payment = null;
+    if (amount > 0) {
+      payment = new Payment({
+        userId,
+        purchaseId,
+        billNo: purchase.billNo,
+        supplierName: purchase.supplierName,
+        phoneNo: purchase.phoneNo,
+        amount,
+        paymentType,
+        paymentDate: new Date(),
+        description,
+        imageUrl,
+        category: 'Purchase Payment',
+        status: purchase.balance === 0 ? 'Paid' : 'Partial'
+      });
+      
+      await payment.save();
+    }
     
     // Update supplier balance when payment is made
-    try {
-      const Party = (await import('../models/parties.js')).default;
-      const supplierDoc = await Party.findOne({ name: purchase.supplierName, user: userId });
-      if (supplierDoc) {
-        // Decrease supplier balance by the payment amount (you're paying them more money)
-        supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) - amount;
-        await supplierDoc.save();
-        console.log(`Updated supplier ${purchase.supplierName} balance after payment: -${amount}`);
+    if (amount > 0) {
+      try {
+        const Party = (await import('../models/parties.js')).default;
+        const supplierDoc = await Party.findOne({ name: purchase.supplierName, user: userId });
+        if (supplierDoc) {
+          // Decrease supplier balance by the payment amount (you're paying them more money)
+          supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) - amount;
+          await supplierDoc.save();
+          console.log(`Updated supplier ${purchase.supplierName} balance after payment: -${amount}`);
+        }
+      } catch (err) {
+        console.error('Failed to update supplier balance after payment:', err);
       }
-    } catch (err) {
-      console.error('Failed to update supplier balance after payment:', err);
     }
     
     console.log(`Payment processed for purchase ${purchaseId}: Amount=${amount}, New Paid=${purchase.paid}, New Balance=${purchase.balance}`);
-    console.log('Payment record saved:', payment.toObject());
+    if (payment) {
+      console.log('Payment record saved:', payment.toObject());
+    }
     
-    res.json({ success: true, purchase, payment });
+    res.json({ 
+      success: true, 
+      purchase, 
+      payment,
+      discountApplied: discountValue > 0,
+      discountValue,
+      newGrandTotal,
+      newBalance: purchase.balance,
+      paymentProcessed: amount > 0
+    });
     clearAllCacheForUser(userId);
   } catch (err) {
     console.error('Payment error:', err);

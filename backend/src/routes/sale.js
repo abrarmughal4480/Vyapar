@@ -41,8 +41,6 @@ router.get('/by-id/:saleId', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/payment-in', receivePayment);
-
 router.post('/receive-payment', authMiddleware, receivePayment);
 
 router.post('/receive-party-payment', authMiddleware, receivePartyPayment);

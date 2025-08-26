@@ -278,33 +278,82 @@ export const getSalesByUser = async (req, res) => {
 // Receive payment for a sale
 export const receivePayment = async (req, res) => {
   try {
-    const { saleId, amount } = req.body;
-    if (!saleId || typeof amount !== 'number') {
-      return res.status(400).json({ success: false, message: 'Missing saleId or amount' });
+    const { saleId, amount, discount, discountType } = req.body;
+    if (!saleId || (typeof amount !== 'number' && amount !== 0)) {
+      return res.status(400).json({ success: false, message: 'Missing saleId or invalid amount' });
     }
     const sale = await Sale.findById(saleId);
     if (!sale) {
       return res.status(404).json({ success: false, message: 'Sale not found' });
     }
-    sale.received = (sale.received || 0) + amount;
-    sale.balance = (sale.balance || 0) - amount;
-    await sale.save();
 
-    // Update party openingBalance (subtract payment amount)
-    try {
-      const Party = (await import('../models/parties.js')).default;
-      const partyDoc = await Party.findOne({ name: sale.partyName, user: sale.userId });
-      if (partyDoc) {
-        partyDoc.openingBalance = (partyDoc.openingBalance || 0) - amount;
-        await partyDoc.save();
+    // Calculate discount and update sale totals
+    let discountValue = 0;
+    let newGrandTotal = sale.grandTotal;
+    let newBalance = sale.balance;
+
+    if (discount && discount > 0 && discountType) {
+      if (discountType === '%') {
+        // Percentage discount
+        discountValue = (sale.grandTotal * discount) / 100;
+      } else if (discountType === 'PKR') {
+        // Fixed PKR discount
+        discountValue = discount;
       }
-    } catch (err) {
-      console.error('Failed to update party openingBalance on payment:', err);
+      
+      // Update sale totals after discount
+      newGrandTotal = Math.max(0, sale.grandTotal - discountValue);
+      newBalance = Math.max(0, sale.balance - discountValue);
+      
+      // Update sale with new totals
+      sale.grandTotal = newGrandTotal;
+      sale.balance = newBalance;
+      sale.discount = discount;
+      sale.discountType = discountType;
+      sale.discountValue = discountValue;
     }
 
-    res.json({ success: true, sale });
-    clearAllCacheForUser(sale.userId);
+    // Process payment (amount can be 0 if discount covers everything)
+    if (amount > 0) {
+      sale.received = (sale.received || 0) + amount;
+      sale.balance = Math.max(0, newBalance - amount);
+    } else {
+      // If amount is 0, the discount has already been applied above
+      sale.balance = newBalance;
+    }
+    
+    await sale.save();
+
+    // Update party openingBalance only if there's an actual payment
+    if (amount > 0) {
+      try {
+        const Party = (await import('../models/parties.js')).default;
+        const partyDoc = await Party.findOne({ name: sale.partyName, user: sale.userId });
+        if (partyDoc) {
+          partyDoc.openingBalance = (partyDoc.openingBalance || 0) - amount;
+          await partyDoc.save();
+        }
+      } catch (err) {
+        console.error('Failed to update party openingBalance on payment:', err);
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      sale,
+      discountApplied: discountValue > 0,
+      discountValue,
+      newGrandTotal,
+      newBalance: sale.balance,
+      paymentProcessed: amount > 0
+    });
+    
+    // Only clear cache if user context exists
+    if (sale.userId) {
+      clearAllCacheForUser(sale.userId);
+    }
   } catch (err) {
+    console.error('Payment error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -312,10 +361,10 @@ export const receivePayment = async (req, res) => {
 // Receive payment for party (updates multiple sales starting from oldest)
 export const receivePartyPayment = async (req, res) => {
   try {
-    const { partyName, amount } = req.body;
+    const { partyName, amount, discount, discountType } = req.body;
     const userId = req.user && (req.user._id || req.user.id);
     
-    if (!partyName || typeof amount !== 'number' || amount <= 0) {
+    if (!partyName || (typeof amount !== 'number' && amount !== 0) || amount < 0) {
       return res.status(400).json({ success: false, message: 'Missing partyName or invalid amount' });
     }
 
@@ -330,44 +379,99 @@ export const receivePartyPayment = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No outstanding sales found for this party' });
     }
 
+    // Calculate total outstanding balance for all sales
+    const totalOutstandingBalance = sales.reduce((sum, sale) => sum + (sale.balance || 0), 0);
+    const totalGrandTotal = sales.reduce((sum, sale) => sum + (sale.grandTotal || 0), 0);
+
+    // Calculate discount if provided
+    let discountValue = 0;
+    let newTotalGrandTotal = totalGrandTotal;
+    let newTotalOutstandingBalance = totalOutstandingBalance;
+
+    if (discount && discount > 0 && discountType) {
+      if (discountType === '%') {
+        // Percentage discount on total outstanding balance
+        discountValue = (totalOutstandingBalance * discount) / 100;
+      } else if (discountType === 'PKR') {
+        // Fixed PKR discount
+        discountValue = Math.min(discount, totalOutstandingBalance);
+      }
+      
+      newTotalOutstandingBalance = Math.max(0, totalOutstandingBalance - discountValue);
+      newTotalGrandTotal = Math.max(0, totalGrandTotal - discountValue);
+    }
+
     let remainingAmount = amount;
     const updatedSales = [];
+    let totalDiscountApplied = 0;
 
-    // Update sales starting from oldest
+    // Update sales starting from oldest, applying discount proportionally
     for (const sale of sales) {
-      if (remainingAmount <= 0) break;
-
       const saleBalance = sale.balance || 0;
-      const paymentForThisSale = Math.min(remainingAmount, saleBalance);
+      const saleGrandTotal = sale.grandTotal || 0;
+      
+      // Calculate proportional discount for this sale
+      let saleDiscount = 0;
+      if (discountValue > 0 && totalOutstandingBalance > 0) {
+        const discountRatio = saleBalance / totalOutstandingBalance;
+        saleDiscount = discountValue * discountRatio;
+      }
+      
+      // Apply discount to this sale
+      if (saleDiscount > 0) {
+        sale.grandTotal = Math.max(0, saleGrandTotal - saleDiscount);
+        sale.balance = Math.max(0, saleBalance - saleDiscount);
+        sale.discount = discount;
+        sale.discountType = discountType;
+        sale.discountValue = saleDiscount;
+        totalDiscountApplied += saleDiscount;
+      }
 
-      sale.received = (sale.received || 0) + paymentForThisSale;
-      sale.balance = saleBalance - paymentForThisSale;
+      // Process payment only if there's an amount to pay
+      if (remainingAmount > 0) {
+        const paymentForThisSale = Math.min(remainingAmount, sale.balance);
+        sale.received = (sale.received || 0) + paymentForThisSale;
+        sale.balance = sale.balance - paymentForThisSale;
+        remainingAmount -= paymentForThisSale;
+      }
       
       await sale.save();
       updatedSales.push(sale);
-      remainingAmount -= paymentForThisSale;
     }
 
-    // Update party openingBalance (subtract payment amount)
-    try {
-      const Party = (await import('../models/parties.js')).default;
-      const partyDoc = await Party.findOne({ name: partyName, user: userId });
-      if (partyDoc) {
-        partyDoc.openingBalance = (partyDoc.openingBalance || 0) - amount;
-        await partyDoc.save();
+    // Update party openingBalance only if there's an actual payment
+    if (amount > 0) {
+      try {
+        const Party = (await import('../models/parties.js')).default;
+        const partyDoc = await Party.findOne({ name: partyName, user: userId });
+        if (partyDoc) {
+          partyDoc.openingBalance = (partyDoc.openingBalance || 0) - amount;
+          await partyDoc.save();
+        }
+      } catch (err) {
+        console.error('Failed to update party openingBalance on payment:', err);
       }
-    } catch (err) {
-      console.error('Failed to update party openingBalance on payment:', err);
     }
 
     res.json({ 
       success: true, 
-      message: `Payment of PKR ${amount} processed successfully`,
+      message: amount > 0 ? `Payment of PKR ${amount} processed successfully` : 'Discount applied successfully',
       updatedSales: updatedSales.length,
-      remainingAmount: remainingAmount > 0 ? remainingAmount : 0
+      remainingAmount: remainingAmount > 0 ? remainingAmount : 0,
+      discountApplied: discountValue > 0,
+      discountValue,
+      totalDiscountApplied,
+      newTotalGrandTotal,
+      newTotalOutstandingBalance,
+      paymentProcessed: amount > 0
     });
-    clearAllCacheForUser(userId);
+    
+    // Only clear cache if user context exists
+    if (userId) {
+      clearAllCacheForUser(userId);
+    }
   } catch (err) {
+    console.error('Party payment error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };

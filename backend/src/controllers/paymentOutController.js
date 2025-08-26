@@ -50,26 +50,7 @@ export const createPaymentOut = async (req, res) => {
     
     await purchase.save();
 
-    // Update supplier openingBalance (add payment amount)
-    try {
-      const Party = (await import('../models/parties.js')).default;
-      const supplierDoc = await Party.findOne({ name: purchase.supplierName, user: userId });
-      if (supplierDoc) {
-        const supplierCurrentBalance = supplierDoc.openingBalance || 0;
-        supplierDoc.openingBalance = supplierCurrentBalance + amount;
-        
-        // Calculate and update partyBalanceAfterTransaction for payment out
-        const partyBalanceAfterTransaction = supplierDoc.openingBalance;
-        paymentOut.partyBalanceAfterTransaction = partyBalanceAfterTransaction;
-        await paymentOut.save();
-        
-        await supplierDoc.save();
-      }
-    } catch (err) {
-      console.error('Failed to update supplier openingBalance on payment out:', err);
-    }
-
-    // Create payment out record
+    // Create payment out record first
     const paymentOut = new PaymentOut({
       userId,
       purchaseId,
@@ -86,6 +67,24 @@ export const createPaymentOut = async (req, res) => {
       category: 'Payment Out',
       status: (currentBalance - amount) === 0 ? 'Paid' : 'Partial'
     });
+
+    // Update supplier openingBalance (add payment amount)
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      const supplierDoc = await Party.findOne({ name: purchase.supplierName, user: userId });
+      if (supplierDoc) {
+        const supplierCurrentBalance = supplierDoc.openingBalance || 0;
+        supplierDoc.openingBalance = supplierCurrentBalance + amount;
+        
+        // Calculate and update partyBalanceAfterTransaction for payment out
+        const partyBalanceAfterTransaction = supplierDoc.openingBalance;
+        paymentOut.partyBalanceAfterTransaction = partyBalanceAfterTransaction;
+        
+        await supplierDoc.save();
+      }
+    } catch (err) {
+      console.error('Failed to update supplier openingBalance on payment out:', err);
+    }
     
     await paymentOut.save();
     
@@ -294,20 +293,15 @@ export const getPaymentOutOverview = async (req, res) => {
 // NEW FUNCTION: Make bulk payment to party (distribute across all due purchases)
 export const makeBulkPaymentToParty = async (req, res) => {
   try {
-    const { supplierName, amount, paymentType = 'Cash', description = '', imageUrl = '' } = req.body;
+    const { supplierName, amount, discount, discountType, paymentType = 'Cash', description = '', imageUrl = '' } = req.body;
     
-    if (!supplierName || typeof amount !== 'number') {
-      return res.status(400).json({ success: false, message: 'Missing supplierName or amount' });
+    if (!supplierName || (typeof amount !== 'number' && amount !== 0)) {
+      return res.status(400).json({ success: false, message: 'Missing supplierName or invalid amount' });
     }
     
     const userId = req.user && req.user._id;
     if (!userId) {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
-    }
-    
-    // Validate payment amount
-    if (amount <= 0) {
-      return res.status(400).json({ success: false, message: 'Payment amount must be greater than 0' });
     }
     
     // Find all purchases for this supplier with outstanding balance
@@ -323,91 +317,148 @@ export const makeBulkPaymentToParty = async (req, res) => {
     
     // Calculate total due balance
     const totalDueBalance = purchases.reduce((sum, purchase) => sum + (purchase.balance || 0), 0);
+    const totalGrandTotal = purchases.reduce((sum, purchase) => sum + (purchase.grandTotal || 0), 0);
     
-    if (amount > totalDueBalance) {
+    // Calculate discount if provided
+    let discountValue = 0;
+    let newTotalGrandTotal = totalGrandTotal;
+    let newTotalDueBalance = totalDueBalance;
+
+    if (discount && discount > 0 && discountType) {
+      if (discountType === '%') {
+        // Percentage discount on total due balance
+        discountValue = (totalDueBalance * discount) / 100;
+      } else if (discountType === 'PKR') {
+        // Fixed PKR discount
+        discountValue = Math.min(discount, totalDueBalance);
+      }
+      
+      newTotalDueBalance = Math.max(0, totalDueBalance - discountValue);
+      newTotalGrandTotal = Math.max(0, totalGrandTotal - discountValue);
+    }
+    
+    // Validate payment amount after discount
+    if (amount > 0 && amount > newTotalDueBalance) {
       return res.status(400).json({ 
         success: false, 
-        message: `Payment amount (${amount}) cannot exceed total due balance (${totalDueBalance})` 
+        message: `Payment amount (${amount}) cannot exceed total due balance (${newTotalDueBalance})` 
+      });
+    }
+    
+    // If amount is 0, ensure there's a discount applied
+    if (amount === 0 && (!discount || discount <= 0)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Payment amount cannot be 0 unless a discount is applied' 
       });
     }
     
     let remainingAmount = amount;
     const updatedPurchases = [];
     const paymentOutRecords = [];
-    
+    let totalDiscountApplied = 0;
+
     // Distribute payment across purchases (FIFO - First In, First Out)
     for (const purchase of purchases) {
-      if (remainingAmount <= 0) break;
-      
       const currentBalance = purchase.balance || 0;
-      const currentPaid = purchase.paid || 0;
-      const paymentForThisPurchase = Math.min(remainingAmount, currentBalance);
+      const currentGrandTotal = purchase.grandTotal || 0;
       
-      if (paymentForThisPurchase > 0) {
-        // Update purchase
-        purchase.paid = currentPaid + paymentForThisPurchase;
-        purchase.balance = Math.max(0, currentBalance - paymentForThisPurchase);
-        await purchase.save();
+      // Calculate proportional discount for this purchase
+      let purchaseDiscount = 0;
+      if (discountValue > 0 && totalDueBalance > 0) {
+        const discountRatio = currentBalance / totalDueBalance;
+        purchaseDiscount = discountValue * discountRatio;
+      }
+      
+      // Apply discount to this purchase
+      if (purchaseDiscount > 0) {
+        purchase.grandTotal = Math.max(0, currentGrandTotal - purchaseDiscount);
+        purchase.balance = Math.max(0, currentBalance - purchaseDiscount);
+        purchase.discount = discount;
+        purchase.discountType = discountType;
+        purchase.discountValue = purchaseDiscount;
+        totalDiscountApplied += purchaseDiscount;
+      }
+
+      // Process payment only if there's an amount to pay
+      if (remainingAmount > 0) {
+        const paymentForThisPurchase = Math.min(remainingAmount, purchase.balance);
         
-        // Create payment out record for this purchase
-        const paymentOut = new PaymentOut({
-          userId,
-          purchaseId: purchase._id,
-          billNo: purchase.billNo,
-          supplierName: purchase.supplierName,
-          phoneNo: purchase.phoneNo,
-          amount: paymentForThisPurchase,
-          total: purchase.grandTotal || 0,
-          balance: purchase.balance,
-          paymentType,
-          paymentDate: new Date(),
-          description: description || `Bulk payment for ${supplierName}`,
-          imageUrl,
-          category: 'Payment Out',
-          status: purchase.balance === 0 ? 'Paid' : 'Partial'
-        });
-        
-        await paymentOut.save();
-        
-        updatedPurchases.push({
-          purchaseId: purchase._id,
-          billNo: purchase.billNo,
-          paidAmount: paymentForThisPurchase,
-          newPaidTotal: purchase.paid,
-          newBalance: purchase.balance,
-          status: purchase.balance === 0 ? 'Paid' : 'Partial'
-        });
-        
-        paymentOutRecords.push(paymentOut);
-        remainingAmount -= paymentForThisPurchase;
+        if (paymentForThisPurchase > 0) {
+          // Update purchase
+          purchase.paid = (purchase.paid || 0) + paymentForThisPurchase;
+          purchase.balance = Math.max(0, purchase.balance - paymentForThisPurchase);
+          await purchase.save();
+          
+          // Create payment out record for this purchase
+          const paymentOut = new PaymentOut({
+            userId,
+            purchaseId: purchase._id,
+            billNo: purchase.billNo,
+            supplierName: purchase.supplierName,
+            phoneNo: purchase.phoneNo,
+            amount: paymentForThisPurchase,
+            total: purchase.grandTotal || 0,
+            balance: purchase.balance,
+            paymentType,
+            paymentDate: new Date(),
+            description: description || `Bulk payment for ${supplierName}`,
+            imageUrl,
+            category: 'Payment Out',
+            status: purchase.balance === 0 ? 'Paid' : 'Partial'
+          });
+          
+          await paymentOut.save();
+          
+          updatedPurchases.push({
+            purchaseId: purchase._id,
+            billNo: purchase.billNo,
+            paidAmount: paymentForThisPurchase,
+            newPaidTotal: purchase.paid,
+            newBalance: purchase.balance,
+            status: purchase.balance === 0 ? 'Paid' : 'Partial'
+          });
+          
+          paymentOutRecords.push(paymentOut);
+          remainingAmount -= paymentForThisPurchase;
+        }
       }
     }
     
-    // Update supplier openingBalance (add total payment amount)
-    try {
-      const Party = (await import('../models/parties.js')).default;
-      const supplierDoc = await Party.findOne({ name: supplierName, user: userId });
-      if (supplierDoc) {
-        supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + amount;
-        await supplierDoc.save();
+    // Update supplier openingBalance only if there's an actual payment
+    if (amount > 0) {
+      try {
+        const Party = (await import('../models/parties.js')).default;
+        const supplierDoc = await Party.findOne({ name: supplierName, user: userId });
+        if (supplierDoc) {
+          supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + amount;
+          await supplierDoc.save();
+        }
+      } catch (err) {
+        console.error('Failed to update supplier balance after payment:', err);
       }
-    } catch (err) {
-      console.error('Failed to update supplier openingBalance on bulk payment:', err);
     }
     
-    console.log(`Bulk payment processed for supplier ${supplierName}: Total Amount=${amount}, Purchases Updated=${updatedPurchases.length}`);
+    const message = amount > 0 
+      ? `Payment of PKR ${amount} processed successfully` 
+      : 'Discount applied successfully';
     
-    res.status(201).json({ 
+    res.json({ 
       success: true, 
-      totalAmount: amount,
-      supplierName,
-      updatedPurchases,
-      paymentOutRecords,
-      message: `Payment of PKR ${amount} distributed across ${updatedPurchases.length} purchase(s)`
+      message,
+      updatedPurchases: updatedPurchases.length,
+      remainingAmount: remainingAmount > 0 ? remainingAmount : 0,
+      discountApplied: discountValue > 0,
+      discountValue,
+      totalDiscountApplied,
+      newTotalGrandTotal,
+      newTotalDueBalance,
+      paymentProcessed: amount > 0
     });
+    
     clearAllCacheForUser(userId);
   } catch (err) {
-    console.error('Bulk payment creation error:', err);
+    console.error('Bulk payment error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 }; 

@@ -14,6 +14,7 @@ interface PaymentInModalProps {
   dueBalance: number;
   saleId: string;
   onSave?: (data: any) => void;
+  showDiscount?: boolean; // New prop to control discount field visibility
 }
 
 const paymentTypeOptions = [
@@ -94,13 +95,17 @@ function PaymentTypeDropdown({ value, onChange }: { value: string; onChange: (va
   );
 }
 
-const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyName, total, dueBalance, saleId, onSave }) => {
+const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyName, total, dueBalance, saleId, onSave, showDiscount = true }) => {
   const [paymentType, setPaymentType] = useState('Cash');
   const [date, setDate] = useState(() => {
     const today = new Date();
     return today.toISOString().slice(0, 10);
   });
   const [receivedAmount, setReceivedAmount] = useState('');
+  const [discount, setDiscount] = useState('');
+  const [discountType, setDiscountType] = useState<'percentage' | 'pkr'>('pkr');
+  const [calculatedTotal, setCalculatedTotal] = useState(total);
+  const [calculatedDueBalance, setCalculatedDueBalance] = useState(dueBalance);
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageName, setImageName] = useState<string>('');
@@ -206,11 +211,43 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
     if (isOpen) {
       setPartyGrandTotal(total); // Default to passed total
       setPartyTotalDue(dueBalance); // Default to passed dueBalance
+      setCalculatedTotal(total);
+      setCalculatedDueBalance(dueBalance);
       // Reset date to today when modal opens
       const today = new Date();
       setDate(today.toISOString().slice(0, 10));
     }
   }, [isOpen, total, dueBalance]);
+
+  // Calculate discount and update totals
+  const calculateDiscount = (discountValue: string, type: 'percentage' | 'pkr') => {
+    const discountAmount = parseFloat(discountValue) || 0;
+    let newTotal = total;
+    let newDueBalance = dueBalance;
+
+    if (type === 'percentage') {
+      // Calculate percentage discount
+      const discountInPkr = (total * discountAmount) / 100;
+      newTotal = total - discountInPkr;
+      newDueBalance = dueBalance - discountInPkr;
+    } else {
+      // Fixed PKR discount
+      newTotal = total - discountAmount;
+      newDueBalance = dueBalance - discountAmount;
+    }
+
+    // Ensure values don't go below 0
+    newTotal = Math.max(0, newTotal);
+    newDueBalance = Math.max(0, newDueBalance);
+
+    setCalculatedTotal(newTotal);
+    setCalculatedDueBalance(newDueBalance);
+  };
+
+  // Update calculations when discount changes
+  useEffect(() => {
+    calculateDiscount(discount, discountType);
+  }, [discount, discountType, total, dueBalance]);
 
   if (!isOpen) return null;
 
@@ -233,17 +270,49 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
 
   const handleSave = async () => {
     const amount = parseFloat(receivedAmount) || 0;
+    const discountAmount = parseFloat(discount) || 0;
     const token = (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+    
+    // If discount reduces balance to 0, set received amount to 0
+    let finalReceivedAmount = amount;
+    if (discountAmount > 0) {
+      if (discountType === 'percentage') {
+        const discountInPkr = (selectedParty ? partyTotalDue : dueBalance) * discountAmount / 100;
+        if (discountInPkr >= (selectedParty ? partyTotalDue : dueBalance)) {
+          finalReceivedAmount = 0; // Discount covers entire balance
+        }
+      } else {
+        if (discountAmount >= (selectedParty ? partyTotalDue : dueBalance)) {
+          finalReceivedAmount = 0; // Discount covers entire balance
+        }
+      }
+    }
     
     try {
       let result;
       
       if (selectedParty) {
         // If party is selected, use party payment (updates multiple sales)
-        result = await receivePartyPayment(selectedParty.name, amount, token);
+        result = await receivePartyPayment(
+          selectedParty.name, 
+          finalReceivedAmount, 
+          token, 
+          discountAmount > 0 ? discountAmount : undefined,
+          discountAmount > 0 ? (discountType === 'percentage' ? '%' : 'PKR') : undefined,
+          paymentType, 
+          date
+        );
       } else {
         // If no party selected, use individual sale payment
-        result = await receivePayment(saleId, amount);
+        result = await receivePayment(
+          saleId, 
+          finalReceivedAmount, 
+          token,
+          discountAmount > 0 ? discountAmount : undefined,
+          discountAmount > 0 ? (discountType === 'percentage' ? '%' : 'PKR') : undefined,
+          paymentType, 
+          date
+        );
       }
       
       if (result && result.success) {
@@ -251,17 +320,31 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
           partyName: selectedParty?.name || partySearch, 
           paymentType, 
           date, 
-          total, 
-          dueBalance, 
-          receivedAmount: amount, 
+          total: calculatedTotal, 
+          dueBalance: calculatedDueBalance, 
+          receivedAmount: finalReceivedAmount, 
+          discount: discountAmount,
+          discountType,
           image 
         });
         onClose();
         
         // Show success message with details
         if (selectedParty && result.updatedSales) {
+          let message = `Payment received! Updated ${result.updatedSales} sale(s)`;
+          if (result.discountApplied) {
+            message += ` with ${result.discountType === '%' ? result.discountValue + '%' : 'PKR ' + result.discountValue} discount`;
+          }
+          if (finalReceivedAmount === 0) {
+            message += ' - Full amount covered by discount';
+          }
           setToast({ 
-            message: `Payment received! Updated ${result.updatedSales} sale(s)`, 
+            message, 
+            type: 'success' 
+          });
+        } else if (finalReceivedAmount === 0) {
+          setToast({ 
+            message: 'Full amount covered by discount - No payment needed', 
             type: 'success' 
           });
         }
@@ -425,14 +508,64 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
               </div>
               <div style={{ fontSize: 24, fontWeight: 700, color: '#2563eb', marginBottom: 18 }}>
                 PKR {(selectedParty ? partyGrandTotal : total).toLocaleString()}
+                {showDiscount && discount && (
+                  <div style={{ fontSize: 16, color: '#64748b', fontWeight: 500, marginTop: 4 }}>
+                    After Discount: PKR {(selectedParty ? partyGrandTotal : calculatedTotal).toLocaleString()}
+                  </div>
+                )}
               </div>
               <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>
                 {selectedParty ? `${selectedParty.name} - Outstanding Balance` : 'Outstanding Balance'}
               </div>
               <div style={{ fontSize: 22, fontWeight: 700, color: '#ea580c' }}>
                 PKR {(selectedParty ? partyTotalDue : dueBalance).toLocaleString()}
+                {showDiscount && discount && (
+                  <div style={{ fontSize: 16, color: '#64748b', fontWeight: 500, marginTop: 4 }}>
+                    After Discount: PKR {(selectedParty ? partyTotalDue : calculatedDueBalance).toLocaleString()}
+                  </div>
+                )}
               </div>
             </div>
+            {showDiscount && (
+              <div>
+                <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Discount</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input 
+                    type="number" 
+                    value={discount} 
+                    onChange={e => setDiscount(e.target.value)} 
+                    style={{ 
+                      flex: 1, 
+                      padding: 12, 
+                      border: '1.5px solid #e2e8f0', 
+                      borderRadius: 8, 
+                      background: '#fff', 
+                      color: '#334155', 
+                      fontSize: 15, 
+                      fontWeight: 500 
+                    }} 
+                    placeholder="Enter discount" 
+                  />
+                  <select 
+                    value={discountType} 
+                    onChange={e => setDiscountType(e.target.value as 'percentage' | 'pkr')}
+                    style={{ 
+                      padding: 12, 
+                      border: '1.5px solid #e2e8f0', 
+                      borderRadius: 8, 
+                      background: '#fff', 
+                      color: '#334155', 
+                      fontSize: 15, 
+                      fontWeight: 500,
+                      minWidth: 80
+                    }}
+                  >
+                    <option value="pkr">PKR</option>
+                    <option value="percentage">%</option>
+                  </select>
+                </div>
+              </div>
+            )}
             <div>
               <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Received Amount</label>
               <input type="number" value={receivedAmount} onChange={e => setReceivedAmount(e.target.value)} style={{ width: '100%', padding: 12, border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#334155', fontSize: 15, fontWeight: 500 }} placeholder="Enter amount received" />

@@ -1,6 +1,6 @@
 "use client";
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, BarChart3, Printer, Settings, ChevronDown, Eye, Edit, MoreHorizontal, Trash2, Download, Filter, Calendar, Share2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Search, BarChart3, Printer, Settings, ChevronDown, Eye, Edit, MoreHorizontal, Trash2, Download, Filter, Calendar, Share2, AlertCircle, RefreshCw } from 'lucide-react';
 import { jwtDecode } from 'jwt-decode';
 import { fetchPartiesByUserId } from '@/http/parties';
 import { getSalesByUser } from '@/http/sales';
@@ -38,7 +38,6 @@ const PartyStatementPage = () => {
   const [selectedParty, setSelectedParty] = useState('');
   const [parties, setParties] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -48,17 +47,25 @@ const PartyStatementPage = () => {
   const [openingBalance, setOpeningBalance] = useState(0);
   const [filterType, setFilterType] = useState('All');
   const [showDateDropdown, setShowDateDropdown] = useState(false);
-  const [summaryTotals, setSummaryTotals] = useState({
-    totalSale: 0,
-    totalPurchase: 0,
-    totalMoneyIn: 0,
-    totalMoneyOut: 0,
-    totalReceivable: 0,
-    totalExpenses: 0
+
+  // Enhanced state management
+  const [loadingStates, setLoadingStates] = useState({
+    parties: false,
+    transactions: false
   });
+  const [error, setError] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [isClient, setIsClient] = useState(false);
 
   const router = useRouter();
   const dateDropdownRef = useRef<HTMLDivElement>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // Ensure component is mounted on client side
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const dateRanges = [
     { value: 'All', label: 'All Time' },
@@ -73,19 +80,35 @@ const PartyStatementPage = () => {
 
 
 
+  // Debounced search functionality
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    searchTimeoutRef.current = setTimeout(() => {
+      setSearchTerm(searchInput);
+    }, 300);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchInput]);
+
   // Load transactions when party changes
   useEffect(() => {
-    if (selectedParty) {
+    if (selectedParty && isClient) {
       loadTransactions();
-    } else {
+    } else if (!selectedParty) {
       setTransactions([]);
-      setFilteredTransactions([]);
     }
-  }, [selectedParty]);
+  }, [selectedParty, isClient]);
 
   // Filter transactions when search or date filters change
   useEffect(() => {
-    filterTransactions();
+    // This is now handled by useMemo, no need for manual filtering
   }, [transactions, searchTerm, dateFrom, dateTo]);
 
   // Date dropdown outside click handler
@@ -106,15 +129,19 @@ const PartyStatementPage = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showDateDropdown]);
 
-
-
   const loadParties = async () => {
+    if (!isClient || loadingStates.parties) return;
+    
     try {
-      const token = (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+      setLoadingStates(prev => ({ ...prev, parties: true }));
+      setError(null);
+      
+      const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
       if (!token) {
         setParties([]);
         return;
       }
+      
       const result = await fetchPartiesByUserId(token);
       if (result && result.success && Array.isArray(result.data)) {
         setParties(result.data);
@@ -123,19 +150,23 @@ const PartyStatementPage = () => {
       }
     } catch (error) {
       console.error('Error loading parties:', error);
+      setError('Failed to load parties. Please try again.');
       setParties([]);
+    } finally {
+      setLoadingStates(prev => ({ ...prev, parties: false }));
     }
   };
 
-  const loadTransactions = async () => {
-    if (!selectedParty) return;
+  const loadTransactions = useCallback(async () => {
+    if (!selectedParty || !isClient || loadingStates.transactions) return;
 
-    setLoading(true);
+    setLoadingStates(prev => ({ ...prev, transactions: true }));
+    setError(null);
     try {
-      const token = (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+      const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
       if (!token) {
         setTransactions([]);
-        setLoading(false);
+        setLoadingStates(prev => ({ ...prev, transactions: false }));
         return;
       }
 
@@ -143,72 +174,87 @@ const PartyStatementPage = () => {
       const userId = decoded._id || decoded.id;
       if (!userId) {
         setTransactions([]);
-        setLoading(false);
+        setLoadingStates(prev => ({ ...prev, transactions: false }));
         return;
       }
 
-      // Get sales transactions
-      const salesResult = await getSalesByUser(userId, token);
+      // Make all API calls in parallel for better performance
+      const [
+        salesResult,
+        purchasesResult,
+        paymentsResult,
+        paymentOutsResult,
+        quotationsResult,
+        saleOrdersResult,
+        purchaseOrdersResult,
+        creditNotesResult,
+        deliveryChallansResult,
+        expensesResult
+      ] = await Promise.all([
+        getSalesByUser(userId, token),
+        getPurchasesByUser(userId, token),
+        getPayments(token),
+        getPaymentOutsByUser(userId, token),
+        getQuotationsForUser(token),
+        getSaleOrders(token),
+        getPurchaseOrders(token),
+        getCreditNotesByUser(userId, token),
+        getDeliveryChallans(token),
+        getExpenses(token)
+      ]);
+
+      // Process sales transactions
       const sales = salesResult?.success && Array.isArray(salesResult.sales) 
         ? salesResult.sales.filter((sale: any) => sale.partyName === selectedParty)
         : [];
 
-                    // Get purchase transactions
-       const purchasesResult = await getPurchasesByUser(userId, token);
-       const purchases = purchasesResult?.success && Array.isArray(purchasesResult.purchases) 
-         ? purchasesResult.purchases.filter((purchase: any) => purchase.supplierName === selectedParty)
-         : [];
+      // Process purchase transactions
+      const purchases = purchasesResult?.success && Array.isArray(purchasesResult.purchases) 
+        ? purchasesResult.purchases.filter((purchase: any) => purchase.supplierName === selectedParty)
+        : [];
 
-       // Get payment transactions
-       const paymentsResult = await getPayments(token);
-       const payments = paymentsResult?.success && Array.isArray(paymentsResult.payments) 
-         ? paymentsResult.payments.filter((payment: any) => payment.supplierName === selectedParty)
-         : [];
+      // Process payment transactions
+      const payments = paymentsResult?.success && Array.isArray(paymentsResult.payments) 
+        ? paymentsResult.payments.filter((payment: any) => payment.supplierName === selectedParty)
+        : [];
 
-      // Get payment out transactions
-      const paymentOutsResult = await getPaymentOutsByUser(userId, token);
+      // Process payment out transactions
       const paymentOuts = paymentOutsResult?.success && Array.isArray(paymentOutsResult.paymentOuts)
         ? paymentOutsResult.paymentOuts.filter((out: any) => out.supplierName === selectedParty)
         : [];
 
-      // Get quotation transactions
-      const quotationsResult = await getQuotationsForUser(token);
+      // Process quotation transactions
       const quotations = quotationsResult?.success && Array.isArray(quotationsResult.data)
         ? quotationsResult.data.filter((quotation: any) => quotation.customerName === selectedParty)
         : [];
 
-      // Get sale order transactions
-      const saleOrdersResult = await getSaleOrders(token);
+      // Process sale order transactions
       const saleOrders = saleOrdersResult?.success && Array.isArray(saleOrdersResult.data)
         ? saleOrdersResult.data.filter((order: any) => order.customerName === selectedParty)
         : [];
 
-      // Get purchase order transactions
-      const purchaseOrdersResult = await getPurchaseOrders(token);
+      // Process purchase order transactions
       const purchaseOrders = purchaseOrdersResult?.success && Array.isArray(purchaseOrdersResult.data)
         ? purchaseOrdersResult.data.filter((order: any) => order.supplierName === selectedParty)
         : [];
 
-      // Get credit note transactions
-      const creditNotesResult = await getCreditNotesByUser(userId, token);
+      // Process credit note transactions
       const creditNotes = creditNotesResult?.success && Array.isArray(creditNotesResult.creditNotes)
         ? creditNotesResult.creditNotes.filter((note: any) => note.partyName === selectedParty)
         : [];
 
-      // Get delivery challan transactions
-      const deliveryChallansResult = await getDeliveryChallans(token);
+      // Process delivery challan transactions
       const deliveryChallans = deliveryChallansResult?.success && Array.isArray(deliveryChallansResult.data)
         ? deliveryChallansResult.data.filter((challan: any) => challan.customerName === selectedParty)
         : [];
 
-      // Get expense transactions
-      const expensesResult = await getExpenses(token);
+      // Process expense transactions
       const expenses = expensesResult?.success && Array.isArray(expensesResult.data)
         ? expensesResult.data.filter((expense: any) => expense.party === selectedParty)
         : [];
 
-       // Combine and format transactions
-       const allTransactions: Transaction[] = [];
+      // Combine and format transactions
+      const allTransactions: Transaction[] = [];
 
       // Add sales transactions
       sales.forEach((sale: any) => {
@@ -246,41 +292,42 @@ const PartyStatementPage = () => {
         }
       });
 
-             // Add purchase transactions
-       purchases.forEach((purchase: any) => {
-         allTransactions.push({
-           id: purchase._id || purchase.id,
-           date: purchase.date || purchase.createdAt,
-           txnType: 'Purchase Bill',
-           refNo: purchase.billNo || `PUR-${purchase._id}`,
-           paymentType: purchase.paymentType || 'Credit',
-           total: purchase.grandTotal || 0,
-           received: 0,
-           paid: 0,
-           balance: (purchase.grandTotal || 0) - (purchase.paid || 0),
-           partyName: purchase.supplierName,
-           description: purchase.description,
-           partyBalanceAfterTransaction: purchase.partyBalanceAfterTransaction || 0
-         });
-       });
+      // Add purchase transactions
+      purchases.forEach((purchase: any) => {
+        allTransactions.push({
+          id: purchase._id || purchase.id,
+          date: purchase.date || purchase.createdAt,
+          txnType: 'Purchase Bill',
+          refNo: purchase.billNo || `PUR-${purchase._id}`,
+          paymentType: purchase.paymentType || 'Credit',
+          total: purchase.grandTotal || 0,
+          received: 0,
+          paid: 0,
+          balance: (purchase.grandTotal || 0) - (purchase.paid || 0),
+          partyName: purchase.supplierName,
+          description: purchase.description,
+          partyBalanceAfterTransaction: purchase.partyBalanceAfterTransaction || 0
+        });
+      });
 
-       // Add payment transactions
-       payments.forEach((payment: any) => {
-         allTransactions.push({
-           id: payment._id || payment.id,
-           date: payment.paymentDate || payment.createdAt,
-           txnType: 'Payment Out',
-           refNo: payment.billNo || `PAY-${payment._id}`,
-           paymentType: payment.paymentType || 'Cash',
-           total: 0,
-           received: 0,
-           paid: payment.amount || 0,
-           balance: -(payment.amount || 0),
-           partyName: payment.supplierName,
-           description: payment.description,
-           partyBalanceAfterTransaction: payment.partyBalanceAfterTransaction || 0
-         });
-       });
+      // Add payment transactions
+      payments.forEach((payment: any) => {
+        allTransactions.push({
+          id: payment._id || payment.id,
+          date: payment.paymentDate || payment.createdAt,
+          txnType: 'Payment Out',
+          refNo: payment.billNo || `PAY-${payment._id}`,
+          paymentType: payment.paymentType || 'Cash',
+          total: 0,
+          received: 0,
+          paid: payment.amount || 0,
+          balance: -(payment.amount || 0),
+          partyName: payment.supplierName,
+          description: payment.description,
+          partyBalanceAfterTransaction: payment.partyBalanceAfterTransaction || 0
+        });
+      });
+
       // Add payment out transactions
       paymentOuts.forEach((out: any) => {
         allTransactions.push({
@@ -448,12 +495,15 @@ const PartyStatementPage = () => {
 
     } catch (error) {
       console.error('Error loading transactions:', error);
+      setError('Failed to load transactions. Please try again.');
       setTransactions([]);
+    } finally {
+      setLoadingStates(prev => ({ ...prev, transactions: false }));
     }
-    setLoading(false);
-  };
+  }, [selectedParty, parties, isClient]);
 
-  const filterTransactions = () => {
+  // Memoized filtered transactions for better performance
+  const filteredTransactions = useMemo(() => {
     let filtered = [...transactions];
 
     // Search filter
@@ -483,13 +533,11 @@ const PartyStatementPage = () => {
       });
     }
 
-    setFilteredTransactions(filtered);
-    
-    // Calculate summary totals
-    calculateSummaryTotals(filtered);
-  };
+    return filtered;
+  }, [transactions, searchTerm, dateFrom, dateTo]);
 
-  const calculateSummaryTotals = (transactions: Transaction[]) => {
+  // Memoized summary totals calculation
+  const summaryTotals = useMemo(() => {
     let totalSale = 0;
     let totalPurchase = 0;
     let totalMoneyIn = 0;
@@ -497,7 +545,7 @@ const PartyStatementPage = () => {
     let totalReceivable = 0;
     let totalExpenses = 0;
 
-    transactions.forEach(txn => {
+    filteredTransactions.forEach(txn => {
       switch (txn.txnType) {
         case 'Sale Invoice':
           totalSale += txn.total;
@@ -524,22 +572,30 @@ const PartyStatementPage = () => {
     });
 
     // Also add received amounts from Sale Invoices to total money in
-    transactions.forEach(txn => {
+    filteredTransactions.forEach(txn => {
       if (txn.txnType === 'Sale Invoice' && txn.received > 0) {
         totalMoneyIn += txn.received;
       }
     });
 
-    setSummaryTotals({
+    return {
       totalSale,
       totalPurchase,
       totalMoneyIn,
       totalMoneyOut,
       totalReceivable,
       totalExpenses
-    });
+    };
+  }, [filteredTransactions]);
+
+  const filterTransactions = () => {
+    // This function is now simplified since filtering is handled by useMemo
+    // We just need to trigger a re-render when filters change
   };
 
+  const calculateSummaryTotals = (transactions: Transaction[]) => {
+    // This function is now replaced by useMemo above
+  };
 
 
   const handleFilterTypeChange = (newFilterType: string) => {
@@ -592,6 +648,14 @@ const PartyStatementPage = () => {
     setDateFrom(fromDate);
     setDateTo(toDate);
   };
+
+  const handleRefresh = useCallback(async () => {
+    if (selectedParty && !loadingStates.transactions && isClient) {
+      await loadTransactions();
+      setLastRefresh(new Date());
+      setToast({ message: 'Data refreshed successfully', type: 'success' });
+    }
+  }, [selectedParty, loadingStates.transactions, isClient]);
 
   const handlePrintStatement = () => {
     if (!selectedParty) {
@@ -667,8 +731,21 @@ const PartyStatementPage = () => {
           <div className="text-center md:text-left">
             <h1 className="text-lg md:text-xl font-bold text-gray-900">Party Statement</h1>
             <p className="text-xs text-gray-500 mt-1">View detailed transaction history for any party</p>
+            {lastRefresh && isClient && (
+              <p className="text-xs text-gray-400 mt-1">
+                Last updated: {lastRefresh.toLocaleTimeString()}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleRefresh}
+              disabled={loadingStates.transactions || !selectedParty}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw size={12} className={loadingStates.transactions ? 'animate-spin' : ''} />
+              Refresh
+            </button>
             <button
               onClick={handlePrintStatement}
               className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
@@ -694,30 +771,56 @@ const PartyStatementPage = () => {
         </div>
       </div>
 
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={16} className="text-red-500" />
+            <span className="text-sm text-red-700">{error}</span>
+            <button
+              onClick={() => setError(null)}
+              className="ml-auto text-red-400 hover:text-red-600"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Search & Filters Section (full width) */}
       <div className="bg-white/80 backdrop-blur-xl rounded-xl shadow p-3 mb-4 border border-gray-100 z-[1]">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
           {/* Party Selection */}
           <div className="w-full md:w-72">
-            <KeyboardDropdown
-              options={parties.map(party => ({ value: party.name, label: party.name, phone: party.phone }))}
-              value={selectedParty}
-              onChange={setSelectedParty}
-              placeholder="Search party..."
-              label="Select Party"
-              searchable={true}
-              onOpen={() => {
-                if (parties.length === 0) {
-                  loadParties();
-                }
-              }}
-              renderOption={(option, isSelected, isFocused) => (
-                <div>
-                  <div className="font-medium text-xs">{option.label}</div>
-                  <div className="text-xs text-gray-500">{option.phone}</div>
-                </div>
-              )}
-            />
+            {!isClient ? (
+              <div className="w-full h-10 bg-gray-100 rounded-full animate-pulse"></div>
+            ) : (
+              <KeyboardDropdown
+                options={(parties || []).map(party => ({ value: party.name, label: party.name, phone: party.phone }))}
+                value={selectedParty}
+                onChange={setSelectedParty}
+                placeholder="Search party..."
+                label="Select Party"
+                searchable={true}
+                onOpen={() => {
+                  if ((!parties || parties.length === 0) && isClient) {
+                    loadParties();
+                  }
+                }}
+                renderOption={(option, isSelected, isFocused) => (
+                  <div>
+                    <div className="font-medium text-xs">{option.label}</div>
+                    <div className="text-xs text-gray-500">{option.phone}</div>
+                  </div>
+                )}
+              />
+            )}
+            {loadingStates.parties && (
+              <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                Loading parties...
+              </div>
+            )}
           </div>
           {/* Enhanced Date Range & Quick Filter Dropdown */}
           <div className="flex flex-col sm:flex-row gap-2 items-center mt-2">
@@ -852,7 +955,7 @@ const PartyStatementPage = () => {
 
 
       {/* Transactions Table */}
-      {loading ? (
+      {loadingStates.transactions ? (
         <div className="flex items-center justify-center py-6">
           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
         </div>
@@ -866,8 +969,8 @@ const PartyStatementPage = () => {
                 <input
                   type="text"
                   placeholder="Search transactions..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   className="pl-7 pr-2 py-1 border border-gray-300 rounded-md text-xs w-full md:w-44 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 />
               </div>

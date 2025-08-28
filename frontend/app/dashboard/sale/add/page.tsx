@@ -529,6 +529,11 @@ const AddSalePage = () => {
   // Add state for customer dropdown highlight
   const [customerDropdownIndex, setCustomerDropdownIndex] = useState(0);
   
+  // Add state for other dropdowns
+  const [discountTypeDropdownIndex, setDiscountTypeDropdownIndex] = useState(0);
+  const [taxTypeDropdownIndex, setTaxTypeDropdownIndex] = useState(0);
+  const [paymentTypeDropdownIndex, setPaymentTypeDropdownIndex] = useState(0);
+  
   // Import sidebar context for auto-collapse
   const { setIsCollapsed } = useSidebar();
   const [wasSidebarCollapsed, setWasSidebarCollapsed] = useState(false);
@@ -1522,8 +1527,8 @@ const AddSalePage = () => {
                         value={newSale.discountType}
                         onChange={val => setNewSale(prev => ({ ...prev, discountType: val }))}
                         className="w-28 min-w-[72px] mb-1 h-11"
-                        dropdownIndex={0}
-                        setDropdownIndex={() => {}}
+                        dropdownIndex={discountTypeDropdownIndex}
+                        setDropdownIndex={setDiscountTypeDropdownIndex}
                         optionsCount={2}
                       />
                     </div>
@@ -1562,8 +1567,8 @@ const AddSalePage = () => {
                     value={newSale.taxType || '%'}
                     onChange={val => setNewSale(prev => ({ ...prev, taxType: val }))}
                     className="w-28 min-w-[72px] mb-1 h-11"
-                    dropdownIndex={0}
-                    setDropdownIndex={() => {}}
+                    dropdownIndex={taxTypeDropdownIndex}
+                    setDropdownIndex={setTaxTypeDropdownIndex}
                     optionsCount={2}
                   />
                 </div>
@@ -1591,8 +1596,8 @@ const AddSalePage = () => {
                     value={newSale.paymentType}
                     onChange={val => setNewSale(prev => ({ ...prev, paymentType: val }))}
                     className="mb-1"
-                    dropdownIndex={0}
-                    setDropdownIndex={() => {}}
+                    dropdownIndex={paymentTypeDropdownIndex}
+                    setDropdownIndex={setPaymentTypeDropdownIndex}
                     optionsCount={2}
                   />
                   {newSale.paymentType === 'Credit' && (

@@ -473,40 +473,9 @@ const PartyStatementPage = () => {
       // Calculate opening balance and current balance
       const selectedPartyData = parties.find(p => p.name === selectedParty);
       
-      // Use currentBalance/balance as opening balance (what user wants)
-      const openingBal = selectedPartyData?.currentBalance || selectedPartyData?.balance || 0;
-      
-      // Try to get current balance from database first, fallback to calculation
-      let currentBal = selectedPartyData?.currentBalance || selectedPartyData?.balance;
-      
-      if (currentBal === undefined || currentBal === null) {
-        // Fallback: Calculate current balance manually
-        currentBal = openingBal;
-        allTransactions.forEach(txn => {
-          switch (txn.txnType) {
-            case 'Sale Invoice':
-              currentBal += txn.total - txn.received;
-              break;
-            case 'Purchase Bill':
-              currentBal -= txn.total - txn.paid;
-              break;
-            case 'Payment In':
-              currentBal += txn.received;
-              break;
-            case 'Payment Out':
-              currentBal -= txn.paid;
-              break;
-            case 'Credit Note':
-              currentBal += txn.balance;
-              break;
-            case 'Expense':
-              if (txn.paymentType === 'Credit' && txn.balance > 0) {
-                currentBal += txn.balance;
-              }
-              break;
-          }
-        });
-      }
+      // Use openingBalance from database directly as current balance
+      const openingBal = selectedPartyData?.openingBalance || 0;
+      const currentBal = selectedPartyData?.openingBalance || 0;
       
       setOpeningBalance(openingBal);
       setCurrentBalance(currentBal);
@@ -517,9 +486,10 @@ const PartyStatementPage = () => {
         openingBalance: openingBal,
         currentBalance: currentBal,
         partyData: selectedPartyData,
-        calculatedBalance: currentBal,
-        hasDatabaseBalance: selectedPartyData?.currentBalance !== undefined,
-        note: 'Opening Balance now shows Current Balance from DB'
+        databaseOpeningBalance: selectedPartyData?.openingBalance,
+        databaseCurrentBalance: selectedPartyData?.currentBalance,
+        databaseBalance: selectedPartyData?.balance,
+        note: 'Using openingBalance from DB directly as current balance'
       });
 
     } catch (error) {
@@ -572,19 +542,20 @@ const PartyStatementPage = () => {
     let totalMoneyIn = 0;
     let totalMoneyOut = 0;
     let totalReceivable = 0;
+    let totalPayable = 0;
     let totalExpenses = 0;
 
     filteredTransactions.forEach(txn => {
       switch (txn.txnType) {
         case 'Sale Invoice':
           totalSale += txn.total;
-          // For sales: outstanding amount = total - received
+          // For sales: outstanding amount = total - received (money owed to you)
           totalReceivable += txn.total - txn.received;
           break;
         case 'Purchase Bill':
           totalPurchase += txn.total;
-          // For purchases: outstanding amount = total - paid (this is what we owe)
-          totalReceivable -= txn.total - txn.paid;
+          // For purchases: outstanding amount = total - paid (money you owe)
+          totalPayable += txn.total - txn.paid;
           break;
         case 'Payment In':
           totalMoneyIn += txn.received;
@@ -593,8 +564,8 @@ const PartyStatementPage = () => {
           break;
         case 'Payment Out':
           totalMoneyOut += txn.paid;
-          // Payment made reduces payable (increases receivable)
-          totalReceivable += txn.paid;
+          // Payment made reduces payable
+          totalPayable -= txn.paid;
           break;
         case 'Credit Note':
           // Credit notes reduce receivable (they're like refunds)
@@ -602,7 +573,7 @@ const PartyStatementPage = () => {
           break;
         case 'Expense':
           totalExpenses += txn.total;
-          // For credit expenses: add to receivable (what we're owed)
+          // For credit expenses: add to receivable (what you're owed)
           if (txn.paymentType === 'Credit' && txn.balance > 0) {
             totalReceivable += txn.balance;
           }
@@ -630,6 +601,7 @@ const PartyStatementPage = () => {
       totalMoneyIn,
       totalMoneyOut,
       totalReceivable,
+      totalPayable,
       totalExpenses,
       transactionCount: filteredTransactions.length
     });
@@ -640,6 +612,7 @@ const PartyStatementPage = () => {
       totalMoneyIn,
       totalMoneyOut,
       totalReceivable,
+      totalPayable,
       totalExpenses
     };
   }, [filteredTransactions]);
@@ -987,19 +960,20 @@ const PartyStatementPage = () => {
             <div className={`text-lg font-bold ${summaryTotals.totalReceivable >= 0 ? 'text-orange-700' : 'text-red-700'}`}>
               {formatCurrency(summaryTotals.totalReceivable)}
             </div>
-            <div className="text-xs text-gray-500">Total Outstanding</div>
+            <div className="text-xs text-gray-500">Total Receivable</div>
             <div className="text-xs text-gray-400 mt-1">
               {summaryTotals.totalReceivable >= 0 ? 'You are owed' : 'You owe'}
             </div>
           </div>
-          <div className="bg-gradient-to-br from-green-100 to-green-50 p-4 rounded-xl shadow group hover:shadow-md transition-all flex flex-col items-start">
-            <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-green-500 text-white mb-2 text-lg">
-              {currentBalance >= 0 ? '📈' : '📉'}
+          <div className="bg-gradient-to-br from-red-100 to-red-50 p-4 rounded-xl shadow group hover:shadow-md transition-all flex flex-col items-start">
+            <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-500 text-white mb-2 text-lg">📉</div>
+            <div className={`text-lg font-bold ${summaryTotals.totalPayable >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+              {formatCurrency(summaryTotals.totalPayable)}
             </div>
-            <div className={`text-lg font-bold ${currentBalance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-              {formatCurrency(currentBalance)}
+            <div className="text-xs text-gray-500">Total Payable</div>
+            <div className="text-xs text-gray-400 mt-1">
+              {summaryTotals.totalPayable >= 0 ? 'You are owed' : 'You owe'}
             </div>
-            <div className="text-xs text-gray-500">Current Balance</div>
           </div>
           <div className="bg-gradient-to-br from-purple-100 to-purple-50 p-4 rounded-xl shadow group hover:shadow-md transition-all flex flex-col items-start">
             <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-purple-500 text-white mb-2 text-lg">📊</div>
@@ -1184,7 +1158,13 @@ const PartyStatementPage = () => {
             <div>
               <div className="text-xs text-gray-600 mb-1">Total Receivable</div>
               <div className="text-sm font-bold text-indigo-600">{formatCurrency(summaryTotals.totalReceivable)}</div>
-              <div className="text-xs text-gray-500">Outstanding amount</div>
+              <div className="text-xs text-gray-500">Money owed to you</div>
+            </div>
+
+            <div>
+              <div className="text-xs text-gray-600 mb-1">Total Payable</div>
+              <div className="text-sm font-bold text-orange-600">{formatCurrency(summaryTotals.totalPayable)}</div>
+              <div className="text-xs text-gray-500">Money you owe</div>
             </div>
             
             <div>
@@ -1201,7 +1181,7 @@ const PartyStatementPage = () => {
             
             <div>
               <div className="text-xs text-gray-600 mb-1">Total Expenses</div>
-              <div className="text-sm font-bold text-orange-600">{formatCurrency(summaryTotals.totalExpenses)}</div>
+              <div className="text-sm font-bold text-amber-600">{formatCurrency(summaryTotals.totalExpenses)}</div>
               <div className="text-xs text-gray-500">Business expenses</div>
             </div>
           </div>

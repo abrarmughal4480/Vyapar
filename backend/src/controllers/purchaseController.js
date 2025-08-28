@@ -444,18 +444,219 @@ export const deletePurchase = async (req, res) => {
 export const updatePurchase = async (req, res) => {
   try {
     const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+    
     const { purchaseId } = req.params;
     const updateData = req.body;
-    const purchase = await Purchase.findOneAndUpdate(
-      { _id: purchaseId, userId },
-      { ...updateData, updatedAt: new Date() },
+    
+    // Find the existing purchase
+    const existingPurchase = await Purchase.findById(purchaseId);
+    if (!existingPurchase) {
+      return res.status(404).json({ success: false, message: 'Purchase not found' });
+    }
+    
+    // Check if user owns this purchase
+    if (existingPurchase.userId.toString() !== userId.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized to edit this purchase' });
+    }
+    
+    // Store old items for stock reversal
+    const oldItems = existingPurchase.items || [];
+    const newItems = updateData.items || [];
+    
+    // Step 1: Revert old stock (remove items that were added)
+    for (const oldItem of oldItems) {
+      const dbItem = await Item.findOne({ userId: userId.toString(), name: oldItem.item });
+      if (dbItem) {
+        let stockQuantity = Number(oldItem.qty);
+        
+        // Handle unit conversion for stock reversal
+        if (dbItem.unit) {
+          const itemUnit = dbItem.unit;
+          const oldItemUnit = oldItem.unit;
+          
+          if (typeof itemUnit === 'object' && itemUnit.base && itemUnit.secondary) {
+            if (oldItemUnit === itemUnit.secondary && itemUnit.conversionFactor) {
+              stockQuantity = Number(oldItem.qty) * itemUnit.conversionFactor;
+            } else if (oldItemUnit === itemUnit.base) {
+              stockQuantity = Number(oldItem.qty);
+            }
+          } else if (typeof itemUnit === 'string' && itemUnit.includes(' / ')) {
+            const parts = itemUnit.split(' / ');
+            const baseUnit = parts[0];
+            const secondaryUnit = parts[1];
+            
+            if (oldItemUnit === secondaryUnit) {
+              stockQuantity = Number(oldItem.qty) * 12;
+            } else if (oldItemUnit === baseUnit) {
+              stockQuantity = Number(oldItem.qty);
+            }
+          }
+        }
+        
+        dbItem.stock = Math.max(0, (dbItem.stock || 0) - stockQuantity);
+        await dbItem.save();
+      }
+    }
+    
+    // Step 2: Add new stock for updated items
+    for (const newItem of newItems) {
+      const dbItem = await Item.findOne({ userId: userId.toString(), name: newItem.item });
+      if (dbItem) {
+        let stockQuantity = Number(newItem.qty);
+        
+        // Handle unit conversion for new stock
+        if (dbItem.unit) {
+          const itemUnit = dbItem.unit;
+          const newItemUnit = newItem.unit;
+          
+          if (typeof itemUnit === 'object' && itemUnit.base && itemUnit.secondary) {
+            if (newItemUnit === itemUnit.secondary && itemUnit.conversionFactor) {
+              stockQuantity = Number(newItem.qty) * itemUnit.conversionFactor;
+            } else if (newItemUnit === itemUnit.base) {
+              stockQuantity = Number(newItem.qty);
+            }
+          } else if (typeof itemUnit === 'string' && itemUnit.includes(' / ')) {
+            const parts = itemUnit.split(' / ');
+            const baseUnit = parts[0];
+            const secondaryUnit = parts[1];
+            
+            if (newItemUnit === secondaryUnit) {
+              stockQuantity = Number(newItem.qty) * 12;
+            } else if (newItemUnit === baseUnit) {
+              stockQuantity = Number(newItem.qty);
+            }
+          }
+        }
+        
+        dbItem.stock = (dbItem.stock || 0) + stockQuantity;
+        await dbItem.save();
+      }
+    }
+    
+    // Step 3: Recalculate totals based on new data
+    const originalSubTotal = newItems.reduce((sum, item) => {
+      const qty = Number(item.qty) || 0;
+      const price = Number(item.price) || 0;
+      return sum + (qty * price);
+    }, 0);
+    
+    // Calculate item-level discounts
+    const totalItemDiscount = newItems.reduce((total, item) => {
+      let itemDiscount = 0;
+      if (item.discountPercentage) {
+        const qty = Number(item.qty) || 0;
+        const price = Number(item.price) || 0;
+        itemDiscount = (qty * price * Number(item.discountPercentage)) / 100;
+      } else if (item.discountAmount) {
+        itemDiscount = Number(item.discountAmount) || 0;
+      }
+      return total + itemDiscount;
+    }, 0);
+    
+    // Calculate global discount
+    let discountValue = 0;
+    if (updateData.discount && !isNaN(Number(updateData.discount))) {
+      if (updateData.discountType === '%') {
+        discountValue = originalSubTotal * Number(updateData.discount) / 100;
+      } else {
+        discountValue = Number(updateData.discount);
+      }
+    }
+    
+    // Total discount is item discounts + global discount
+    const totalDiscount = totalItemDiscount + discountValue;
+    
+    // Calculate tax
+    let taxType = updateData.taxType || '%';
+    let tax = updateData.tax || 0;
+    let taxValue = 0;
+    if (taxType === '%') {
+      taxValue = (originalSubTotal - totalDiscount) * Number(tax) / 100;
+    } else if (taxType === 'PKR') {
+      taxValue = Number(tax);
+    }
+    
+    // Calculate new grand total
+    const newGrandTotal = Math.max(0, originalSubTotal - totalDiscount + taxValue);
+    
+    // Calculate new balance (considering existing paid amount)
+    const existingPaid = existingPurchase.paid || 0;
+    const newBalance = Math.max(0, newGrandTotal - existingPaid);
+    
+    // Step 4: Update supplier balance if supplier name changed
+    if (updateData.supplierName && updateData.supplierName !== existingPurchase.supplierName) {
+      try {
+        const Party = (await import('../models/parties.js')).default;
+        
+        // Revert old supplier balance
+        const oldSupplierDoc = await Party.findOne({ name: existingPurchase.supplierName, user: userId });
+        if (oldSupplierDoc) {
+          const oldUnpaidAmount = existingPurchase.grandTotal - (existingPurchase.paid || 0);
+          oldSupplierDoc.openingBalance = (oldSupplierDoc.openingBalance || 0) + oldUnpaidAmount;
+          await oldSupplierDoc.save();
+        }
+        
+        // Update new supplier balance
+        const newSupplierDoc = await Party.findOne({ name: updateData.supplierName, user: userId });
+        if (newSupplierDoc) {
+          const newUnpaidAmount = newGrandTotal - existingPaid;
+          newSupplierDoc.openingBalance = (newSupplierDoc.openingBalance || 0) - newUnpaidAmount;
+          await newSupplierDoc.save();
+        }
+      } catch (err) {
+        console.error('Failed to update supplier balances:', err);
+      }
+    } else if (existingPurchase.supplierName === updateData.supplierName) {
+      // Same supplier, update balance for amount changes
+      try {
+        const Party = (await import('../models/parties.js')).default;
+        const supplierDoc = await Party.findOne({ name: existingPurchase.supplierName, user: userId });
+        if (supplierDoc) {
+          const oldUnpaidAmount = existingPurchase.grandTotal - (existingPurchase.paid || 0);
+          const newUnpaidAmount = newGrandTotal - existingPaid;
+          const balanceAdjustment = oldUnpaidAmount - newUnpaidAmount;
+          
+          supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + balanceAdjustment;
+          await supplierDoc.save();
+        }
+      } catch (err) {
+        console.error('Failed to update supplier balance:', err);
+      }
+    }
+    
+    // Step 5: Update the purchase record
+    const updatedPurchase = await Purchase.findByIdAndUpdate(
+      purchaseId,
+      {
+        ...updateData,
+        discountValue: totalDiscount,
+        taxType,
+        tax,
+        taxValue,
+        grandTotal: newGrandTotal,
+        balance: newBalance,
+        updatedAt: new Date()
+      },
       { new: true }
     );
-    if (!purchase) return res.status(404).json({ success: false, message: 'Purchase not found' });
-    res.json({ success: true, data: purchase });
+    
+    if (!updatedPurchase) {
+      return res.status(500).json({ success: false, message: 'Failed to update purchase' });
+    }
+    
+    res.json({ 
+      success: true, 
+      data: updatedPurchase,
+      message: 'Purchase updated successfully'
+    });
+    
     clearAllCacheForUser(userId);
   } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
+    console.error('Purchase update error:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 

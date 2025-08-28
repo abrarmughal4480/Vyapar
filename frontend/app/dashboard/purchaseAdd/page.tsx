@@ -7,7 +7,7 @@ import { Plus, ChevronDown, Calendar, Info, Camera } from 'lucide-react';
 import { getToken } from '../../lib/auth';
 import { fetchPartiesByUserId, getPartyBalance } from '../../../http/parties';
 import { getUserItems } from '../../../http/items';
-import { createPurchase } from '../../../http/purchases';
+import { createPurchase, updatePurchase } from '../../../http/purchases';
 import { createPurchaseOrder, updatePurchaseOrder } from '../../../http/purchaseOrders';
 import { createExpense } from '../../../http/expenses';
 import { jwtDecode } from 'jwt-decode';
@@ -578,6 +578,7 @@ export default function AddPurchasePage() {
   useEffect(() => {
     if (editId) {
       setIsEditMode(true);
+      setPageTitle('Edit Purchase Bill');
       const fetchEditData = async () => {
         try {
           const token = getToken();
@@ -1156,10 +1157,18 @@ export default function AddPurchasePage() {
         successMessage = 'Purchase order created successfully!';
         redirectPath = '/dashboard/purchase-order';
       } else {
-        // Create purchase bill
-        response = await createPurchase(commonData, token);
-        successMessage = 'Purchase bill created successfully!';
-        redirectPath = '/dashboard/purchase';
+        // Create or update purchase bill
+        if (isEditMode && editId) {
+          // Update existing purchase
+          response = await updatePurchase(editId, commonData, token);
+          successMessage = 'Purchase bill updated successfully!';
+          redirectPath = '/dashboard/purchase';
+        } else {
+          // Create new purchase bill
+          response = await createPurchase(commonData, token);
+          successMessage = 'Purchase bill created successfully!';
+          redirectPath = '/dashboard/purchase';
+        }
         
         // If this was a conversion from purchase order, update the original order status and invoice number
         if (originalOrderId) {
@@ -1176,15 +1185,15 @@ export default function AddPurchasePage() {
               });
               
               if (updateResult && updateResult.success) {
-                successMessage = `Purchase bill created! Bill No: ${billNumber}. Purchase Order converted successfully.`;
+                successMessage = `Purchase bill ${isEditMode ? 'updated' : 'created'}! Bill No: ${billNumber}. Purchase Order converted successfully.`;
               } else {
-                successMessage = `Purchase bill created! Bill No: ${billNumber}. Note: Could not update purchase order status.`;
+                successMessage = `Purchase bill ${isEditMode ? 'updated' : 'created'}! Bill No: ${billNumber}. Note: Could not update purchase order status.`;
               }
             } catch (updateError: any) {
-              successMessage = `Purchase bill created! Bill No: ${billNumber}. Note: Could not update purchase order status.`;
+              successMessage = `Purchase bill ${isEditMode ? 'updated' : 'created'}! Bill No: ${billNumber}. Note: Could not update purchase order status.`;
             }
           } catch (error) {
-            successMessage = `Purchase bill created! Bill No: ${response?.purchase?.billNo || response?.billNo || response?.billNumber || ''}. Note: Could not update purchase order status.`;
+            successMessage = `Purchase bill ${isEditMode ? 'updated' : 'created'}! Bill No: ${response?.purchase?.billNo || response?.billNo || response?.billNumber || ''}. Note: Could not update purchase order status.`;
           }
         }
       }
@@ -2488,7 +2497,7 @@ export default function AddPurchasePage() {
                     </>
                   ) : (
                     <>
-                      <span>{isFromExpenses ? 'Add Expense' : 'Add Purchase'}</span>
+                      <span>{isFromExpenses ? 'Add Expense' : (isEditMode ? 'Update Purchase' : 'Add Purchase')}</span>
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>

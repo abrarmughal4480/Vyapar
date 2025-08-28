@@ -9,6 +9,15 @@ export const createPurchase = async (purchase: any, token: string) => {
   return data;
 };
 
+export const updatePurchase = async (purchaseId: string, purchase: any, token: string) => {
+  const { data } = await api.put(`/api/purchases/update/${purchaseId}`, purchase, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  return data;
+};
+
 export const getPurchasesByUser = async (userId: string, token: string, companyName?: string) => {
   const url = companyName ? `/api/purchases/${userId}?companyName=${encodeURIComponent(companyName)}` : `/api/purchases/${userId}`;
   const { data } = await api.get(url, {

@@ -147,17 +147,6 @@ const ReportsSidebar: React.FC<ReportsSidebarProps> = ({ activeTab, onTabChange 
           </nav>
         </div>
       </div>
-
-      {/* Footer */}
-      <div className="border-t border-gray-200 p-3">
-        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-2">
-          <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <span className="text-xs font-medium text-green-700">Reports Updated</span>
-          </div>
-          <p className="text-xs text-green-600 mt-1">Real-time data synchronization</p>
-        </div>
-      </div>
     </aside>
   );
 };

@@ -14,6 +14,9 @@ import { jwtDecode } from 'jwt-decode';
 import { useSearchParams } from 'next/navigation';
 import { getPurchaseById } from '../../../http/purchases';
 import { useSidebar } from '../../contexts/SidebarContext';
+import { UnitsDropdown } from '../../components/UnitsDropdown';
+import { ItemsDropdown } from '../../components/ItemsDropdown';
+import { CustomDropdown } from '../../components/CustomDropdown';
 
 // Utility functions for unit conversion
 const getUnitDisplay = (unit: any) => {
@@ -183,6 +186,12 @@ interface Item {
   amount: number;
   discountPercentage: string;
   discountAmount: string;
+  // Add missing properties for API items
+  purchasePrice?: number;
+  salePrice?: number;
+  wholesalePrice?: number;
+  minimumWholesaleQuantity?: number;
+  stock?: number;
 }
 
 interface BillData extends FormData {
@@ -196,117 +205,7 @@ interface BillData extends FormData {
 
 type DropdownOption = { value: string; label: string };
 
-interface CustomDropdownProps {
-  options: DropdownOption[];
-  value: string;
-  onChange: (val: string) => void;
-  className?: string;
-  placeholder?: string;
-  disabled?: boolean;
-  dropdownIndex: number;
-  setDropdownIndex: React.Dispatch<React.SetStateAction<number>>;
-  optionsCount: number;
-}
 
-function CustomDropdown({ options, value, onChange, className = '', placeholder = 'Select', disabled = false, dropdownIndex, setDropdownIndex, optionsCount }: CustomDropdownProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (!ref.current) return;
-      if (!(event.target instanceof Node)) return;
-      if (!ref.current.contains(event.target as Node)) setOpen(false);
-    }
-    if (open) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
-
-  useEffect(() => {
-    if (open && btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
-      setDropdownStyle({
-        position: 'absolute',
-        top: rect.bottom + window.scrollY + 6,
-        left: rect.left + window.scrollX + rect.width / 2 - (rect.width + 40) / 2,
-        width: rect.width + 40,
-        minWidth: rect.width,
-        zIndex: 1000,
-        maxHeight: '12rem',
-        overflowY: 'auto',
-      });
-    }
-  }, [open]);
-
-  // Keyboard navigation on button
-  const handleButtonKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (!open) return;
-    if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    if (e.key === 'ArrowDown') {
-      setDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
-    } else if (e.key === 'ArrowUp') {
-      setDropdownIndex(i => Math.max(i - 1, 0));
-    } else if (e.key === 'Enter') {
-      const selected = options[dropdownIndex];
-      if (selected) {
-        onChange(selected.value);
-        setOpen(false);
-      }
-    } else if (e.key === 'Escape') {
-      setOpen(false);
-    }
-  };
-
-  return (
-    <div ref={ref} className={`relative ${disabled ? 'opacity-60 pointer-events-none' : ''} ${className}`}> 
-      <button
-        ref={btnRef}
-        type="button"
-        className={`w-full px-3 py-2 border-2 border-blue-100 rounded-lg bg-white flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-blue-200 appearance-none transition-all ${open ? 'ring-2 ring-blue-300' : ''}`}
-        onClick={() => setOpen((v) => !v)}
-        disabled={disabled}
-        tabIndex={0}
-        onKeyDown={handleButtonKeyDown}
-      >
-        <span className="truncate text-left">{options.find((o: DropdownOption) => o.value === value)?.label || placeholder}</span>
-        <span className={`ml-2 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-        </span>
-      </button>
-      {open && typeof window !== 'undefined' && ReactDOM.createPortal(
-        <ul
-          style={dropdownStyle}
-          className="bg-white border-2 border-blue-100 rounded-lg shadow-lg animate-fadeinup custom-dropdown-scrollbar"
-          onMouseDown={e => e.preventDefault()}
-        >
-          {options.map((opt: DropdownOption, idx: number) => (
-            <li
-              key={opt.value}
-              className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'} ${dropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
-              onMouseDown={e => {
-                e.preventDefault();
-                onChange(opt.value);
-                setOpen(false);
-                setDropdownIndex(idx);
-              }}
-              tabIndex={-1}
-              aria-selected={value === opt.value}
-              ref={el => { if (dropdownIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
-            >
-              {opt.label}
-            </li>
-          ))}
-        </ul>,
-        document.body
-      )}
-    </div>
-  );
-}
 
 // Update PurchaseItem type
 type PurchaseItem = {
@@ -385,12 +284,12 @@ export default function AddPurchasePage() {
   const [parties, setParties] = useState<any[]>([]);
   const [allParties, setAllParties] = useState<any[]>([]); // Store all parties for filtering
   const [showPartySuggestions, setShowPartySuggestions] = useState(false);
-  const [showItemSuggestions, setShowItemSuggestions] = useState<{[id: number]: boolean}>({});
+
   const [itemSuggestions, setItemSuggestions] = useState<any[]>([]);
   const [partyBalance, setPartyBalance] = useState<number|null>(null);
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null);
   const [formErrors, setFormErrors] = useState<any>({});
-  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+
   const [expenseDropdownStyles, setExpenseDropdownStyles] = useState<{[id: number]: React.CSSProperties}>({});
   const itemInputRefs = useRef<{[id: number]: HTMLInputElement | null}>({});
   const [redirectTo, setRedirectTo] = useState('/dashboard/purchase');
@@ -434,8 +333,7 @@ export default function AddPurchasePage() {
   const [taxPartyDropdownStyle, setTaxPartyDropdownStyle] = useState<React.CSSProperties>({});
   const [taxPartyDropdownIndex, setTaxPartyDropdownIndex] = useState(-1);
   
-  // 1. Add state for item and unit dropdown keyboard navigation
-  const [itemDropdownIndex, setItemDropdownIndex] = useState<{[id: number]: number}>({});
+  // Unit dropdown keyboard navigation
   const [unitDropdownIndex, setUnitDropdownIndex] = useState<{[id: number]: number}>({});
   
   // Fetch expense items and categories from database for suggestions
@@ -490,6 +388,14 @@ export default function AddPurchasePage() {
       setIsCollapsed(wasSidebarCollapsed);
     };
   }, [setIsCollapsed, wasSidebarCollapsed]);
+
+  // Fetch items on component mount
+  useEffect(() => {
+    const initializeData = async () => {
+      await fetchItemSuggestions();
+    };
+    initializeData();
+  }, []);
 
   // Check if opened from different contexts
   useEffect(() => {
@@ -1062,7 +968,13 @@ export default function AddPurchasePage() {
       try {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
-          setItemSuggestions(parsed);
+          // Normalize cached items to match expected interface
+          const normalizedItems = parsed.map((item: any) => ({
+            ...item,
+            id: item._id || item.id || Math.random().toString(),
+            name: item.name || item.itemName || ''
+          }));
+          setItemSuggestions(normalizedItems);
         }
       } catch (e) { /* ignore parse error */ }
     }
@@ -1082,9 +994,17 @@ export default function AddPurchasePage() {
       } else if (response && response.data) {
         items = response.data;
       }
-      setItemSuggestions(items || []);
-      localStorage.setItem('vyapar_items', JSON.stringify(items || []));
-      // console.log('Processed items:', items);
+      
+      // Normalize items to match expected interface
+      const normalizedItems = (items || []).map((item: any) => ({
+        ...item,
+        id: item._id || item.id || Math.random().toString(),
+        name: item.name || item.itemName || ''
+      }));
+      
+      setItemSuggestions(normalizedItems);
+      localStorage.setItem('vyapar_items', JSON.stringify(normalizedItems));
+      // console.log('Processed items:', normalizedItems);
     } catch (error) {
       // console.error('Error fetching items:', error);
       setItemSuggestions([]);
@@ -1295,6 +1215,10 @@ export default function AddPurchasePage() {
   const [paymentTypeDropdownIndex, setPaymentTypeDropdownIndex] = useState(0);
   const [discountTypeDropdownIndex, setDiscountTypeDropdownIndex] = useState(0);
   const [taxTypeDropdownIndex, setTaxTypeDropdownIndex] = useState(0);
+  
+  // Additional dropdown state variables for new components
+  const [dropdownIndex, setDropdownIndex] = useState(0);
+  const [unitsDropdownIndices, setUnitsDropdownIndices] = useState<{[id: number]: number}>({});
 
   // Add ref for form
   const formRef = useRef<HTMLFormElement>(null);
@@ -1831,55 +1755,9 @@ export default function AddPurchasePage() {
                     </thead>
                     <tbody>
                       {newPurchase.items.map((item, index) => {
-                        const handleFocus = async (event: React.FocusEvent<HTMLInputElement>) => {
-                          await fetchItemSuggestions();
-                          setShowItemSuggestions(prev => ({ ...prev, [item.id]: true }));
-                          
-                          const rect = event.target.getBoundingClientRect();
-                          const style: React.CSSProperties = {
-                            position: 'absolute',
-                            top: rect.bottom + window.scrollY + 4,
-                            left: rect.left + window.scrollX,
-                            width: rect.width,
-                            zIndex: 9999,
-                            maxHeight: '200px',
-                            overflowY: 'auto' as const
-                          };
-                          setDropdownStyle(style);
-                        };
 
-                        // In the tbody map for items, before rendering CustomDropdown, define unitOptions for each row
-                        const unitOptions = (() => {
-                          const options: DropdownOption[] = [];
-                          if (item.item) {
-                            const selectedItem = itemSuggestions.find(i => i.name === item.item);
-                            if (selectedItem && selectedItem.unit) {
-                              const unit = selectedItem.unit;
-                              if (typeof unit === 'object' && unit.base) {
-                                if (unit.base && unit.base !== 'NONE') {
-                                  options.push({ value: unit.base, label: unit.base });
-                                }
-                                if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) {
-                                  options.push({ value: unit.secondary, label: unit.secondary });
-                                }
-                              } else if (typeof unit === 'string' && unit.includes(' / ')) {
-                                const parts = unit.split(' / ');
-                                if (parts[0] && parts[0] !== 'NONE') {
-                                  options.push({ value: parts[0], label: parts[0] });
-                                }
-                                if (parts[1] && parts[1] !== 'None') {
-                                  options.push({ value: parts[1], label: parts[1] });
-                                }
-                              } else if (typeof unit === 'string') {
-                                options.push({ value: unit, label: unit });
-                              }
-                            }
-                          }
-                          if (options.length === 0) {
-                            options.push({ value: 'NONE', label: 'NONE' });
-                          }
-                          return options;
-                        })();
+
+
 
                         // Get the current unit value for the dropdown
                         const getCurrentUnitValue = () => {
@@ -1920,118 +1798,57 @@ export default function AddPurchasePage() {
                           >
                             <td className="py-2 px-2 font-medium">{index + 1}</td>
                             <td className="py-2 px-2">
-                              <input
-                                type="text"
-                                value={item.item}
-                                onChange={e => {
-                                  handleItemChange(item.id, 'item', e.target.value);
-                                  if (!isFromExpenses) {
-                                    setItemDropdownIndex(idx => ({ ...idx, [item.id]: 0 }));
-                                  }
-
-                                }}
-                                onFocus={!isFromExpenses ? handleFocus : (event: React.FocusEvent<HTMLInputElement>) => {
-                                  // For expenses, show expense suggestions with proper positioning
-                                  setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: true }));
-                                  
-                                  // Set dropdown position like purchase items
-                                  const rect = event.target.getBoundingClientRect();
-                                  const style: React.CSSProperties = {
-                                    position: 'absolute',
-                                    top: rect.bottom + window.scrollY + 4,
-                                    left: rect.left + window.scrollX,
-                                    width: rect.width,
-                                    zIndex: 9999,
-                                    maxHeight: '200px',
-                                    overflowY: 'auto' as const
-                                  };
-                                  setExpenseDropdownStyles(prev => ({ ...prev, [item.id]: style }));
-                                }}
-                                onBlur={!isFromExpenses ? () => setTimeout(() => setShowItemSuggestions(prev => ({ ...prev, [item.id]: false })), 200) : () => setTimeout(() => {
-                                  setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: false }));
-                                  // Clean up dropdown style
-                                  setExpenseDropdownStyles(prev => {
-                                    const newStyles = { ...prev };
-                                    delete newStyles[item.id];
-                                    return newStyles;
-                                  });
-                                }, 200)}
-                                className="w-full px-3 py-3 border-2 border-gray-200 rounded-lg focus :outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-                                placeholder={isFromExpenses ? "Enter expense item..." : "Enter item name..."}
-                                onKeyDown={!isFromExpenses ? (e => {
-                                  if (!showItemSuggestions[item.id]) return;
-                                  const filtered = itemSuggestions.filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
-                                  const optionsCount = filtered.length;
-                                  if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                  }
-                                  if (e.key === 'ArrowDown') {
-                                    setItemDropdownIndex(idx => ({ ...idx, [item.id]: Math.min((idx[item.id] || 0) + 1, optionsCount - 1) }));
-                                  } else if (e.key === 'ArrowUp') {
-                                    setItemDropdownIndex(idx => ({ ...idx, [item.id]: Math.max((idx[item.id] || 0) - 1, 0) }));
-                                  } else if (e.key === 'Enter') {
-                                    const idx = itemDropdownIndex[item.id] || 0;
-                                    const selected = filtered[idx];
-                                    if (selected) {
-                                      handleItemChange(item.id, 'item', selected.name);
-                                      const unitDisplay = getUnitDisplay(selected.unit);
-                                      handleItemChange(item.id, 'unit', unitDisplay);
-                                      
-                                      // Set price based on the selected unit
-                                      let initialPrice = selected.purchasePrice || 0;
-                                      if (selected.unit && typeof selected.unit === 'object' && selected.unit.conversionFactor) {
-                                        // purchasePrice is for base unit (Box), so use it directly for base unit
-                                        if (unitDisplay === selected.unit.base) {
-                                          // For base unit, use the price directly
-                                          initialPrice = selected.purchasePrice || 0;
-                                        } else if (unitDisplay === selected.unit.secondary) {
-                                          // For secondary unit, multiply by conversion factor
-                                          initialPrice = (selected.purchasePrice || 0) * selected.unit.conversionFactor;
-                                        }
+                              {!isFromExpenses ? (
+                                <ItemsDropdown
+                                  items={itemSuggestions}
+                                  value={item.item}
+                                  onChange={(val) => handleItemChange(item.id, 'item', val)}
+                                  onItemSelect={(selectedItem: any) => {
+                                    const unitDisplay = getUnitDisplay(selectedItem.unit);
+                                    handleItemChange(item.id, 'unit', unitDisplay);
+                                    
+                                    // Set price based on the selected unit
+                                    let initialPrice = selectedItem.purchasePrice || 0;
+                                    if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                                      // purchasePrice is for base unit (Box), so use it directly for base unit
+                                      if (unitDisplay === selectedItem.unit.base) {
+                                        // For base unit, use the price directly
+                                        initialPrice = selectedItem.purchasePrice || 0;
+                                      } else if (unitDisplay === selectedItem.unit.secondary) {
+                                        // For secondary unit, multiply by conversion factor
+                                        initialPrice = (selectedItem.purchasePrice || 0) * selectedItem.unit.conversionFactor;
                                       }
-                                      
-                                      handleItemChange(item.id, 'price', initialPrice);
-                                      handleItemChange(item.id, 'qty', '');
-                                      setShowItemSuggestions(prev => ({ ...prev, [item.id]: false }));
                                     }
-                                  } else if (e.key === 'Escape') {
-                                    setShowItemSuggestions(prev => ({ ...prev, [item.id]: false }));
-                                  }
-                                                                }) : (e => {
-                                  // Handle expense item suggestions keyboard navigation
-                                  if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                  }
-                                  
-                                  const filtered = expenseItemSuggestions.filter(i => i.toLowerCase().includes(item.item.toLowerCase()));
-                                  
-                                  if (e.key === 'ArrowDown') {
-                                    setItemDropdownIndex(idx => ({ 
-                                      ...idx, 
-                                      [item.id]: Math.min((idx[item.id] || 0) + 1, filtered.length - 1) 
-                                    }));
-                                  } else if (e.key === 'ArrowUp') {
-                                    setItemDropdownIndex(idx => ({ 
-                                      ...idx, 
-                                      [item.id]: Math.max((idx[item.id] || 0) - 1, 0) 
-                                    }));
-                                  } else if (e.key === 'Enter') {
-                                    // Auto-complete with selected suggestion
-                                    const idx = itemDropdownIndex[item.id] || 0;
-                                    if (filtered.length > 0 && idx < filtered.length) {
-                                      handleItemChange(item.id, 'item', filtered[idx]);
-                                      setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: false }));
-                                      // Clean up dropdown style
-                                      setExpenseDropdownStyles(prev => {
-                                        const newStyles = { ...prev };
-                                        delete newStyles[item.id];
-                                        return newStyles;
-                                      });
-                                    }
-                                  } else if (e.key === 'Escape') {
-                                    // Clear suggestions
+                                    
+                                    handleItemChange(item.id, 'price', initialPrice);
+                                    handleItemChange(item.id, 'qty', '');
+                                  }}
+                                />
+                              ) : (
+                                <input
+                                  type="text"
+                                  value={item.item}
+                                  onChange={e => {
+                                    handleItemChange(item.id, 'item', e.target.value);
+                                  }}
+                                  onFocus={(event: React.FocusEvent<HTMLInputElement>) => {
+                                    // For expenses, show expense suggestions with proper positioning
+                                    setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: true }));
+                                    
+                                    // Set dropdown position like purchase items
+                                    const rect = event.target.getBoundingClientRect();
+                                    const style: React.CSSProperties = {
+                                      position: 'absolute',
+                                      top: rect.bottom + window.scrollY + 4,
+                                      left: rect.left + window.scrollX,
+                                      width: rect.width,
+                                      zIndex: 9999,
+                                      maxHeight: '200px',
+                                      overflowY: 'auto' as const
+                                    };
+                                    setExpenseDropdownStyles(prev => ({ ...prev, [item.id]: style }));
+                                  }}
+                                  onBlur={() => setTimeout(() => {
                                     setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: false }));
                                     // Clean up dropdown style
                                     setExpenseDropdownStyles(prev => {
@@ -2039,86 +1856,38 @@ export default function AddPurchasePage() {
                                       delete newStyles[item.id];
                                       return newStyles;
                                     });
-                                  }
-                                })}
-                              />
-                              {!isFromExpenses && showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
-                                <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                                  
-                                  {itemSuggestions.length > 0 ? (
-                                    itemSuggestions
-                                      .filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()))
-                                    .map((i, idx) => (
-                                      <li
-                                        key={i._id}
-                                        className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 ${itemDropdownIndex[item.id] === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
-                                        onMouseDown={e => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          handleItemChange(item.id, 'item', i.name);
-                                          const unitDisplay = getUnitDisplay(i.unit);
-                                          handleItemChange(item.id, 'unit', unitDisplay);
-                                          
-                                          // Set price based on the selected unit
-                                          let initialPrice = i.purchasePrice || 0;
-                                          if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
-                                            // purchasePrice is for base unit (Box), so use it directly for base unit
-                                            if (unitDisplay === i.unit.base) {
-                                              // For base unit, use the price directly
-                                              initialPrice = i.purchasePrice || 0;
-                                            } else if (unitDisplay === i.unit.secondary) {
-                                              // For secondary unit, multiply by conversion factor
-                                              initialPrice = (i.purchasePrice || 0) * i.unit.conversionFactor;
-                                            }
-                                          }
-                                          
-                                          handleItemChange(item.id, 'price', initialPrice);
-                                          handleItemChange(item.id, 'qty', '');
-                                          setShowItemSuggestions(prev => ({ ...prev, [item.id]: false }));
-                                        }}
-                                        ref={el => { if (itemDropdownIndex[item.id] === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
-                                        role="option"
-                                        aria-selected={itemDropdownIndex[item.id] === idx}
-                                      >
-                                        <div className="flex justify-between items-center">
-                                          <span className="font-medium text-gray-800">{i.name}</span>
-                                          <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {(() => {
-                                            let displayPrice = i.purchasePrice || 0;
-                                            if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
-                                              const unitDisplay = getUnitDisplay(i.unit);
-                                              if (unitDisplay === i.unit.base) {
-                                                displayPrice = i.purchasePrice || 0;
-                                              } else if (unitDisplay === i.unit.secondary) {
-                                                displayPrice = (i.purchasePrice || 0) * i.unit.conversionFactor;
-                                              }
-                                            }
-                                            return displayPrice;
-                                          })()} • Qty: {i.stock ?? 0}</span>
-                                        </div>
-                                      </li>
-                                      ))
-                                  ) : (
-                                    <li className="px-4 py-3 text-center">
-                                      <div className="text-gray-500 text-sm">
-                                        {itemSuggestions.length === 0 ? (
-                                          <div>
-                                            <div className="text-gray-400 mb-1">📦</div>
-                                            <div>No items available</div>
-                                            <div className="text-xs text-gray-400 mt-1">Add items in the Items section first</div>
-                                          </div>
-                                        ) : (
-                                          <div>
-                                            <div className="text-gray-400 mb-1">🔍</div>
-                                            <div>No matching items</div>
-                                            <div className="text-xs text-gray-400 mt-1">Try a different search term</div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </li>
-                                  )}
-                                </ul>,
-                                document.body
+                                  }, 200)}
+                                  className="w-full px-3 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                                  placeholder="Enter expense item..."
+                                  onKeyDown={(e => {
+                                    // Handle expense item suggestions keyboard navigation
+                                    if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                    }
+                                    
+                                    const filtered = expenseItemSuggestions.filter(i => i.toLowerCase().includes(item.item.toLowerCase()));
+                                    
+                                    // For expense items, we don't need keyboard navigation since ItemsDropdown handles it
+                                    // Just handle Enter key for auto-completion
+                                    if (e.key === 'Enter') {
+                                      // Auto-complete with first suggestion if available
+                                      const filtered = expenseItemSuggestions.filter(i => i.toLowerCase().includes(item.item.toLowerCase()));
+                                      if (filtered.length > 0) {
+                                        handleItemChange(item.id, 'item', filtered[0]);
+                                        setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: false }));
+                                        // Clean up dropdown style
+                                        setExpenseDropdownStyles(prev => {
+                                          const newStyles = { ...prev };
+                                          delete newStyles[item.id];
+                                          return newStyles;
+                                        });
+                                      }
+                                    }
+                                  })}
+                                />
                               )}
+
                               
                               {/* Expense Item Suggestions */}
                               {isFromExpenses && showExpenseSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
@@ -2130,7 +1899,7 @@ export default function AddPurchasePage() {
                                       .map((suggestion, idx) => (
                                         <li
                                           key={idx}
-                                          className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 ${itemDropdownIndex[item.id] === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+                                          className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
                                           onMouseDown={e => {
                                             e.preventDefault();
                                             e.stopPropagation();
@@ -2143,9 +1912,7 @@ export default function AddPurchasePage() {
                                               return newStyles;
                                             });
                                           }}
-                                          ref={el => { if (itemDropdownIndex[item.id] === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
                                           role="option"
-                                          aria-selected={itemDropdownIndex[item.id] === idx}
                                         >
                                           <div className="flex justify-between items-center">
                                             <span className="font-medium text-gray-800">{suggestion}</span>
@@ -2191,8 +1958,25 @@ export default function AddPurchasePage() {
                             )}
                             {!isFromExpenses && (
                               <td className="py-2 px-2">
-                                <CustomDropdown
-                                  options={unitOptions}
+                                <UnitsDropdown
+                                  units={(() => {
+                                    const units: any[] = [];
+                                    
+                                    // Add base and secondary units if they exist in the item data
+                                    if (item.item) {
+                                      const selectedItem = itemSuggestions.find(i => i.name === item.item);
+                                      if (selectedItem && selectedItem.unit) {
+                                        units.push(selectedItem.unit);
+                                      }
+                                    }
+                                    
+                                    // Always add NONE as a fallback option
+                                    if (units.length === 0) {
+                                      units.push('NONE');
+                                    }
+                                    
+                                    return units;
+                                  })()}
                                   value={getCurrentUnitValue()}
                                   onChange={val => {
                                     // Get the selected item data for conversion
@@ -2219,9 +2003,46 @@ export default function AddPurchasePage() {
                                     // Update the unit
                                     handleItemChange(item.id, 'unit', val);
                                   }}
-                                  dropdownIndex={0}
-                                  setDropdownIndex={()=>{}}
-                                  optionsCount={unitOptions.length}
+                                  dropdownIndex={unitsDropdownIndices[item.id] || 0}
+                                  setDropdownIndex={(value: React.SetStateAction<number>) => {
+                                    if (typeof value === 'function') {
+                                      setUnitsDropdownIndices(prev => ({ ...prev, [item.id]: value(prev[item.id] || 0) }));
+                                    } else {
+                                      setUnitsDropdownIndices(prev => ({ ...prev, [item.id]: value }));
+                                    }
+                                  }}
+                                  optionsCount={(() => {
+                                    const units: any[] = [];
+                                    if (item.item) {
+                                      const selectedItem = itemSuggestions.find(i => i.name === item.item);
+                                      if (selectedItem && selectedItem.unit) {
+                                        units.push(selectedItem.unit);
+                                      }
+                                    }
+                                    
+                                    // Always add NONE as a fallback option
+                                    if (units.length === 0) {
+                                      units.push('NONE');
+                                    }
+                                    
+                                    // Calculate actual options count based on how UnitsDropdown processes units
+                                    let count = 0;
+                                    units.forEach(unit => {
+                                      if (typeof unit === 'string') {
+                                        count++;
+                                      } else if (unit.base) {
+                                        count++;
+                                        if (unit.secondary && unit.secondary !== 'None') {
+                                          count++;
+                                        }
+                                      }
+                                    });
+                                    
+                                    // Add Custom option
+                                    count++;
+                                    
+                                    return count;
+                                  })()}
                                 />
                                 {item.unit === 'Custom' && (
                                   <input

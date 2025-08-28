@@ -8,6 +8,9 @@ import { getCustomerParties, getPartyBalance } from '../../../../http/parties';
 import { getUserItems } from '../../../../http/items';
 import { createCreditNote } from '../../../../http/credit-notes';
 import { useSidebar } from '../../../contexts/SidebarContext';
+import { UnitsDropdown } from '../../../components/UnitsDropdown';
+import { ItemsDropdown } from '../../../components/ItemsDropdown';
+import { CustomDropdown } from '../../../components/CustomDropdown';
 
 const getUnitDisplay = (unit: any) => {
   if (!unit) return 'NONE';
@@ -131,179 +134,32 @@ interface CreditNoteItem {
 
 type DropdownOption = { value: string; label: string };
 
-interface CustomDropdownProps {
-  options: DropdownOption[];
-  value: string;
-  onChange: (val: string) => void;
-  className?: string;
-  placeholder?: string;
-  disabled?: boolean;
-}
-
-function CustomDropdown({ options, value, onChange, className = '', placeholder = 'Select', disabled = false }: CustomDropdownProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
-  const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const [searchTerm, setSearchTerm] = useState('');
-  const searchTimeout = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (!ref.current) return;
-      if (!(event.target instanceof Node)) return;
-      if (!ref.current.contains(event.target as Node)) setOpen(false);
-    }
-    if (open) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
-
-  useEffect(() => {
-    if (open && btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
-      setDropdownStyle({
-        position: 'absolute',
-        top: rect.bottom + window.scrollY + 6,
-        left: rect.left + window.scrollX + rect.width / 2 - (rect.width + 40) / 2,
-        width: rect.width + 40,
-        minWidth: rect.width,
-        zIndex: 1000,
-        maxHeight: '12rem',
-        overflowY: 'auto',
-      });
-    }
-  }, [open]);
-
-  // Keyboard navigation
-  const handleButtonKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (!open && (e.key.length === 1 || e.key === 'ArrowDown' || e.key === 'Enter')) {
-      setOpen(true);
-      setHighlightedIndex(0);
-      return;
-    }
-    if (!open) return;
-    if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    if (e.key === 'ArrowDown') {
-      setHighlightedIndex(i => Math.min(i + 1, options.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      setHighlightedIndex(i => Math.max(i - 1, 0));
-    } else if (e.key === 'Enter') {
-      const selected = options[highlightedIndex];
-      if (selected) {
-        onChange(selected.value);
-        setOpen(false);
-      }
-    } else if (e.key === 'Escape') {
-      setOpen(false);
-    } else if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
-      // Type to search
-      const nextTerm = searchTerm + e.key.toLowerCase();
-      setSearchTerm(nextTerm);
-      if (searchTimeout.current) clearTimeout(searchTimeout.current);
-      searchTimeout.current = setTimeout(() => setSearchTerm(''), 500);
-      const foundIdx = options.findIndex(opt => opt.label.toLowerCase().startsWith(nextTerm));
-      if (foundIdx !== -1) setHighlightedIndex(foundIdx);
-    }
-  };
-
-  // Open dropdown on focus
-  const handleButtonFocus = () => {
-    setOpen(true);
-    setHighlightedIndex(options.findIndex(opt => opt.value === value) || 0);
-  };
-
-  return (
-    <div ref={ref} className={`relative ${disabled ? 'opacity-60 pointer-events-none' : ''} ${className}`}> 
-      <button
-        ref={btnRef}
-        type="button"
-        className={`w-full px-3 py-2 border-2 border-blue-100 rounded-lg bg-white flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-blue-200 appearance-none transition-all ${open ? 'ring-2 ring-blue-300' : ''}`}
-        onClick={() => setOpen((v) => !v)}
-        disabled={disabled}
-        tabIndex={0}
-        onKeyDown={handleButtonKeyDown}
-        onFocus={handleButtonFocus}
-      >
-        <span className="truncate text-left">{options.find((o: DropdownOption) => o.value === value)?.label || placeholder}</span>
-        <span className={`ml-2 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-        </span>
-      </button>
-      {open && typeof window !== 'undefined' && ReactDOM.createPortal(
-        <ul
-          style={dropdownStyle}
-          className="bg-white border-2 border-blue-100 rounded-lg shadow-lg animate-fadeinup custom-dropdown-scrollbar"
-          onMouseDown={e => e.preventDefault()}
-        >
-          {options.map((opt: DropdownOption, idx: number) => (
-            <li
-              key={opt.value}
-              className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'} ${highlightedIndex === idx ? 'bg-blue-200 text-blue-900' : ''}`}
-              onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); setHighlightedIndex(idx); }}
-              tabIndex={-1}
-              aria-selected={value === opt.value}
-              ref={el => { if (highlightedIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
-            >
-              {opt.label}
-            </li>
-          ))}
-        </ul>,
-        document.body
-      )}
-    </div>
-  );
-}
-
 function ItemRow({
   item,
   index,
   handleItemChange,
-  fetchItemSuggestions,
   showItemSuggestions,
   setShowItemSuggestions,
   itemSuggestions,
   deleteRow,
   newCreditNote,
-  addNewRow
+  addNewRow,
+  unitsDropdownIndex,
+  setUnitsDropdownIndex
 }: {
   item: CreditNoteItem;
   index: number;
   handleItemChange: (id: number, field: string, value: any) => void;
-  fetchItemSuggestions: () => void;
   showItemSuggestions: { [id: number]: boolean };
   setShowItemSuggestions: React.Dispatch<React.SetStateAction<{ [id: number]: boolean }>>;
   itemSuggestions: any[];
   deleteRow: (id: number) => void;
   newCreditNote: any;
   addNewRow: () => void;
+  unitsDropdownIndex: number;
+  setUnitsDropdownIndex: React.Dispatch<React.SetStateAction<number>>;
 }) {
-  const inputRef = React.useRef<HTMLInputElement>(null);
-  const [dropdownStyle, setDropdownStyle] = React.useState<React.CSSProperties>({});
-  const [highlightedIndex, setHighlightedIndex] = React.useState(0);
 
-  const handleFocus = () => {
-    fetchItemSuggestions();
-    setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: true }));
-    setHighlightedIndex(0);
-    if (inputRef.current) {
-      const rect = inputRef.current.getBoundingClientRect();
-      const style: React.CSSProperties = {
-        position: 'absolute',
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
-        width: rect.width,
-        zIndex: 9999,
-        maxHeight: '200px',
-        overflowY: 'auto' as const
-      };
-      console.log('Setting dropdown style:', style);
-      setDropdownStyle(style);
-    }
-  };
 
   return (
     <tr
@@ -311,150 +167,40 @@ function ItemRow({
     >
       <td className="py-2 px-2 font-medium">{index + 1}</td>
       <td className="py-2 px-2">
-        <input
-          ref={inputRef}
-          type="text"
+        <ItemsDropdown
+          items={itemSuggestions}
           value={item.item}
-          onChange={e => handleItemChange(item.id, 'item', e.target.value)}
-          onFocus={handleFocus}
-          onBlur={() => setTimeout(() => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false })), 200)}
-          onKeyDown={e => {
-            if (!showItemSuggestions[item.id]) return;
-            const filtered = itemSuggestions.filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
-            const optionsCount = filtered.length;
-            if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
-              e.preventDefault();
-              e.stopPropagation();
-            }
-            if (e.key === 'ArrowDown') {
-              setHighlightedIndex(i => Math.min(i + 1, optionsCount - 1));
-            } else if (e.key === 'ArrowUp') {
-              setHighlightedIndex(i => Math.max(i - 1, 0));
-            } else if (e.key === 'Enter') {
-              const selected = filtered[highlightedIndex] || filtered[0];
-              if (selected) {
-                handleItemChange(item.id, 'item', selected.name);
-                const unitDisplay = getUnitDisplay(selected.unit);
-                handleItemChange(item.id, 'unit', unitDisplay);
-                
-                let initialPrice = selected.salePrice || 0;
-                if (selected.unit && typeof selected.unit === 'object' && selected.unit.conversionFactor) {
-                  if (unitDisplay === selected.unit.base) {
-                    initialPrice = selected.salePrice || 0;
-                  } else if (unitDisplay === selected.unit.secondary) {
-                    initialPrice = (selected.salePrice || 0) * selected.unit.conversionFactor;
-                  }
-                }
-                
-                const minWholesaleQty = selected.minimumWholesaleQuantity || 0;
-                const wholesalePrice = selected.wholesalePrice || 0;
-                
-                if (minWholesaleQty > 0 && wholesalePrice > 0) {
-                  if (unitDisplay === selected.unit?.base) {
-                    initialPrice = wholesalePrice;
-                  } else if (unitDisplay === selected.unit?.secondary) {
-                    initialPrice = wholesalePrice * selected.unit.conversionFactor;
-                  }
-                }
-                
-                handleItemChange(item.id, 'price', initialPrice);
-                handleItemChange(item.id, 'qty', '1');
-                setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+          onChange={val => handleItemChange(item.id, 'item', val)}
+          onItemSelect={(selectedItem) => {
+            const unitDisplay = getUnitDisplay(selectedItem.unit);
+            handleItemChange(item.id, 'unit', unitDisplay);
+            
+            let initialPrice = selectedItem.salePrice || 0;
+            if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+              if (unitDisplay === selectedItem.unit.base) {
+                initialPrice = selectedItem.salePrice || 0;
+              } else if (unitDisplay === selectedItem.unit.secondary) {
+                initialPrice = (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor;
               }
-            } else if (e.key === 'Escape') {
-              setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
-            } else if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
-              // Type to search
-              const nextTerm = (item.item + e.key).toLowerCase();
-              const foundIdx = filtered.findIndex(opt => opt.name.toLowerCase().startsWith(nextTerm));
-              if (foundIdx !== -1) setHighlightedIndex(foundIdx);
             }
+            
+            const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
+            const wholesalePrice = selectedItem.wholesalePrice || 0;
+            
+            if (minWholesaleQty > 0 && wholesalePrice > 0) {
+              if (unitDisplay === selectedItem.unit?.base) {
+                initialPrice = wholesalePrice;
+              } else if (unitDisplay === selectedItem.unit?.secondary) {
+                initialPrice = wholesalePrice * selectedItem.unit.conversionFactor;
+              }
+            }
+            
+            handleItemChange(item.id, 'price', initialPrice);
+            handleItemChange(item.id, 'qty', '1');
           }}
-          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-          placeholder="Enter item name..."
-          autoComplete="off"
+          showSuggestions={showItemSuggestions[item.id]}
+          setShowSuggestions={(show) => setShowItemSuggestions(prev => ({ ...prev, [item.id]: show }))}
         />
-        {showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
-          <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-            {itemSuggestions.length > 0 ? (
-              itemSuggestions
-                .filter((i: any) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()))
-                .map((i: any, idx: number) => (
-                  <li
-                    key={i._id}
-                    className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 ${highlightedIndex === idx ? 'bg-blue-200 text-blue-900' : ''}`}
-                    onMouseDown={() => {
-                      handleItemChange(item.id, 'item', i.name);
-                      const unitDisplay = getUnitDisplay(i.unit);
-                      handleItemChange(item.id, 'unit', unitDisplay);
-                      
-                      let initialPrice = i.salePrice || 0;
-                      if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
-                        if (unitDisplay === i.unit.base) {
-                          initialPrice = i.salePrice || 0;
-                        } else if (unitDisplay === i.unit.secondary) {
-                          initialPrice = (i.salePrice || 0) * i.unit.conversionFactor;
-                        }
-                      }
-                      
-                      const minWholesaleQty = i.minimumWholesaleQuantity || 0;
-                      const wholesalePrice = i.wholesalePrice || 0;
-                      
-                      if (minWholesaleQty > 0 && wholesalePrice > 0) {
-                        if (unitDisplay === i.unit?.base) {
-                          initialPrice = wholesalePrice;
-                        } else if (unitDisplay === i.unit?.secondary) {
-                          initialPrice = wholesalePrice * i.unit.conversionFactor;
-                        }
-                      }
-                      
-                      handleItemChange(item.id, 'price', initialPrice);
-                      handleItemChange(item.id, 'qty', '1');
-                      setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
-                    }}
-                    ref={el => { if (highlightedIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
-                    tabIndex={-1}
-                    aria-selected={highlightedIndex === idx}
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium text-gray-800">{i.name}</span>
-                      <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {(() => {
-                        let displayPrice = i.salePrice || 0;
-                        if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
-                          const unitDisplay = getUnitDisplay(i.unit);
-                          if (unitDisplay === i.unit.base) {
-                            displayPrice = i.salePrice || 0;
-                          } else if (unitDisplay === i.unit.secondary) {
-                            displayPrice = (i.salePrice || 0) * i.unit.conversionFactor;
-                          }
-                        }
-                        return displayPrice;
-                      })()} • Qty: {i.stock ?? 0}</span>
-                    </div>
-                  </li>
-                ))
-            ) : (
-              <li className="px-4 py-3 text-center">
-                <div className="text-gray-500 text-sm">
-                  {itemSuggestions.length === 0 ? (
-                    <div>
-                      <div className="text-gray-400 mb-1">📦</div>
-                      <div>No items available</div>
-                      <div className="text-xs text-gray-400 mt-1">Add items in the Items section first</div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="text-gray-400 mb-1">🔍</div>
-                      <div>No matching items</div>
-                      <div className="text-xs text-gray-400 mt-1">Try a different search term</div>
-                    </div>
-                  )}
-                </div>
-              </li>
-            )}
-          </ul>,
-          document.body
-        )}
       </td>
       <td className="py-2 px-2">
         <input
@@ -476,50 +222,19 @@ function ItemRow({
         />
       </td>
       <td className="py-2 px-2">
-        <CustomDropdown
-          options={(() => {
-            const options: DropdownOption[] = [];
+        <UnitsDropdown
+          units={(() => {
+            const units: any[] = [];
             
             // Add base and secondary units if they exist in the item data
             if (item.item) {
               const selectedItem = itemSuggestions.find(i => i.name === item.item);
               if (selectedItem && selectedItem.unit) {
-                const unit = selectedItem.unit;
-                
-                // Handle object format with conversion factor
-                if (typeof unit === 'object' && unit.base) {
-                  // Add base unit
-                  if (unit.base && unit.base !== 'NONE') {
-                    options.push({ value: unit.base, label: unit.base });
-                  }
-                  // Add secondary unit if it exists and is different from base
-                  if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) {
-                    options.push({ value: unit.secondary, label: unit.secondary });
-                  }
-                }
-                // Handle string format like "Piece / Packet"
-                else if (typeof unit === 'string' && unit.includes(' / ')) {
-                  const parts = unit.split(' / ');
-                  // Add both parts as separate options
-                  if (parts[0] && parts[0] !== 'NONE') {
-                    options.push({ value: parts[0], label: parts[0] });
-                  }
-                  if (parts[1] && parts[1] !== 'None') {
-                    options.push({ value: parts[1], label: parts[1] });
-                  }
-                }
-                // Handle simple string unit
-                else if (typeof unit === 'string') {
-                  options.push({ value: unit, label: unit });
-                }
+                units.push(selectedItem.unit);
               }
             }
             
-            // If no units found from item, add NONE
-            if (options.length === 0) {
-              options.push({ value: 'NONE', label: 'NONE' });
-            }
-            return options;
+            return units;
           })()}
           value={item.unit}
           onChange={val => {
@@ -555,6 +270,24 @@ function ItemRow({
             }
             handleItemChange(item.id, 'unit', val);
           }}
+          dropdownIndex={unitsDropdownIndex}
+          setDropdownIndex={setUnitsDropdownIndex}
+          optionsCount={(() => {
+            if (item.item) {
+              const selectedItem = itemSuggestions.find(i => i.name === item.item);
+              if (selectedItem && selectedItem.unit) {
+                const unit = selectedItem.unit;
+                if (typeof unit === 'object' && unit.base) {
+                  return (unit.secondary && unit.secondary !== 'None' ? 2 : 1) + 1; // +1 for Custom option
+                } else if (typeof unit === 'string' && unit.includes(' / ')) {
+                  return 3; // 2 parts + Custom
+                } else {
+                  return 2; // 1 unit + Custom
+                }
+              }
+            }
+            return 1; // Just NONE
+          })()}
         />
         {item.unit === 'Custom' && (
                   <input
@@ -627,6 +360,10 @@ const CreateCreditNotePage = () => {
   const [itemSuggestions, setItemSuggestions] = useState<any[]>([]);
   const [partyBalance, setPartyBalance] = useState<number|null>(null);
   const [customerHighlightedIndex, setCustomerHighlightedIndex] = useState(0);
+  
+  // Dropdown state variables
+  const [dropdownIndex, setDropdownIndex] = useState(0);
+  const [unitsDropdownIndices, setUnitsDropdownIndices] = useState<{[id: number]: number}>({});
   
   // Import sidebar context for auto-collapse
   const { setIsCollapsed } = useSidebar();
@@ -1000,13 +737,20 @@ const CreateCreditNotePage = () => {
                       item={item}
                       index={index}
                       handleItemChange={handleItemChange}
-                      fetchItemSuggestions={fetchItemSuggestions}
                       showItemSuggestions={showItemSuggestions}
                       setShowItemSuggestions={setShowItemSuggestions}
                       itemSuggestions={itemSuggestions}
                       deleteRow={deleteRow}
                       newCreditNote={newCreditNote}
                       addNewRow={addNewRow}
+                      unitsDropdownIndex={unitsDropdownIndices[item.id] || 0}
+                      setUnitsDropdownIndex={(value: React.SetStateAction<number>) => {
+                        if (typeof value === 'number') {
+                          setUnitsDropdownIndices(prev => ({ ...prev, [item.id]: value }));
+                        } else {
+                          setUnitsDropdownIndices(prev => ({ ...prev, [item.id]: value(prev[item.id] || 0) }));
+                        }
+                      }}
                     />
                   ))}
                 </tbody>
@@ -1105,6 +849,9 @@ const CreateCreditNotePage = () => {
                         value={newCreditNote.discountType}
                         onChange={val => setNewCreditNote(prev => ({ ...prev, discountType: val }))}
                         className="w-28 min-w-[72px] mb-1 h-11"
+                        dropdownIndex={dropdownIndex}
+                        setDropdownIndex={setDropdownIndex}
+                        optionsCount={2}
                       />
                     </div>
                     <div className="text-xs text-gray-500 min-h-[24px] mt-1">
@@ -1142,6 +889,9 @@ const CreateCreditNotePage = () => {
                     value={newCreditNote.taxType || '%'}
                     onChange={val => setNewCreditNote(prev => ({ ...prev, taxType: val }))}
                     className="w-28 min-w-[72px] mb-1 h-11"
+                    dropdownIndex={dropdownIndex}
+                    setDropdownIndex={setDropdownIndex}
+                    optionsCount={2}
                   />
                 </div>
                 <div className="text-xs text-gray-500 min-h-[24px] mt-1">
@@ -1170,6 +920,9 @@ const CreateCreditNotePage = () => {
                     value={newCreditNote.reason}
                     onChange={val => setNewCreditNote(prev => ({ ...prev, reason: val }))}
                     className="mb-1"
+                    dropdownIndex={dropdownIndex}
+                    setDropdownIndex={setDropdownIndex}
+                    optionsCount={4}
                   />
                   <div className="text-xs text-gray-500 min-h-[24px] mt-1">
                     {/* Reserved for future info text, keeps alignment consistent */}

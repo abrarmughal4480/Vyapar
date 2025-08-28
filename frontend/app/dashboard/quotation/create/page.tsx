@@ -10,6 +10,9 @@ import { getToken } from '../../../lib/auth'
 import { getUserItems } from '../../../../http/items'
 import { createQuotation } from '../../../../http/quotations'
 import { useSidebar } from '../../../contexts/SidebarContext'
+import { UnitsDropdown } from '../../../components/UnitsDropdown';
+import { ItemsDropdown } from '../../../components/ItemsDropdown';
+import { CustomDropdown } from '../../../components/CustomDropdown';
 
 // Utility functions for unit conversion
 const getUnitDisplay = (unit: any) => {
@@ -149,91 +152,7 @@ interface FormData {
   paymentType: string;
 }
 
-interface DropdownOption {
-  value: string;
-  label: string;
-}
-
-interface CustomDropdownProps {
-  options: DropdownOption[];
-  value: string;
-  onChange: (val: string) => void;
-  className?: string;
-  placeholder?: string;
-  disabled?: boolean;
-}
-
-function CustomDropdown({ options, value, onChange, className = '', placeholder = 'Select', disabled = false }: CustomDropdownProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (!ref.current) return;
-      if (!(event.target instanceof Node)) return;
-      if (!ref.current.contains(event.target as Node)) setOpen(false);
-    }
-    if (open) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
-
-  useEffect(() => {
-    if (open && btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
-      setDropdownStyle({
-        position: 'absolute',
-        top: rect.bottom + window.scrollY + 6,
-        left: rect.left + window.scrollX + rect.width / 2 - (rect.width + 40) / 2,
-        width: rect.width + 40,
-        minWidth: rect.width,
-        zIndex: 1000,
-        maxHeight: '12rem',
-        overflowY: 'auto',
-      });
-    }
-  }, [open]);
-
-  return (
-    <div ref={ref} className={`relative ${disabled ? 'opacity-60 pointer-events-none' : ''} ${className}`}> 
-      <button
-        ref={btnRef}
-        type="button"
-        className={`w-full px-3 py-2 border-2 border-blue-100 rounded-lg bg-white flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-blue-200 appearance-none transition-all ${open ? 'ring-2 ring-blue-300' : ''}`}
-        onClick={() => setOpen((v) => !v)}
-        disabled={disabled}
-        tabIndex={0}
-      >
-        <span className="truncate text-left">{options.find((o: DropdownOption) => o.value === value)?.label || placeholder}</span>
-        <span className={`ml-2 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-        </span>
-      </button>
-      {open && typeof window !== 'undefined' && ReactDOM.createPortal(
-        <ul
-          style={dropdownStyle}
-          className="bg-white border-2 border-blue-100 rounded-lg shadow-lg animate-fadeinup custom-dropdown-scrollbar"
-          onMouseDown={e => e.preventDefault()}
-        >
-          {options.map((opt: DropdownOption) => (
-            <li
-              key={opt.value}
-              className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'}`}
-              onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); }}
-              tabIndex={0}
-              onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { if (e.key === 'Enter') { onChange(opt.value); setOpen(false); }}}
-              aria-selected={value === opt.value}
-            >
-              {opt.label}
-            </li>
-          ))}
-        </ul>,
-        document.body
-      )}
-    </div>
-  );
-}
+type DropdownOption = { value: string; label: string };
 
 export default function CreateSalesOrderPage() {
   const router = useRouter()
@@ -271,12 +190,16 @@ export default function CreateSalesOrderPage() {
   const [imageUploading, setImageUploading] = useState(false)
   const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([]);
   const [itemSuggestions, setItemSuggestions] = useState<any[]>([]);
-  const [showItemSuggestions, setShowItemSuggestions] = useState<{[id: number]: boolean}>({});
+
   const [partyBalance, setPartyBalance] = useState<number | null>(null);
   
   // Import sidebar context for auto-collapse
   const { setIsCollapsed } = useSidebar();
   const [wasSidebarCollapsed, setWasSidebarCollapsed] = useState(false);
+  
+  // Dropdown state variables
+  const [dropdownIndex, setDropdownIndex] = useState(0);
+  const [unitsDropdownIndices, setUnitsDropdownIndices] = useState<{[id: number]: number}>({});
 
   // Auto-collapse sidebar when page opens and restore when closing
   useEffect(() => {
@@ -344,6 +267,18 @@ export default function CreateSalesOrderPage() {
       })
     }))
   }, [])
+
+  // Fetch items on component mount
+  useEffect(() => {
+    const initializeData = async () => {
+      await fetchItemSuggestions();
+    };
+    initializeData();
+  }, []);
+
+
+
+
 
   // Fetch party balance when customer changes
   useEffect(() => {
@@ -587,34 +522,27 @@ export default function CreateSalesOrderPage() {
 
   const fetchItemSuggestions = async () => {
     const token = getToken();
-    if (!token) return;
+    if (!token) {
+      return;
+    }
     try {
       const items = await getUserItems(token);
-      setItemSuggestions(items || []);
-    } catch {}
-  };
-
-  const inputRefs = useRef<{ [id: number]: HTMLInputElement | null }>({});
-  const [dropdownStyles, setDropdownStyles] = useState<{ [id: number]: React.CSSProperties }>({});
-
-  const updateDropdownPosition = (id: number) => {
-    const input = inputRefs.current[id];
-    if (input) {
-      const rect = input.getBoundingClientRect();
-      setDropdownStyles(prev => ({
-        ...prev,
-        [id]: {
-          position: 'absolute',
-          top: rect.bottom + window.scrollY + 6,
-          left: rect.left + window.scrollX,
-          width: rect.width,
-          zIndex: 1000,
-          maxHeight: '15rem',
-          overflowY: 'auto',
-        }
+      
+      // Normalize items to match the expected interface
+      const normalizedItems = (items || []).map((item: any) => ({
+        ...item,
+        id: item._id || item.id || Math.random().toString(), // Ensure id field exists
+        name: item.name || item.itemName || '' // Ensure name field exists
       }));
+      
+      setItemSuggestions(normalizedItems);
+    } catch (error) {
+      console.error('Error fetching items:', error);
+      setItemSuggestions([]);
     }
   };
+
+
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-2 sm:px-4 md:px-8">
@@ -758,83 +686,50 @@ export default function CreateSalesOrderPage() {
                     <tr key={item.id} className={`border-b border-gray-100 ${index % 2 === 0 ? 'bg-white' : 'bg-blue-50'} hover:bg-blue-100 transition-colors`}>
                       <td className="py-2 px-2 font-medium">{index + 1}</td>
                       <td className="py-2 px-2">
-                        <div className="relative">
-                          <input
-                            ref={el => { inputRefs.current[item.id] = el; }}
-                            type="text"
-                            value={item.item}
-                            onChange={(e) => updateItem(item.id, 'item', e.target.value)}
-                            onFocus={() => {
-                              fetchItemSuggestions();
-                              setShowItemSuggestions(prev => ({ ...prev, [item.id]: true }));
-                              updateDropdownPosition(item.id);
-                            }}
-                            onBlur={() => setTimeout(() => setShowItemSuggestions(prev => ({ ...prev, [item.id]: false })), 200)}
-                            className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-                            placeholder="Enter item name..."
-                            autoComplete="off"
-                            autoCorrect="off"
-                            spellCheck={false}
-                          />
-                          {showItemSuggestions[item.id] && itemSuggestions.length > 0 && typeof window !== 'undefined' && ReactDOM.createPortal(
-                            <ul style={dropdownStyles[item.id] || {}} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto z-[1000]" >
-                              {itemSuggestions
-                                .filter((i: any) => i.name.toLowerCase().includes(item.item.toLowerCase()))
-                                .map((i: any) => (
-                                  <li
-                                    key={i._id}
-                                    className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
-                                    onMouseDown={() => {
-                                      updateItem(item.id, 'item', i.name);
-                                      // Set the unit to the item's base unit or secondary unit from backend
-                                      const unitDisplay = getUnitDisplay(i.unit);
-                                      updateItem(item.id, 'unit', unitDisplay);
-                                      
-                                      // Set price based on the selected unit and wholesale logic
-                                      let initialPrice = i.salePrice || 0;
-                                      
-                                      if (i.unit && typeof i.unit === 'object' && i.unit.base && i.unit.secondary) {
-                                        // If the default unit is secondary unit (Carton), salePrice is already correct
-                                        // If user selects base unit (Box), convert price from secondary to base
-                                        if (unitDisplay === i.unit.base && i.unit.conversionFactor) {
-                                          // salePrice is for secondary unit (Carton), so convert to base unit (Box)
-                                          initialPrice = (i.salePrice || 0) / i.unit.conversionFactor;
-                                        }
-                                      }
-                                      
-                                      // Check if wholesale pricing should be applied
-                                      const minWholesaleQty = i.minimumWholesaleQuantity || 0;
-                                      const wholesalePrice = i.wholesalePrice || 0;
-                                      
-                                      // Apply wholesale price if available (but don't set quantity automatically)
-                                      if (minWholesaleQty > 0 && wholesalePrice > 0) {
-                                        // Apply wholesale price
-                                        if (unitDisplay === i.unit?.base && i.unit?.conversionFactor) {
-                                          // Convert wholesale price to base unit if needed
-                                          initialPrice = wholesalePrice / i.unit.conversionFactor;
-                                        } else {
-                                          initialPrice = wholesalePrice;
-                                        }
-                                      }
-                                      
-                                      updateItem(item.id, 'price', initialPrice);
-                                      updateItem(item.id, 'qty', 0); // Leave quantity empty
-                                      // Calculate amount after setting price
-                                      const amount = initialPrice * 0; // Amount is 0 since quantity is 0
-                                      updateItem(item.id, 'amount', amount);
-                                      setShowItemSuggestions(prev => ({ ...prev, [item.id]: false }));
-                                    }}
-                                  >
-                                    <div className="flex justify-between items-center">
-                                      <span className="font-medium text-gray-800">{i.name}</span>
-                                      <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock ?? 0}</span>
-                                    </div>
-                                  </li>
-                                ))}
-                            </ul>,
-                            document.body
-                          )}
-                        </div>
+                        <ItemsDropdown
+                          items={itemSuggestions}
+                          value={item.item}
+                          onChange={(val) => updateItem(item.id, 'item', val)}
+                          onItemSelect={(selectedItem) => {
+                            // Set the unit to the item's base unit or secondary unit from backend
+                            const unitDisplay = getUnitDisplay(selectedItem.unit);
+                            updateItem(item.id, 'unit', unitDisplay);
+                            
+                            // Set price based on the selected unit and wholesale logic
+                            let initialPrice = selectedItem.salePrice || 0;
+                            
+                            if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.base && selectedItem.unit.secondary) {
+                              // If the default unit is secondary unit (Carton), salePrice is already correct
+                              // If user selects base unit (Box), convert price from secondary to base
+                              if (unitDisplay === selectedItem.unit.base && selectedItem.unit.conversionFactor) {
+                                // salePrice is for secondary unit (Carton), so convert to base unit (Box)
+                                initialPrice = (selectedItem.salePrice || 0) / selectedItem.unit.conversionFactor;
+                              }
+                            }
+                            
+                            // Check if wholesale pricing should be applied
+                            const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
+                            const wholesalePrice = selectedItem.wholesalePrice || 0;
+                            
+                            // Apply wholesale price if available (but don't set quantity automatically)
+                            if (minWholesaleQty > 0 && wholesalePrice > 0) {
+                              // Apply wholesale price
+                              if (unitDisplay === selectedItem.unit?.base && selectedItem.unit?.conversionFactor) {
+                                // Convert wholesale price to base unit if needed
+                                initialPrice = wholesalePrice / selectedItem.unit.conversionFactor;
+                              } else {
+                                initialPrice = wholesalePrice;
+                              }
+                            }
+                            
+                            updateItem(item.id, 'price', initialPrice);
+                            updateItem(item.id, 'qty', 0); // Leave quantity empty
+                            // Calculate amount after setting price
+                            const amount = initialPrice * 0; // Amount is 0 since quantity is 0
+                            updateItem(item.id, 'amount', amount);
+                          }}
+                        />
+
                       </td>
                       <td className="py-2 px-2">
                         <input
@@ -860,50 +755,19 @@ export default function CreateSalesOrderPage() {
                         />
                       </td>
                       <td className="py-2 px-2">
-                        <CustomDropdown
-                          options={(() => {
-                            const options: DropdownOption[] = [];
+                        <UnitsDropdown
+                          units={(() => {
+                            const units: any[] = [];
                             
                             // Add base and secondary units if they exist in the item data
                             if (item.item) {
                               const selectedItem = itemSuggestions.find(i => i.name === item.item);
                               if (selectedItem && selectedItem.unit) {
-                                const unit = selectedItem.unit;
-                                
-                                // Handle object format with conversion factor
-                                if (typeof unit === 'object' && unit.base) {
-                                  // Add base unit
-                                  if (unit.base && unit.base !== 'NONE') {
-                                    options.push({ value: unit.base, label: unit.base });
-                                  }
-                                  // Add secondary unit if it exists and is different from base
-                                  if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) {
-                                    options.push({ value: unit.secondary, label: unit.secondary });
-                                  }
-                                }
-                                // Handle string format like "Piece / Packet"
-                                else if (typeof unit === 'string' && unit.includes(' / ')) {
-                                  const parts = unit.split(' / ');
-                                  // Add both parts as separate options
-                                  if (parts[0] && parts[0] !== 'NONE') {
-                                    options.push({ value: parts[0], label: parts[0] });
-                                  }
-                                  if (parts[1] && parts[1] !== 'None') {
-                                    options.push({ value: parts[1], label: parts[1] });
-                                  }
-                                }
-                                // Handle simple string unit
-                                else if (typeof unit === 'string') {
-                                  options.push({ value: unit, label: unit });
-                                }
+                                units.push(selectedItem.unit);
                               }
                             }
                             
-                            // If no units found from item, add NONE
-                            if (options.length === 0) {
-                              options.push({ value: 'NONE', label: 'NONE' });
-                            }
-                            return options;
+                            return units;
                           })()}
                           value={item.unit}
                           onChange={val => {
@@ -952,6 +816,30 @@ export default function CreateSalesOrderPage() {
                             }
                             updateItem(item.id, 'unit', val);
                           }}
+                          dropdownIndex={unitsDropdownIndices[item.id] || 0}
+                          setDropdownIndex={(value: React.SetStateAction<number>) => {
+                            if (typeof value === 'number') {
+                              setUnitsDropdownIndices(prev => ({ ...prev, [item.id]: value }));
+                            } else {
+                              setUnitsDropdownIndices(prev => ({ ...prev, [item.id]: value(prev[item.id] || 0) }));
+                            }
+                          }}
+                          optionsCount={(() => {
+                            if (item.item) {
+                              const selectedItem = itemSuggestions.find(i => i.name === item.item);
+                              if (selectedItem && selectedItem.unit) {
+                                const unit = selectedItem.unit;
+                                if (typeof unit === 'object' && unit.base) {
+                                  return (unit.secondary && unit.secondary !== 'None' ? 2 : 1) + 1; // +1 for Custom option
+                                } else if (typeof unit === 'string' && unit.includes(' / ')) {
+                                  return 3; // 2 parts + Custom
+                                } else {
+                                  return 2; // 1 unit + Custom
+                                }
+                              }
+                            }
+                            return 1; // Just NONE
+                          })()}
                         />
                       </td>
                       <td className="py-2 px-2">
@@ -1176,6 +1064,9 @@ export default function CreateSalesOrderPage() {
                         value={formData.discountType}
                         onChange={val => setFormData(prev => ({ ...prev, discountType: val }))}
                         className="w-28 min-w-[72px] mb-1 h-11 border-2 border-blue-100 rounded-lg"
+                        dropdownIndex={dropdownIndex}
+                        setDropdownIndex={setDropdownIndex}
+                        optionsCount={2}
                       />
                     </div>
                     <div className="text-xs text-gray-500 min-h-[24px] mt-1">
@@ -1215,6 +1106,9 @@ export default function CreateSalesOrderPage() {
                     value={formData.taxType}
                     onChange={val => setFormData(prev => ({ ...prev, taxType: val }))}
                     className="w-28 min-w-[72px] mb-1 h-11 border-2 border-blue-100 rounded-lg"
+                    dropdownIndex={dropdownIndex}
+                    setDropdownIndex={setDropdownIndex}
+                    optionsCount={2}
                   />
                 </div>
                 <div className="text-xs text-gray-500 min-h-[24px] mt-1">
@@ -1240,6 +1134,9 @@ export default function CreateSalesOrderPage() {
                     value={formData.paymentType}
                     onChange={val => setFormData(prev => ({ ...prev, paymentType: val }))}
                     className="mb-1 border-2 border-blue-100 rounded-lg h-11"
+                    dropdownIndex={dropdownIndex}
+                    setDropdownIndex={setDropdownIndex}
+                    optionsCount={2}
                   />
                   <div className="text-xs text-gray-500 min-h-[24px] mt-1"></div>
                 </div>

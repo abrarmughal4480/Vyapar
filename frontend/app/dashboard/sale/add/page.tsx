@@ -3,6 +3,9 @@ import React, { useState, useEffect, useRef, RefObject } from 'react';
 import { useRouter } from 'next/navigation';
 import { Printer, Settings, MoreHorizontal } from 'lucide-react';
 import Toast from '../../../components/Toast';
+import { CustomDropdown, type DropdownOption } from '../../../components/CustomDropdown';
+import { ItemsDropdown, type Item } from '../../../components/ItemsDropdown';
+import { UnitsDropdown, type Unit } from '../../../components/UnitsDropdown';
 import ReactDOM from 'react-dom';
 import { createSale, updateSale, getSaleById } from '../../../../http/sales';
 import { getCustomerParties, getPartyBalance } from '../../../../http/parties';
@@ -24,139 +27,9 @@ interface SaleItem {
   discountAmount: string;
 }
 
-type DropdownOption = { value: string; label: string };
 
-interface CustomDropdownProps {
-  options: DropdownOption[];
-  value: string;
-  onChange: (val: string) => void;
-  className?: string;
-  placeholder?: string;
-  disabled?: boolean;
-  dropdownIndex: number;
-  setDropdownIndex: React.Dispatch<React.SetStateAction<number>>;
-  optionsCount: number;
-}
 
-function CustomDropdown({ options, value, onChange, className = '', placeholder = 'Select', disabled = false, dropdownIndex, setDropdownIndex, optionsCount }: CustomDropdownProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (!ref.current) return;
-      if (!(event.target instanceof Node)) return;
-      if (!ref.current.contains(event.target as Node)) setOpen(false);
-    }
-    if (open) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
-
-  useEffect(() => {
-    if (open && btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
-      setDropdownStyle({
-        position: 'absolute',
-        top: rect.bottom + window.scrollY + 6,
-        left: rect.left + window.scrollX + rect.width / 2 - (rect.width + 40) / 2,
-        width: rect.width + 40,
-        minWidth: rect.width,
-        zIndex: 1000,
-        maxHeight: '12rem',
-        overflowY: 'auto',
-      });
-    }
-  }, [open]);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (disabled) return;
-    
-    if (!open) {
-      // When dropdown is closed, open it with Space, Enter, or ArrowDown
-      if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        setOpen(true);
-        setDropdownIndex(0);
-      }
-      return;
-    }
-
-    // When dropdown is open, handle navigation
-    if (["ArrowDown", "ArrowUp", "Enter", "Escape", " "].includes(e.key)) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    if (e.key === 'ArrowDown') {
-      setDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
-    } else if (e.key === 'ArrowUp') {
-      setDropdownIndex(i => Math.max(i - 1, 0));
-    } else if (e.key === 'Enter' || e.key === ' ') {
-      if (dropdownIndex >= 0 && dropdownIndex < options.length) {
-        onChange(options[dropdownIndex].value);
-        setOpen(false);
-      }
-    } else if (e.key === 'Escape') {
-      setOpen(false);
-    }
-  };
-
-  return (
-    <div ref={ref} className={`relative ${disabled ? 'opacity-60 pointer-events-none' : ''} ${className}`}> 
-      <button
-        ref={btnRef}
-        type="button"
-        className={`w-full px-3 py-2 border-2 border-blue-100 rounded-lg bg-white flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-blue-200 appearance-none transition-all ${open ? 'ring-2 ring-blue-300' : ''}`}
-        onClick={() => setOpen((v) => !v)}
-        onKeyDown={handleKeyDown}
-        disabled={disabled}
-        tabIndex={0}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label={placeholder}
-      >
-        <span className="truncate text-left">{options.find((o: DropdownOption) => o.value === value)?.label || placeholder}</span>
-        <span className={`ml-2 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-        </span>
-      </button>
-      {open && typeof window !== 'undefined' && ReactDOM.createPortal(
-        <ul
-          style={dropdownStyle}
-          className="bg-white border-2 border-blue-100 rounded-lg shadow-lg animate-fadeinup custom-dropdown-scrollbar"
-          onMouseDown={e => e.preventDefault()}
-          role="listbox"
-          aria-label={placeholder}
-        >
-          {options.map((opt: DropdownOption, idx: number) => (
-            <li
-              key={opt.value}
-              className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'} ${dropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
-              onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); setDropdownIndex(idx); }}
-              tabIndex={0}
-              onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { 
-                if (e.key === 'Enter' || e.key === ' ') { 
-                  e.preventDefault();
-                  onChange(opt.value); 
-                  setOpen(false); 
-                  setDropdownIndex(idx); 
-                }
-              }}
-              aria-selected={value === opt.value}
-              role="option"
-              ref={el => { if (dropdownIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
-            >
-              {opt.label}
-            </li>
-          ))}
-        </ul>,
-        document.body
-      )}
-    </div>
-  );
-}
 
 function getUnitDisplay(unit: any) {
   if (!unit) return 'NONE';
@@ -297,29 +170,12 @@ function ItemRow({
   addNewRow: () => void;
   calculatePriceForQuantity: (qty: number, itemData: any) => number;
 }) {
-  const inputRef = React.useRef<HTMLInputElement>(null);
-  const [dropdownStyle, setDropdownStyle] = React.useState<React.CSSProperties>({});
-  // Add state for item and unit dropdown highlight
-  const [itemDropdownIndex, setItemDropdownIndex] = React.useState(0);
+  // Add state for unit dropdown highlight
   const [unitDropdownIndex, setUnitDropdownIndex] = React.useState(0);
 
   const handleFocus = () => {
     fetchItemSuggestions();
     setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: true }));
-    setItemDropdownIndex(0); // reset highlight
-    if (inputRef.current) {
-      const rect = inputRef.current.getBoundingClientRect();
-      const style: React.CSSProperties = {
-        position: 'absolute',
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
-        width: rect.width,
-        zIndex: 9999,
-        maxHeight: '200px',
-        overflowY: 'auto' as const
-      };
-      setDropdownStyle(style);
-    }
   };
 
   // Prepare unit options
@@ -387,141 +243,47 @@ function ItemRow({
     >
       <td className="py-2 px-2 font-medium">{index + 1}</td>
       <td className="py-2 px-2">
-        <input
-          ref={inputRef}
-          type="text"
+        <ItemsDropdown
+          items={itemSuggestions}
           value={item.item}
-          onChange={e => {
-            handleItemChange(item.id, 'item', e.target.value);
-            setItemDropdownIndex(0); // reset highlight
-          }}
-          onFocus={handleFocus}
-          onBlur={() => setTimeout(() => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false })), 200)}
-          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-          placeholder="Enter item name..."
-          autoComplete="off"
-          onKeyDown={e => {
-            if (!showItemSuggestions[item.id]) return;
-            const filtered = itemSuggestions.filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
-            const optionsCount = filtered.length;
-            if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
-              e.preventDefault();
-              e.stopPropagation();
-            }
-            if (e.key === 'ArrowDown') {
-              setItemDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
-            } else if (e.key === 'ArrowUp') {
-              setItemDropdownIndex(i => Math.max(i - 1, 0));
-            } else if (e.key === 'Enter') {
-              const idx = itemDropdownIndex;
-              const selected = filtered[idx];
-              if (selected) {
-                handleItemChange(item.id, 'item', selected.name);
-                const unitDisplay = getUnitDisplay(selected.unit);
-                handleItemChange(item.id, 'unit', unitDisplay);
-                
-                // Set price based on the selected unit and wholesale logic
-                let initialPrice = selected.salePrice || 0;
-                
-                if (selected.unit && typeof selected.unit === 'object' && selected.unit.base && selected.unit.secondary) {
-                  // salePrice is for secondary unit (Carton), so convert to base unit (Box) since we're showing base unit
-                  if (unitDisplay === selected.unit.base && selected.unit.conversionFactor) {
-                    initialPrice = (selected.salePrice || 0) / selected.unit.conversionFactor;
-                  }
-                }
-                
-                // Check if wholesale pricing should be applied
-                const minWholesaleQty = selected.minimumWholesaleQuantity || 0;
-                const wholesalePrice = selected.wholesalePrice || 0;
-                
-                // Apply wholesale price if available (but don't set quantity automatically)
-                if (minWholesaleQty > 0 && wholesalePrice > 0) {
-                  // Apply wholesale price
-                  if (unitDisplay === selected.unit?.base && selected.unit?.conversionFactor) {
-                    // Convert wholesale price to base unit since we're showing base unit
-                    initialPrice = wholesalePrice / selected.unit.conversionFactor;
-                  } else {
-                    initialPrice = wholesalePrice;
-                  }
-                }
-                
-                handleItemChange(item.id, 'price', initialPrice);
-                handleItemChange(item.id, 'qty', ''); // Leave quantity empty
-                setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+          onChange={(val) => handleItemChange(item.id, 'item', val)}
+          onItemSelect={(selectedItem) => {
+            const unitDisplay = getUnitDisplay(selectedItem.unit);
+            handleItemChange(item.id, 'unit', unitDisplay);
+            
+            // Set price based on the selected unit and wholesale logic
+            let initialPrice = selectedItem.salePrice || 0;
+            
+            if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.base && selectedItem.unit.secondary) {
+              // salePrice is for secondary unit (Carton), so convert to base unit (Box) since we're showing base unit
+              if (unitDisplay === selectedItem.unit.base && selectedItem.unit.conversionFactor) {
+                initialPrice = (selectedItem.salePrice || 0) / selectedItem.unit.conversionFactor;
               }
-            } else if (e.key === 'Escape') {
-              setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
             }
+            
+            // Check if wholesale pricing should be applied
+            const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
+            const wholesalePrice = selectedItem.wholesalePrice || 0;
+            
+            // Apply wholesale price if available (but don't set quantity automatically)
+            if (minWholesaleQty > 0 && wholesalePrice > 0) {
+              // Apply wholesale price
+              if (unitDisplay === selectedItem.unit?.base && selectedItem.unit?.conversionFactor) {
+                // Convert wholesale price to base unit since we're showing base unit
+                initialPrice = wholesalePrice / selectedItem.unit.conversionFactor;
+              } else {
+                initialPrice = wholesalePrice;
+              }
+            }
+            
+            handleItemChange(item.id, 'price', initialPrice);
+            handleItemChange(item.id, 'qty', ''); // Leave quantity empty
           }}
-        />
-        {showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
-          <ul style={dropdownStyle} className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-            {itemSuggestions
-              .filter((i: any) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()))
-              .map((i: any, idx: number) => (
-                <li
-                  key={i._id}
-                  className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 ${itemDropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
-                  onMouseDown={e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleItemChange(item.id, 'item', i.name);
-                    const unitDisplay = getUnitDisplay(i.unit);
-                    handleItemChange(item.id, 'unit', unitDisplay);
-                    
-                    // Set price based on the selected unit and wholesale logic
-                    let initialPrice = i.salePrice || 0;
-                    
-                    if (i.unit && typeof i.unit === 'object' && i.unit.base && i.unit.secondary) {
-                      // salePrice is for secondary unit (Carton), so convert to base unit (Box) since we're showing base unit
-                      if (unitDisplay === i.unit.base && i.unit.conversionFactor) {
-                        initialPrice = (i.salePrice || 0) / i.unit.conversionFactor;
-                      }
-                    }
-                    
-                    // Check if wholesale pricing should be applied
-                    const minWholesaleQty = i.minimumWholesaleQuantity || 0;
-                    const wholesalePrice = i.wholesalePrice || 0;
-                    
-                    // Apply wholesale price if available (but don't set quantity automatically)
-                    if (minWholesaleQty > 0 && wholesalePrice > 0) {
-                      // Apply wholesale price
-                      if (unitDisplay === i.unit?.base && i.unit?.conversionFactor) {
-                        // Convert wholesale price to base unit since we're showing base unit
-                        initialPrice = wholesalePrice / i.unit.conversionFactor;
-                      } else {
-                        initialPrice = wholesalePrice;
-                      }
-                    }
-                    
-                    handleItemChange(item.id, 'price', initialPrice);
-                    handleItemChange(item.id, 'qty', ''); // Leave quantity empty
-                    setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
-                  }}
-                  ref={el => { if (itemDropdownIndex === idx && el) el.scrollIntoView({ block: 'nearest' }); }}
-                  role="option"
-                  aria-selected={itemDropdownIndex === idx}
-                >
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium text-gray-800">{i.name}</span>
-                                          <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {(() => {
-                        let displayPrice = i.salePrice || 0;
-                        if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
-                          const unitDisplay = getUnitDisplay(i.unit);
-                          if (unitDisplay === i.unit.base) {
-                            displayPrice = i.salePrice || 0;
-                          } else if (unitDisplay === i.unit.secondary) {
-                            displayPrice = (i.salePrice || 0) * i.unit.conversionFactor;
-                          }
-                        }
-                        return displayPrice;
-                      })()} • Qty: {i.stock ?? 0}</span>
-                  </div>
-                </li>
-              ))}
-          </ul>,
-          document.body
-        )}
+          className="w-full"
+          placeholder="Enter item name..."
+          showSuggestions={showItemSuggestions[item.id]}
+          setShowSuggestions={(show) => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: show }))}
+                />
       </td>
       <td className="py-2 px-2">
         <input
@@ -546,10 +308,10 @@ function ItemRow({
         />
       </td>
       <td className="py-2 px-2">
-        <CustomDropdown
-          options={unitOptions}
+        <UnitsDropdown
+          units={unitOptions}
           value={getCurrentUnitValue()}
-                    onChange={val => {
+          onChange={val => {
             const selectedItem = itemSuggestions.find(i => i.name === item.item);
             if (selectedItem) {
               // Don't convert quantity - keep it the same

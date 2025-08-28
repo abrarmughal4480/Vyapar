@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Toast from '../../../components/Toast'
+import { CustomDropdown, type DropdownOption } from '../../../components/CustomDropdown'
 import ReactDOM from 'react-dom'
 import { getToken } from '../../../lib/auth'
 import { createDeliveryChallan } from '../../../../http/deliveryChallan'
@@ -150,88 +151,7 @@ interface FormData {
   taxAmount: number;
 }
 
-type DropdownOption = { value: string; label: string };
 
-interface CustomDropdownProps {
-  options: DropdownOption[];
-  value: string;
-  onChange: (val: string) => void;
-  className?: string;
-  placeholder?: string;
-  disabled?: boolean;
-}
-
-function CustomDropdown({ options, value, onChange, className = '', placeholder = 'Select', disabled = false }: CustomDropdownProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (!ref.current) return;
-      if (!(event.target instanceof Node)) return;
-      if (!ref.current.contains(event.target as Node)) setOpen(false);
-    }
-    if (open) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
-
-  useEffect(() => {
-    if (open && btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
-      setDropdownStyle({
-        position: 'absolute',
-        top: rect.bottom + window.scrollY + 6,
-        left: rect.left + window.scrollX + rect.width / 2 - (rect.width + 40) / 2,
-        width: rect.width + 40,
-        minWidth: rect.width,
-        zIndex: 1000,
-        maxHeight: '12rem',
-        overflowY: 'auto',
-      });
-    }
-  }, [open]);
-
-  return (
-    <div ref={ref} className={`relative ${disabled ? 'opacity-60 pointer-events-none' : ''} ${className}`}> 
-      <button
-        ref={btnRef}
-        type="button"
-        className={`w-full px-3 py-2 border-2 border-blue-100 rounded-lg bg-white flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-blue-200 appearance-none transition-all ${open ? 'ring-2 ring-blue-300' : ''}`}
-        onClick={() => setOpen((v) => !v)}
-        disabled={disabled}
-        tabIndex={0}
-      >
-        <span className="truncate text-left">{options.find((o: DropdownOption) => o.value === value)?.label || placeholder}</span>
-        <span className={`ml-2 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-        </span>
-      </button>
-      {open && typeof window !== 'undefined' && ReactDOM.createPortal(
-        <ul
-          style={dropdownStyle}
-          className="bg-white border-2 border-blue-100 rounded-lg shadow-lg animate-fadeinup custom-dropdown-scrollbar"
-          onMouseDown={e => e.preventDefault()}
-        >
-          {options.map((opt: DropdownOption) => (
-            <li
-              key={opt.value}
-              className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'}`}
-              onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); }}
-              tabIndex={0}
-              onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { if (e.key === 'Enter') { onChange(opt.value); setOpen(false); }}}
-              aria-selected={value === opt.value}
-            >
-              {opt.label}
-            </li>
-          ))}
-        </ul>,
-        document.body
-      )}
-    </div>
-  );
-}
 
 function ItemRow({
   item,
@@ -258,6 +178,8 @@ function ItemRow({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  const [unitDropdownIndex, setUnitDropdownIndex] = useState(0);
+  const [itemDropdownIndex, setItemDropdownIndex] = useState(0);
 
   const updateDropdownPosition = () => {
     if (inputRef.current) {
@@ -319,15 +241,68 @@ function ItemRow({
           ref={inputRef}
           type="text"
           value={item.item}
-                      onChange={e => {
-              console.log('Item input changed:', e.target.value);
-              handleItemChange(index, 'item', e.target.value);
-            }}
+          onChange={e => {
+            console.log('Item input changed:', e.target.value);
+            handleItemChange(index, 'item', e.target.value);
+            setItemDropdownIndex(0); // Reset index when typing
+          }}
           onFocus={handleFocus}
-                      onBlur={() => {
-              console.log('Item input blurred');
-              setTimeout(() => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false })), 200);
-            }}
+          onBlur={() => {
+            console.log('Item input blurred');
+            setTimeout(() => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false })), 200);
+          }}
+          onKeyDown={(e) => {
+            if (!showItemSuggestions[item.id] || itemSuggestions.length === 0) return;
+            
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              setItemDropdownIndex(prev => 
+                prev < itemSuggestions.length - 1 ? prev + 1 : 0
+              );
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              setItemDropdownIndex(prev => 
+                prev > 0 ? prev - 1 : itemSuggestions.length - 1
+              );
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              const filteredItems = itemSuggestions.filter((i: any) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
+              if (filteredItems[itemDropdownIndex]) {
+                const selectedItem = filteredItems[itemDropdownIndex];
+                const unitDisplay = getUnitDisplay(selectedItem.unit);
+                handleItemChange(index, 'item', selectedItem.name);
+                handleItemChange(index, 'unit', unitDisplay);
+                
+                let initialPrice = selectedItem.salePrice || 0;
+                if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                  if (unitDisplay === selectedItem.unit.base) {
+                    initialPrice = selectedItem.salePrice || 0;
+                  } else if (unitDisplay === selectedItem.unit.secondary) {
+                    initialPrice = (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor;
+                  }
+                }
+                
+                const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
+                const wholesalePrice = selectedItem.wholesalePrice || 0;
+                
+                if (minWholesaleQty > 0 && wholesalePrice > 0) {
+                  if (unitDisplay === selectedItem.unit?.base) {
+                    initialPrice = wholesalePrice;
+                  } else if (unitDisplay === selectedItem.unit?.secondary) {
+                    initialPrice = wholesalePrice * selectedItem.unit.conversionFactor;
+                  }
+                }
+                
+                handleItemChange(index, 'price', initialPrice.toString());
+                handleItemChange(index, 'qty', '1');
+                const amount = initialPrice * 1;
+                handleItemChange(index, 'amount', amount);
+                setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+              }
+            } else if (e.key === 'Escape') {
+              setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+            }
+          }}
           className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
           placeholder="Enter item name..."
           data-testid={`item-input-${item.id}`}
@@ -344,10 +319,14 @@ function ItemRow({
               (() => {
                 const filteredItems = itemSuggestions.filter((i: any) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
                 console.log('Filtered items for search term:', item.item, 'Result:', filteredItems);
-                return filteredItems.map((i: any) => (
+                return filteredItems.map((i: any, idx: number) => (
                   <li
                     key={i._id}
-                    className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
+                    className={`px-4 py-2 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 ${
+                      idx === itemDropdownIndex 
+                        ? 'bg-blue-500 text-white' 
+                        : 'hover:bg-blue-100'
+                    }`}
                     onMouseDown={() => {
                       const unitDisplay = getUnitDisplay(i.unit);
                       handleItemChange(index, 'item', i.name);
@@ -381,8 +360,8 @@ function ItemRow({
                     }}
                   >
                                         <div className="flex justify-between items-center">
-                      <span className="font-medium text-gray-800">{i.name}</span>
-                      <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {(() => {
+                      <span className={`font-medium ${idx === itemDropdownIndex ? 'text-white' : 'text-gray-800'}`}>{i.name}</span>
+                      <span className={`text-xs ${idx === itemDropdownIndex ? 'text-blue-100' : 'text-gray-500'}`}>{getUnitDisplay(i.unit) || 'NONE'} • PKR {(() => {
                         let displayPrice = i.salePrice || 0;
                         if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
                           const unitDisplay = getUnitDisplay(i.unit);
@@ -522,6 +501,29 @@ function ItemRow({
             }
             handleItemChange(index, 'unit', val);
           }}
+          dropdownIndex={unitDropdownIndex}
+          setDropdownIndex={setUnitDropdownIndex}
+          optionsCount={(() => {
+            const options: DropdownOption[] = [];
+            if (item.item) {
+              const selectedItem = itemSuggestions.find(i => i.name === item.item);
+              if (selectedItem && selectedItem.unit) {
+                const unit = selectedItem.unit;
+                if (typeof unit === 'object' && unit.base) {
+                  if (unit.base && unit.base !== 'NONE') options.push({ value: unit.base, label: unit.base });
+                  if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) options.push({ value: unit.secondary, label: unit.secondary });
+                } else if (typeof unit === 'string' && unit.includes(' / ')) {
+                  const parts = unit.split(' / ');
+                  if (parts[0] && parts[0] !== 'NONE') options.push({ value: parts[0], label: parts[0] });
+                  if (parts[1] && parts[1] !== 'None') options.push({ value: parts[1], label: parts[1] });
+                } else if (typeof unit === 'string') {
+                  options.push({ value: unit, label: unit });
+                }
+              }
+            }
+            if (options.length === 0) options.push({ value: 'NONE', label: 'NONE' });
+            return options.length;
+          })()}
         />
         {item.unit === 'Custom' && (
           <input
@@ -599,6 +601,12 @@ export default function CreateSalesOrderPage() {
   // Import sidebar context for auto-collapse
   const { setIsCollapsed } = useSidebar();
   const [wasSidebarCollapsed, setWasSidebarCollapsed] = useState(false);
+  
+  // Dropdown index states for keyboard navigation
+  const [discountDropdownIndex, setDiscountDropdownIndex] = useState(0);
+  const [taxDropdownIndex, setTaxDropdownIndex] = useState(0);
+  const [paymentTypeDropdownIndex, setPaymentTypeDropdownIndex] = useState(0);
+  const [customerDropdownIndex, setCustomerDropdownIndex] = useState(0);
 
   // Auto-collapse sidebar when page opens and restore when closing
   useEffect(() => {
@@ -616,23 +624,31 @@ export default function CreateSalesOrderPage() {
     };
   }, [setIsCollapsed, wasSidebarCollapsed]);
 
-  // Click outside to close dropdown
+  // Click outside to close dropdowns
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Element
+      
+      // Close customer dropdown if clicking outside
       if (searchDropdownOpen && !target.closest('.customer-search-container')) {
         setSearchDropdownOpen(false)
       }
+      
+      // Close item suggestions if clicking outside
+      const hasOpenItemSuggestions = Object.values(showItemSuggestions).some(Boolean)
+      if (hasOpenItemSuggestions) {
+        const clickedOnItemInput = target.closest('input[data-testid^="item-input-"]')
+        if (!clickedOnItemInput) {
+          setShowItemSuggestions({})
+        }
+      }
     }
 
-    if (searchDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-
+    document.addEventListener('mousedown', handleClickOutside)
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [searchDropdownOpen])
+  }, [searchDropdownOpen, showItemSuggestions])
 
   // Unit options
   const unitOptions = ['NONE', 'PCS', 'KG', 'METER', 'LITER', 'BOX', 'DOZEN']
@@ -910,10 +926,12 @@ export default function CreateSalesOrderPage() {
                     onChange={(e) => {
                       setFormData(prev => ({ ...prev, customer: e.target.value }))
                       setSearchDropdownOpen(true)
+                      setCustomerDropdownIndex(0); // Reset index when typing
                     }}
                     onFocus={() => {
                       fetchCustomerSuggestions();
                       setSearchDropdownOpen(true);
+                      setCustomerDropdownIndex(0);
                     }}
                     onBlur={() => setTimeout(() => setSearchDropdownOpen(false), 200)}
                     className="w-full px-4 py-3 border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-500 focus:outline-none transition-all duration-200"
@@ -922,7 +940,7 @@ export default function CreateSalesOrderPage() {
                   {searchDropdownOpen && (
                     <div className="absolute left-0 right-0 mt-1 w-full z-50">
                       {customerSuggestions.length > 0 ? (
-                        <ul className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        <ul className="bg-white border-2 border-blue-100 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                           {customerSuggestions
                             .filter((party: any) =>
                               party.name.toLowerCase().includes(formData.customer.toLowerCase()) ||
@@ -931,18 +949,22 @@ export default function CreateSalesOrderPage() {
                             .map((party: any, index: number) => (
                               <li
                                 key={party._id || index}
-                                className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors"
+                                className={`px-4 py-2 cursor-pointer transition-colors ${
+                                  index === customerDropdownIndex 
+                                    ? 'bg-blue-100 text-blue-700 font-semibold' 
+                                    : 'hover:bg-blue-50 text-gray-700'
+                                }`}
                                 onMouseDown={() => {
                                   setFormData(prev => ({ ...prev, customer: party.name, phone: party.phone || '' }));
                                   setSearchDropdownOpen(false);
                                 }}
                               >
-                                {party.name} {party.phone && <span className="text-xs text-gray-400">({party.phone})</span>}
+                                {party.name} {party.phone && <span className={`text-xs ${index === customerDropdownIndex ? 'text-blue-500' : 'text-gray-400'}`}>({party.phone})</span>}
                               </li>
                             ))}
                         </ul>
                       ) : (
-                        <div className="bg-white border border-blue-200 rounded-lg shadow-lg px-4 py-2 text-gray-400">No customers found.</div>
+                        <div className="bg-white border-2 border-blue-100 rounded-lg shadow-lg px-4 py-2 text-gray-400">No customers found.</div>
                       )}
                     </div>
                   )}
@@ -960,7 +982,11 @@ export default function CreateSalesOrderPage() {
                   type="text"
                   value={formData.phone}
                   onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
+                  onFocus={() => {
+                    setSearchDropdownOpen(false);
+                    setShowItemSuggestions({});
+                  }}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
                   placeholder="Phone number"
                 />
               </div>
@@ -969,21 +995,29 @@ export default function CreateSalesOrderPage() {
             <div className="flex flex-col gap-4 items-end justify-start">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Date</label>
-                                    <input
-                      type="date"
-                      value={formData.invoiceDate}
-                      onChange={(e) => setFormData(prev => ({ ...prev, invoiceDate: e.target.value }))}
-                      className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                    />
+                <input
+                  type="date"
+                  value={formData.invoiceDate}
+                  onChange={(e) => setFormData(prev => ({ ...prev, invoiceDate: e.target.value }))}
+                  onFocus={() => {
+                    setSearchDropdownOpen(false);
+                    setShowItemSuggestions({});
+                  }}
+                  className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
-                                    <input
-                      type="date"
-                      value={formData.dueDate}
-                      onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
-                      className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                    />
+                <input
+                  type="date"
+                  value={formData.dueDate}
+                  onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
+                  onFocus={() => {
+                    setSearchDropdownOpen(false);
+                    setShowItemSuggestions({});
+                  }}
+                  className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                />
               </div>
             </div>
           </div>
@@ -1133,6 +1167,9 @@ export default function CreateSalesOrderPage() {
                         value={formData.discountType}
                         onChange={e => setFormData(prev => ({ ...prev, discountType: e }))}
                         className="w-28 min-w-[72px] mb-1 h-11 border-2 border-blue-100 rounded-lg"
+                        dropdownIndex={discountDropdownIndex}
+                        setDropdownIndex={setDiscountDropdownIndex}
+                        optionsCount={2}
                       />
                     </div>
                     <div className="text-xs text-gray-500 min-h-[24px] mt-1">
@@ -1169,6 +1206,9 @@ export default function CreateSalesOrderPage() {
                     value={formData.taxType}
                     onChange={e => setFormData(prev => ({ ...prev, taxType: e }))}
                     className="w-28 min-w-[72px] mb-1 h-11 border-2 border-blue-100 rounded-lg"
+                    dropdownIndex={taxDropdownIndex}
+                    setDropdownIndex={setTaxDropdownIndex}
+                    optionsCount={2}
                   />
                 </div>
                 <div className="text-xs text-gray-500 min-h-[24px] mt-1">
@@ -1195,6 +1235,9 @@ export default function CreateSalesOrderPage() {
                     value="Credit"
                     onChange={e => {}}
                     className="mb-1 border-2 border-blue-100 rounded-lg h-11"
+                    dropdownIndex={paymentTypeDropdownIndex}
+                    setDropdownIndex={setPaymentTypeDropdownIndex}
+                    optionsCount={2}
                   />
                   <div className="text-xs text-gray-500 min-h-[24px] mt-1"></div>
                 </div>

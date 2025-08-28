@@ -10,27 +10,27 @@ import ReactDOM from 'react-dom'
 import Toast from '../../../components/Toast'
 import { useSidebar } from '../../../contexts/SidebarContext'
 
-  const getUnitDisplay = (unit: any) => {
-    if (!unit) return 'NONE';
-    
-    if (typeof unit === 'object' && unit.base) {
-      const base = unit.base || 'NONE';
-      const secondary = unit.secondary && unit.secondary !== 'None' ? unit.secondary : null;
-      
-      return base;
-    }
-    
-    if (typeof unit === 'string' && unit.includes(' / ')) {
-      const parts = unit.split(' / ');
-      return parts[0] || 'NONE';
-    }
-    
-    if (typeof unit === 'string') {
-      return unit || 'NONE';
-    }
-    
-    return 'NONE';
-  };
+const getUnitDisplay = (unit: any) => {
+  if (!unit) return 'NONE';
+
+  if (typeof unit === 'object' && unit.base) {
+    const base = unit.base || 'NONE';
+    const secondary = unit.secondary && unit.secondary !== 'None' ? unit.secondary : null;
+
+    return base;
+  }
+
+  if (typeof unit === 'string' && unit.includes(' / ')) {
+    const parts = unit.split(' / ');
+    return parts[0] || 'NONE';
+  }
+
+  if (typeof unit === 'string') {
+    return unit || 'NONE';
+  }
+
+  return 'NONE';
+};
 
 const convertQuantity = (currentQty: string, fromUnit: string, toUnit: string, itemData: any): string => {
   if (!currentQty || !fromUnit || !toUnit || fromUnit === toUnit) {
@@ -46,17 +46,17 @@ const convertQuantity = (currentQty: string, fromUnit: string, toUnit: string, i
   if (typeof unit === 'object' && unit.conversionFactor) {
     const factor = unit.conversionFactor;
     let convertedQty = qty;
-    
+
     if (fromUnit === unit.base && toUnit === unit.secondary) {
       convertedQty = qty * factor;
     }
     else if (fromUnit === unit.secondary && toUnit === unit.base) {
       convertedQty = qty / factor;
     }
-    
+
     return Math.round(convertedQty).toString();
   }
-  
+
   if (typeof unit === 'string' && unit.includes(' / ')) {
     const parts = unit.split(' / ');
     if (parts.length === 2) {
@@ -68,7 +68,7 @@ const convertQuantity = (currentQty: string, fromUnit: string, toUnit: string, i
       }
     }
   }
-  
+
   return currentQty;
 };
 
@@ -86,17 +86,17 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
   if (typeof unit === 'object' && unit.conversionFactor) {
     const factor = unit.conversionFactor;
     let convertedPrice = price;
-    
+
     if (fromUnit === unit.base && toUnit === unit.secondary) {
       convertedPrice = price * factor;
     }
     else if (fromUnit === unit.secondary && toUnit === unit.base) {
       convertedPrice = price / factor;
     }
-    
+
     return (Math.round(convertedPrice * 100) / 100).toFixed(2);
   }
-  
+
   if (typeof unit === 'string' && unit.includes(' / ')) {
     const parts = unit.split(' / ');
     if (parts.length === 2) {
@@ -108,11 +108,11 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
       }
     }
   }
-  
+
   return currentPrice;
 };
 
-  export default function CreateSalesOrderPage() {
+export default function CreateSalesOrderPage() {
   const router = useRouter()
   const [formData, setFormData] = useState({
     invoiceDate: new Date().toISOString().split('T')[0],
@@ -132,24 +132,24 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
     taxAmount: 0,
     paymentType: 'Credit',
   })
-  
+
   const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([])
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false)
   const [quotationId, setQuotationId] = useState<string | null>(null)
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
-  
+
   const { setIsCollapsed } = useSidebar();
   const [wasSidebarCollapsed, setWasSidebarCollapsed] = useState(false);
 
   useEffect(() => {
-    const currentSidebarState = document.body.classList.contains('sidebar-collapsed') || 
-                               document.documentElement.classList.contains('sidebar-collapsed');
+    const currentSidebarState = document.body.classList.contains('sidebar-collapsed') ||
+      document.documentElement.classList.contains('sidebar-collapsed');
     setWasSidebarCollapsed(currentSidebarState);
-    
+
     setIsCollapsed(true);
-    
+
     return () => {
       setIsCollapsed(wasSidebarCollapsed);
     };
@@ -159,11 +159,11 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const quotationParam = urlParams.get('quotation');
-      
+
       if (quotationParam) {
         try {
           const quotationData = JSON.parse(decodeURIComponent(quotationParam));
-          
+
           setFormData(prev => ({
             ...prev,
             customer: quotationData.customerName || '',
@@ -179,18 +179,18 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
             })) || prev.items,
             description: quotationData.description || ''
           }));
-          
+
           setQuotationId(quotationData.quotationId || null);
-          
-          setToast({ 
-            message: 'Quotation data loaded successfully! You can now convert it to a sales order.', 
-            type: 'success' 
+
+          setToast({
+            message: 'Quotation data loaded successfully! You can now convert it to a sales order.',
+            type: 'success'
           });
         } catch (error) {
           console.error('Error parsing quotation data:', error);
-          setToast({ 
-            message: 'Error loading quotation data. Please fill the form manually.', 
-            type: 'error' 
+          setToast({
+            message: 'Error loading quotation data. Please fill the form manually.',
+            type: 'error'
           });
         }
       }
@@ -226,27 +226,27 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
   }, [])
 
   const subtotal = formData.items.reduce((sum, item) => sum + item.amount, 0)
-  const discountAmount = formData.discountType === '%' 
-    ? (subtotal * formData.discount) / 100 
+  const discountAmount = formData.discountType === '%'
+    ? (subtotal * formData.discount) / 100
     : formData.discount
   const totalAfterDiscount = subtotal - discountAmount
-  const taxAmount = formData.tax !== 'NONE' 
-    ? (totalAfterDiscount * parseInt(formData.tax.split(' ')[1]?.replace('%', '') || '0')) / 100 
+  const taxAmount = formData.tax !== 'NONE'
+    ? (totalAfterDiscount * parseInt(formData.tax.split(' ')[1]?.replace('%', '') || '0')) / 100
     : 0
   const grandTotal = totalAfterDiscount + taxAmount
 
   const calculatePriceForQuantity = (qty: number, itemData: any) => {
     if (!itemData) return 0;
-    
+
     const quantity = parseFloat(qty.toString()) || 0;
     const minWholesaleQty = itemData.minimumWholesaleQuantity || 0;
     const wholesalePrice = itemData.wholesalePrice || 0;
     const salePrice = itemData.salePrice || 0;
-    
+
     if (quantity >= minWholesaleQty && wholesalePrice > 0) {
       return wholesalePrice;
     }
-    
+
     return salePrice;
   };
 
@@ -256,7 +256,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
       items: prev.items.map((item) => {
         if (item.id === id) {
           let updatedItem = { ...item, [field]: value }
-          
+
           if (field === 'qty') {
             const selectedItem = itemSuggestions.find(i => i.name === item.item);
             if (selectedItem) {
@@ -265,7 +265,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
               console.log(`Wholesale price calculation: qty=${value}, minWholesaleQty=${selectedItem.minimumWholesaleQuantity}, wholesalePrice=${selectedItem.wholesalePrice}, newPrice=${newPrice}`);
             }
           }
-          
+
           if (field === 'qty' || field === 'price') {
             updatedItem.amount = updatedItem.qty * updatedItem.price
           }
@@ -304,12 +304,12 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
     try {
       const parties = await getCustomerParties(token);
       setCustomerSuggestions(parties || []);
-    } catch {}
+    } catch { }
   };
 
   const [itemSuggestions, setItemSuggestions] = useState<any[]>([])
-  const [showItemSuggestions, setShowItemSuggestions] = useState<{[id: number]: boolean}>({})
-  const [partyBalance, setPartyBalance] = useState<number|null>(null)
+  const [showItemSuggestions, setShowItemSuggestions] = useState<{ [id: number]: boolean }>({})
+  const [partyBalance, setPartyBalance] = useState<number | null>(null)
 
   const fetchItemSuggestions = async () => {
     const token = getToken();
@@ -386,27 +386,27 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
         setIsLoading(false);
         return;
       }
-      
+
       const result = await createSaleOrder(orderPayload, token);
-      
+
       if (quotationId && result.success) {
         try {
           const { updateQuotationStatus } = await import('../../../../http/quotations');
           await updateQuotationStatus(quotationId, 'Converted to Sale Order', result.data?.orderNumber, token);
-          setToast({ 
-            message: `Sales order created successfully! Order No: ${result.data?.orderNumber || ''}. Quotation converted successfully.`, 
-            type: 'success' 
+          setToast({
+            message: `Sales order created successfully! Order No: ${result.data?.orderNumber || ''}. Quotation converted successfully.`,
+            type: 'success'
           });
         } catch (updateError) {
-          setToast({ 
-            message: `Sales order created successfully! Order No: ${result.data?.orderNumber || ''}. Note: Could not update quotation status.`, 
-            type: 'success' 
+          setToast({
+            message: `Sales order created successfully! Order No: ${result.data?.orderNumber || ''}. Note: Could not update quotation status.`,
+            type: 'success'
           });
         }
       } else {
         setToast({ message: 'Sales order created successfully!', type: 'success' });
       }
-      
+
       setTimeout(() => router.push('/dashboard/sales'), 1500);
       return;
     } catch (error: any) {
@@ -432,8 +432,8 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
     item: any;
     index: number;
     handleItemChange: (id: number, field: string, value: any) => void;
-    showItemSuggestions: {[id: number]: boolean};
-    setShowItemSuggestions: React.Dispatch<React.SetStateAction<{[id: number]: boolean}>>;
+    showItemSuggestions: { [id: number]: boolean };
+    setShowItemSuggestions: React.Dispatch<React.SetStateAction<{ [id: number]: boolean }>>;
     itemSuggestions: any[];
     deleteRow: (id: number) => void;
   }) {
@@ -546,24 +546,24 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
             data-testid={`item-input-${item.id}`}
             onKeyDown={e => {
               console.log('Items dropdown key pressed:', e.key, 'Dropdown open:', showItemSuggestions[item.id], 'Current index:', itemDropdownIndex);
-              
+
               if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
                 e.preventDefault();
                 e.stopPropagation();
               }
-              
+
               if (!showItemSuggestions[item.id]) {
                 if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                   handleFocus();
                 }
                 return;
               }
-              
+
               const filtered = itemSuggestions.filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
               const optionsCount = filtered.length;
-              
+
               console.log('Filtered items count:', optionsCount, 'Current index:', itemDropdownIndex);
-              
+
               if (e.key === 'ArrowDown') {
                 setIsKeyboardNavigating(true);
                 const newIndex = Math.min(itemDropdownIndex + 1, optionsCount - 1);
@@ -593,8 +593,8 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
             }}
           />
           {showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
-            <ul 
-              style={dropdownStyle} 
+            <ul
+              style={dropdownStyle}
               className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-dropdown-scrollbar"
               data-dropdown-id={item.id}
             >
@@ -611,7 +611,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                       handleItemChange(item.id, 'item', i.name);
                       const unitDisplay = getUnitDisplay(i.unit);
                       handleItemChange(item.id, 'unit', unitDisplay);
-                      
+
                       let initialPrice = i.salePrice || 0;
                       if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
                         if (unitDisplay === i.unit.base) {
@@ -620,10 +620,10 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                           initialPrice = (i.salePrice || 0) * i.unit.conversionFactor;
                         }
                       }
-                      
+
                       const minWholesaleQty = i.minimumWholesaleQuantity || 0;
                       const wholesalePrice = i.wholesalePrice || 0;
-                      
+
                       if (minWholesaleQty > 0 && wholesalePrice > 0) {
                         if (unitDisplay === i.unit?.base) {
                           initialPrice = wholesalePrice;
@@ -631,12 +631,12 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                           initialPrice = wholesalePrice * i.unit.conversionFactor;
                         }
                       }
-                      
+
                       handleItemChange(item.id, 'price', initialPrice);
                       handleItemChange(item.id, 'qty', 0); // Leave quantity empty
                       setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                     }}
-                    ref={el => { 
+                    ref={el => {
                       // Only scroll when actively navigating with keyboard
                       if (itemDropdownIndex === idx && el && isKeyboardNavigating) {
                         const container = el.closest('ul');
@@ -645,7 +645,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                           const elementHeight = el.offsetHeight;
                           const containerHeight = container.clientHeight;
                           const scrollTop = container.scrollTop;
-                          
+
                           // Check if element is outside visible area
                           if (elementTop < scrollTop || elementTop + elementHeight > scrollTop + containerHeight) {
                             // Scroll to keep element in view
@@ -667,7 +667,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                         handleItemChange(item.id, 'item', i.name);
                         const unitDisplay = getUnitDisplay(i.unit);
                         handleItemChange(item.id, 'unit', unitDisplay);
-                        
+
                         let initialPrice = i.salePrice || 0;
                         if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
                           if (unitDisplay === i.unit.base) {
@@ -676,10 +676,10 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                             initialPrice = (i.salePrice || 0) * i.unit.conversionFactor;
                           }
                         }
-                        
+
                         const minWholesaleQty = i.minimumWholesaleQuantity || 0;
                         const wholesalePrice = i.wholesalePrice || 0;
-                        
+
                         if (minWholesaleQty > 0 && wholesalePrice > 0) {
                           if (unitDisplay === i.unit?.base) {
                             initialPrice = wholesalePrice;
@@ -687,7 +687,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                             initialPrice = wholesalePrice * i.unit.conversionFactor;
                           }
                         }
-                        
+
                         handleItemChange(item.id, 'price', initialPrice);
                         handleItemChange(item.id, 'qty', 0); // Leave quantity empty
                         setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
@@ -732,7 +732,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                 if (item.qty) {
                   // Don't convert quantity - keep it the same
                   const newPrice = calculatePriceForQuantity(parseFloat(item.qty) || 0, selectedItem);
-                  
+
                   if (val === selectedItem.unit?.base) {
                     if (newPrice > 0) {
                       handleItemChange(item.id, 'price', newPrice);
@@ -792,7 +792,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                 const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
                 const wholesalePrice = selectedItem.wholesalePrice || 0;
                 const currentPrice = parseFloat(item.price) || 0;
-                
+
                 if (qty >= minWholesaleQty && wholesalePrice > 0 && Math.abs(currentPrice - wholesalePrice) < 0.01) {
                   return (
                     <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full shadow-sm">
@@ -892,7 +892,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
     }, [open]);
 
     return (
-      <div ref={ref} className={`relative ${disabled ? 'opacity-60 pointer-events-none' : ''} ${className}`}> 
+      <div ref={ref} className={`relative ${disabled ? 'opacity-60 pointer-events-none' : ''} ${className}`}>
         <button
           ref={btnRef}
           type="button"
@@ -905,7 +905,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
               e.preventDefault();
               e.stopPropagation();
             }
-            
+
             if (e.key === 'ArrowDown') {
               setDropdownIndex(i => Math.min(i + 1, optionsCount - 1));
             } else if (e.key === 'ArrowUp') {
@@ -938,16 +938,16 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                 className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === opt.value ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'} ${dropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
                 onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); }}
                 tabIndex={0}
-                onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { 
+                onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
                     e.stopPropagation();
-                    onChange(opt.value); 
+                    onChange(opt.value);
                     setOpen(false);
                   }
                 }}
                 aria-selected={value === opt.value}
-                ref={el => { 
+                ref={el => {
                   if (dropdownIndex === idx && el) {
                     const container = el.closest('ul');
                     if (container) {
@@ -955,7 +955,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                       const elementHeight = el.offsetHeight;
                       const containerHeight = container.clientHeight;
                       const scrollTop = container.scrollTop;
-                      
+
                       // Check if element is outside visible area
                       if (elementTop < scrollTop || elementTop + elementHeight > scrollTop + containerHeight) {
                         // Scroll to keep element in view
@@ -1004,7 +1004,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
               <div className="flex items-center">
                 <span className="text-red-600 mr-2">⚠️</span>
                 <div className="text-red-800">{error}</div>
-                <button 
+                <button
                   onClick={() => setError('')}
                   className="ml-auto text-red-600 hover:text-red-800"
                 >
@@ -1081,7 +1081,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                               router.push('/dashboard/parties?addParty=1&returnUrl=' + encodeURIComponent('/dashboard/sales/create'));
                               setSearchDropdownOpen(false);
                             }}
-                            ref={el => { 
+                            ref={el => {
                               if (customerDropdownIndex === 0 && el) {
                                 const container = el.closest('ul');
                                 if (container) {
@@ -1089,7 +1089,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                                   const elementHeight = el.offsetHeight;
                                   const containerHeight = container.clientHeight;
                                   const scrollTop = container.scrollTop;
-                                  
+
                                   // Check if element is outside visible area
                                   if (elementTop < scrollTop || elementTop + elementHeight > scrollTop + containerHeight) {
                                     // Scroll to keep element in view
@@ -1121,7 +1121,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                                   setFormData(prev => ({ ...prev, customer: party.name, phone: party.phone || '' }));
                                   setSearchDropdownOpen(false);
                                 }}
-                                ref={el => { 
+                                ref={el => {
                                   if (customerDropdownIndex === idx + 1 && el) {
                                     const container = el.closest('ul');
                                     if (container) {
@@ -1129,7 +1129,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                                       const elementHeight = el.offsetHeight;
                                       const containerHeight = container.clientHeight;
                                       const scrollTop = container.scrollTop;
-                                      
+
                                       // Check if element is outside visible area
                                       if (elementTop < scrollTop || elementTop + elementHeight > scrollTop + containerHeight) {
                                         // Scroll to keep element in view
@@ -1196,7 +1196,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
           </div>
 
           {/* Items Table Section */}
-          <div className={`bg-white px-6 py-6 w-full rounded-b-2xl`}> 
+          <div className={`bg-white px-6 py-6 w-full rounded-b-2xl`}>
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-semibold text-blue-800 flex items-center gap-2">
                 <span>🛒</span> Items
@@ -1258,13 +1258,12 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                   />
                   <label
                     htmlFor="imageUpload"
-                    className={`flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-200 ${
-                      imageUploading
+                    className={`flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-200 ${imageUploading
                         ? 'border-blue-300 bg-blue-50 text-blue-700 cursor-not-allowed'
-                        : uploadedImage 
-                        ? 'border-green-500 bg-green-50 text-green-700' 
-                        : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50'
-                    }`}
+                        : uploadedImage
+                          ? 'border-green-500 bg-green-50 text-green-700'
+                          : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50'
+                      }`}
                   >
                     <span>{imageUploading ? '⏳' : uploadedImage ? '✅' : '🖼️'}</span>
                     <span className="font-medium">
@@ -1332,14 +1331,14 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                         onChange={e => setFormData(prev => ({ ...prev, discountType: e }))}
                         className="w-28 min-w-[72px] mb-1 h-11 border-2 border-blue-100 rounded-lg"
                         dropdownIndex={0}
-                        setDropdownIndex={() => {}}
+                        setDropdownIndex={() => { }}
                         optionsCount={2}
                       />
                     </div>
                     <div className="text-xs text-gray-500 min-h-[24px] mt-1">
                       {formData.discount && !isNaN(Number(formData.discount)) ? (
                         <>
-                          Discount: 
+                          Discount:
                           {formData.discountType === '%'
                             ? `${formData.discount}% = PKR ${(subtotal * formData.discount / 100).toFixed(2)}`
                             : `PKR ${Number(formData.discount).toFixed(2)}`}
@@ -1371,7 +1370,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                     onChange={e => setFormData(prev => ({ ...prev, taxType: e }))}
                     className="w-28 min-w-[72px] mb-1 h-11 border-2 border-blue-100 rounded-lg"
                     dropdownIndex={0}
-                    setDropdownIndex={() => {}}
+                    setDropdownIndex={() => { }}
                     optionsCount={2}
                   />
                 </div>
@@ -1400,7 +1399,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
                     onChange={e => setFormData(prev => ({ ...prev, paymentType: e }))}
                     className="mb-1 border-2 border-blue-100 rounded-lg h-11"
                     dropdownIndex={0}
-                    setDropdownIndex={() => {}}
+                    setDropdownIndex={() => { }}
                     optionsCount={2}
                   />
                   <div className="text-xs text-gray-500 min-h-[24px] mt-1"></div>

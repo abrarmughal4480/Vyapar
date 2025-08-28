@@ -10,26 +10,21 @@ import { getCustomerParties, getPartyBalance } from '../../../../http/parties'
 import { getUserItems } from '../../../../http/items'
 import { useSidebar } from '../../../contexts/SidebarContext'
 
-// Utility functions for unit conversion
 const getUnitDisplay = (unit: any) => {
   if (!unit) return 'NONE';
   
-  // Handle object format with conversion factor
   if (typeof unit === 'object' && unit.base) {
     const base = unit.base || 'NONE';
     const secondary = unit.secondary && unit.secondary !== 'None' ? unit.secondary : null;
     
-    // Return secondary unit if available, otherwise return base unit
-    return secondary || base;
+    return base;
   }
   
-  // Handle string format like "Piece / Packet"
   if (typeof unit === 'string' && unit.includes(' / ')) {
     const parts = unit.split(' / ');
-    return parts[1] && parts[1] !== 'None' ? parts[1] : parts[0];
+    return parts[0] || 'NONE';
   }
   
-  // Fallback for simple string units
   if (typeof unit === 'string') {
     return unit || 'NONE';
   }
@@ -95,30 +90,23 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
   const unit = itemData.unit;
   if (!unit) return currentPrice;
 
-  // Handle object format with conversion factor
   if (typeof unit === 'object' && unit.conversionFactor) {
     const factor = unit.conversionFactor;
     let convertedPrice = price;
     
-    // If converting from base to secondary, multiply by factor (price per unit increases)
     if (fromUnit === unit.base && toUnit === unit.secondary) {
       convertedPrice = price * factor;
     }
-    // If converting from secondary to base, divide by factor (price per unit decreases)
     else if (fromUnit === unit.secondary && toUnit === unit.base) {
       convertedPrice = price / factor;
     }
     
-    // Round to 2 decimal places for price
     return (Math.round(convertedPrice * 100) / 100).toFixed(2);
   }
   
-  // Handle string format like "Piece / Packet"
   if (typeof unit === 'string' && unit.includes(' / ')) {
     const parts = unit.split(' / ');
     if (parts.length === 2) {
-      // Simple conversion: if going from first to second unit, multiply by 10
-      // This is a fallback conversion factor
       if (fromUnit === parts[0] && toUnit === parts[1]) {
         return (Math.round(price * 10 * 100) / 100).toFixed(2);
       }
@@ -129,6 +117,21 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
   }
   
   return currentPrice;
+};
+
+const calculatePriceForQuantity = (qty: number, itemData: any) => {
+  if (!itemData) return 0;
+  
+  const quantity = parseFloat(qty.toString()) || 0;
+  const minWholesaleQty = itemData.minimumWholesaleQuantity || 0;
+  const wholesalePrice = itemData.wholesalePrice || 0;
+  const salePrice = itemData.salePrice || 0;
+  
+  if (quantity >= minWholesaleQty && wholesalePrice > 0) {
+    return wholesalePrice;
+  }
+  
+  return salePrice;
 };
 
 interface FormData {
@@ -346,25 +349,52 @@ function ItemRow({
                     key={i._id}
                     className="px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
                     onMouseDown={() => {
-                      console.log('Selected item:', i);
-                      const salePrice = i.salePrice || 0;
-                      handleItemChange(index, 'item', i.name);
-                      // Set the unit to the item's base unit or secondary unit from backend
                       const unitDisplay = getUnitDisplay(i.unit);
+                      handleItemChange(index, 'item', i.name);
                       handleItemChange(index, 'unit', unitDisplay);
-                      handleItemChange(index, 'price', salePrice.toString());
-                      // Set a default quantity of 1 when item is selected
+                      
+                      let initialPrice = i.salePrice || 0;
+                      if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
+                        if (unitDisplay === i.unit.base) {
+                          initialPrice = i.salePrice || 0;
+                        } else if (unitDisplay === i.unit.secondary) {
+                          initialPrice = (i.salePrice || 0) * i.unit.conversionFactor;
+                        }
+                      }
+                      
+                      const minWholesaleQty = i.minimumWholesaleQuantity || 0;
+                      const wholesalePrice = i.wholesalePrice || 0;
+                      
+                      if (minWholesaleQty > 0 && wholesalePrice > 0) {
+                        if (unitDisplay === i.unit?.base) {
+                          initialPrice = wholesalePrice;
+                        } else if (unitDisplay === i.unit?.secondary) {
+                          initialPrice = wholesalePrice * i.unit.conversionFactor;
+                        }
+                      }
+                      
+                      handleItemChange(index, 'price', initialPrice.toString());
                       handleItemChange(index, 'qty', '1');
-                      // Calculate amount after setting price and quantity
-                      const amount = salePrice * 1;
+                      const amount = initialPrice * 1;
                       handleItemChange(index, 'amount', amount);
                       setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                     }}
                   >
-                    <div className="flex justify-between items-center">
+                                        <div className="flex justify-between items-center">
                       <span className="font-medium text-gray-800">{i.name}</span>
-                      <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock ?? 0}</span>
-                                          </div>
+                      <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {(() => {
+                        let displayPrice = i.salePrice || 0;
+                        if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
+                          const unitDisplay = getUnitDisplay(i.unit);
+                          if (unitDisplay === i.unit.base) {
+                            displayPrice = i.salePrice || 0;
+                          } else if (unitDisplay === i.unit.secondary) {
+                            displayPrice = (i.salePrice || 0) * i.unit.conversionFactor;
+                          }
+                        }
+                        return displayPrice;
+                      })()} • Qty: {i.stock ?? 0}</span>
+                    </div>
                     </li>
                   ));
                 })()
@@ -460,18 +490,34 @@ function ItemRow({
           })()}
           value={item.unit}
           onChange={val => {
-            // Get the selected item data for conversion
             const selectedItem = itemSuggestions.find(i => i.name === item.item);
             if (selectedItem) {
-              // Convert quantity based on unit change
               if (item.qty) {
-                const convertedQty = convertQuantity(item.qty, item.unit, val, selectedItem);
-                handleItemChange(index, 'qty', convertedQty);
-              }
-              // Convert price based on unit change
-              if (item.price) {
-                const convertedPrice = convertPrice(item.price, item.unit, val, selectedItem);
-                handleItemChange(index, 'price', convertedPrice);
+                const newPrice = calculatePriceForQuantity(parseFloat(item.qty) || 0, selectedItem);
+                
+                if (val === selectedItem.unit?.base) {
+                  if (newPrice > 0) {
+                    handleItemChange(index, 'price', newPrice.toString());
+                  } else {
+                    handleItemChange(index, 'price', (selectedItem.salePrice || 0).toString());
+                  }
+                } else if (val === selectedItem.unit?.secondary) {
+                  if (newPrice > 0) {
+                    handleItemChange(index, 'price', (newPrice * (selectedItem.unit?.conversionFactor || 1)).toString());
+                  } else {
+                    handleItemChange(index, 'price', ((selectedItem.salePrice || 0) * (selectedItem.unit?.conversionFactor || 1)).toString());
+                  }
+                } else {
+                  handleItemChange(index, 'price', newPrice.toString());
+                }
+              } else {
+                if (val === selectedItem.unit?.base) {
+                  handleItemChange(index, 'price', (selectedItem.salePrice || 0).toString());
+                } else if (val === selectedItem.unit?.secondary) {
+                  handleItemChange(index, 'price', ((selectedItem.salePrice || 0) * (selectedItem.unit?.conversionFactor || 1)).toString());
+                } else {
+                  handleItemChange(index, 'price', (selectedItem.salePrice || 0).toString());
+                }
               }
             }
             handleItemChange(index, 'unit', val);

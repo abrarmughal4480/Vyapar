@@ -504,7 +504,18 @@ function ItemRow({
                 >
                   <div className="flex justify-between items-center">
                     <span className="font-medium text-gray-800">{i.name}</span>
-                    <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock ?? 0}</span>
+                                          <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {(() => {
+                        let displayPrice = i.salePrice || 0;
+                        if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
+                          const unitDisplay = getUnitDisplay(i.unit);
+                          if (unitDisplay === i.unit.base) {
+                            displayPrice = i.salePrice || 0;
+                          } else if (unitDisplay === i.unit.secondary) {
+                            displayPrice = (i.salePrice || 0) * i.unit.conversionFactor;
+                          }
+                        }
+                        return displayPrice;
+                      })()} • Qty: {i.stock ?? 0}</span>
                   </div>
                 </li>
               ))}
@@ -541,27 +552,17 @@ function ItemRow({
                     onChange={val => {
             const selectedItem = itemSuggestions.find(i => i.name === item.item);
             if (selectedItem) {
-              // First convert quantity if it exists
-              if (item.qty) {
-                const convertedQty = convertQuantity(item.qty, getCurrentUnitValue(), val, selectedItem);
-                handleItemChange(item.id, 'qty', convertedQty);
-              }
-              
-              // Now convert price based on the new unit
-              const currentPrice = parseFloat(item.price) || 0;
-              let newPrice = currentPrice;
+              // Don't convert quantity - keep it the same
+              // Only update price based on the new unit
+              let newPrice = item.price || 0;
               
               if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
-                const conversionFactor = selectedItem.unit.conversionFactor;
-                
-                if (val === selectedItem.unit.base && getCurrentUnitValue() === selectedItem.unit.secondary) {
-                  // Converting from secondary to base (e.g., Carton to Box)
-                  // If current price is for secondary unit, convert to base unit
-                  newPrice = currentPrice / conversionFactor;
-                } else if (val === selectedItem.unit.secondary && getCurrentUnitValue() === selectedItem.unit.base) {
-                  // Converting from base to secondary (e.g., Box to Carton)
-                  // If current price is for base unit, convert to secondary unit
-                  newPrice = currentPrice * conversionFactor;
+                if (val === selectedItem.unit.base) {
+                  // Converting to base unit - use base price
+                  newPrice = selectedItem.salePrice || 0;
+                } else if (val === selectedItem.unit.secondary) {
+                  // Converting to secondary unit - multiply by conversion factor
+                  newPrice = (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor;
                 }
               }
               

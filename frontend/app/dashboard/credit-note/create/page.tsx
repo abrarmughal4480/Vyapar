@@ -9,25 +9,25 @@ import { getUserItems } from '../../../../http/items';
 import { createCreditNote } from '../../../../http/credit-notes';
 import { useSidebar } from '../../../contexts/SidebarContext';
 
-// Utility functions for unit conversion
 const getUnitDisplay = (unit: any) => {
   if (!unit) return 'NONE';
-  // Handle object format with conversion factor
+  
   if (typeof unit === 'object' && unit.base) {
     const base = unit.base || 'NONE';
     const secondary = unit.secondary && unit.secondary !== 'None' ? unit.secondary : null;
-    // Return secondary unit if available, otherwise return base unit
-    return secondary || base;
+    
+    return base;
   }
-  // Handle string format like "Piece / Packet"
+  
   if (typeof unit === 'string' && unit.includes(' / ')) {
     const parts = unit.split(' / ');
-    return parts[1] && parts[1] !== 'None' ? parts[1] : parts[0];
+    return parts[0] || 'NONE';
   }
-  // Fallback for simple string units
+  
   if (typeof unit === 'string') {
     return unit || 'NONE';
   }
+  
   return 'NONE';
 };
 
@@ -79,27 +79,20 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
   if (isNaN(price)) return currentPrice;
   const unit = itemData.unit;
   if (!unit) return currentPrice;
-  // Handle object format with conversion factor
   if (typeof unit === 'object' && unit.conversionFactor) {
     const factor = unit.conversionFactor;
     let convertedPrice = price;
-    // If converting from base to secondary, multiply by factor (price per unit increases)
     if (fromUnit === unit.base && toUnit === unit.secondary) {
       convertedPrice = price * factor;
     }
-    // If converting from secondary to base, divide by factor (price per unit decreases)
     else if (fromUnit === unit.secondary && toUnit === unit.base) {
       convertedPrice = price / factor;
     }
-    // Round to 2 decimal places for price
     return (Math.round(convertedPrice * 100) / 100).toFixed(2);
   }
-  // Handle string format like "Piece / Packet"
   if (typeof unit === 'string' && unit.includes(' / ')) {
     const parts = unit.split(' / ');
     if (parts.length === 2) {
-      // Simple conversion: if going from first to second unit, multiply by 10
-      // This is a fallback conversion factor
       if (fromUnit === parts[0] && toUnit === parts[1]) {
         return (Math.round(price * 10 * 100) / 100).toFixed(2);
       }
@@ -109,6 +102,21 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
     }
   }
   return currentPrice;
+};
+
+const calculatePriceForQuantity = (qty: number, itemData: any) => {
+  if (!itemData) return 0;
+  
+  const quantity = parseFloat(qty.toString()) || 0;
+  const minWholesaleQty = itemData.minimumWholesaleQuantity || 0;
+  const wholesalePrice = itemData.wholesalePrice || 0;
+  const salePrice = itemData.salePrice || 0;
+  
+  if (quantity >= minWholesaleQty && wholesalePrice > 0) {
+    return wholesalePrice;
+  }
+  
+  return salePrice;
 };
 
 interface CreditNoteItem {
@@ -328,7 +336,28 @@ function ItemRow({
                 handleItemChange(item.id, 'item', selected.name);
                 const unitDisplay = getUnitDisplay(selected.unit);
                 handleItemChange(item.id, 'unit', unitDisplay);
-                handleItemChange(item.id, 'price', selected.salePrice || 0);
+                
+                let initialPrice = selected.salePrice || 0;
+                if (selected.unit && typeof selected.unit === 'object' && selected.unit.conversionFactor) {
+                  if (unitDisplay === selected.unit.base) {
+                    initialPrice = selected.salePrice || 0;
+                  } else if (unitDisplay === selected.unit.secondary) {
+                    initialPrice = (selected.salePrice || 0) * selected.unit.conversionFactor;
+                  }
+                }
+                
+                const minWholesaleQty = selected.minimumWholesaleQuantity || 0;
+                const wholesalePrice = selected.wholesalePrice || 0;
+                
+                if (minWholesaleQty > 0 && wholesalePrice > 0) {
+                  if (unitDisplay === selected.unit?.base) {
+                    initialPrice = wholesalePrice;
+                  } else if (unitDisplay === selected.unit?.secondary) {
+                    initialPrice = wholesalePrice * selected.unit.conversionFactor;
+                  }
+                }
+                
+                handleItemChange(item.id, 'price', initialPrice);
                 handleItemChange(item.id, 'qty', '1');
                 setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
               }
@@ -358,7 +387,28 @@ function ItemRow({
                       handleItemChange(item.id, 'item', i.name);
                       const unitDisplay = getUnitDisplay(i.unit);
                       handleItemChange(item.id, 'unit', unitDisplay);
-                      handleItemChange(item.id, 'price', i.salePrice || 0);
+                      
+                      let initialPrice = i.salePrice || 0;
+                      if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
+                        if (unitDisplay === i.unit.base) {
+                          initialPrice = i.salePrice || 0;
+                        } else if (unitDisplay === i.unit.secondary) {
+                          initialPrice = (i.salePrice || 0) * i.unit.conversionFactor;
+                        }
+                      }
+                      
+                      const minWholesaleQty = i.minimumWholesaleQuantity || 0;
+                      const wholesalePrice = i.wholesalePrice || 0;
+                      
+                      if (minWholesaleQty > 0 && wholesalePrice > 0) {
+                        if (unitDisplay === i.unit?.base) {
+                          initialPrice = wholesalePrice;
+                        } else if (unitDisplay === i.unit?.secondary) {
+                          initialPrice = wholesalePrice * i.unit.conversionFactor;
+                        }
+                      }
+                      
+                      handleItemChange(item.id, 'price', initialPrice);
                       handleItemChange(item.id, 'qty', '1');
                       setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                     }}
@@ -368,7 +418,18 @@ function ItemRow({
                   >
                     <div className="flex justify-between items-center">
                       <span className="font-medium text-gray-800">{i.name}</span>
-                      <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock ?? 0}</span>
+                      <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {(() => {
+                        let displayPrice = i.salePrice || 0;
+                        if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
+                          const unitDisplay = getUnitDisplay(i.unit);
+                          if (unitDisplay === i.unit.base) {
+                            displayPrice = i.salePrice || 0;
+                          } else if (unitDisplay === i.unit.secondary) {
+                            displayPrice = (i.salePrice || 0) * i.unit.conversionFactor;
+                          }
+                        }
+                        return displayPrice;
+                      })()} • Qty: {i.stock ?? 0}</span>
                     </div>
                   </li>
                 ))
@@ -462,18 +523,34 @@ function ItemRow({
           })()}
           value={item.unit}
           onChange={val => {
-            // Get the selected item data for conversion
             const selectedItem = itemSuggestions.find(i => i.name === item.item);
             if (selectedItem) {
-              // Convert quantity based on unit change
               if (item.qty) {
-                const convertedQty = convertQuantity(item.qty, item.unit, val, selectedItem);
-                handleItemChange(item.id, 'qty', convertedQty);
-              }
-              // Convert price based on unit change
-              if (item.price) {
-                const convertedPrice = convertPrice(item.price, item.unit, val, selectedItem);
-                handleItemChange(item.id, 'price', convertedPrice);
+                const newPrice = calculatePriceForQuantity(parseFloat(item.qty) || 0, selectedItem);
+                
+                if (val === selectedItem.unit?.base) {
+                  if (newPrice > 0) {
+                    handleItemChange(item.id, 'price', newPrice);
+                  } else {
+                    handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
+                  }
+                } else if (val === selectedItem.unit?.secondary) {
+                  if (newPrice > 0) {
+                    handleItemChange(item.id, 'price', newPrice * (selectedItem.unit?.conversionFactor || 1));
+                  } else {
+                    handleItemChange(item.id, 'price', (selectedItem.salePrice || 0) * (selectedItem.unit?.conversionFactor || 1));
+                  }
+                } else {
+                  handleItemChange(item.id, 'price', newPrice);
+                }
+              } else {
+                if (val === selectedItem.unit?.base) {
+                  handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
+                } else if (val === selectedItem.unit?.secondary) {
+                  handleItemChange(item.id, 'price', (selectedItem.salePrice || 0) * (selectedItem.unit?.conversionFactor || 1));
+                } else {
+                  handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
+                }
               }
             }
             handleItemChange(item.id, 'unit', val);

@@ -10,32 +10,27 @@ import ReactDOM from 'react-dom'
 import Toast from '../../../components/Toast'
 import { useSidebar } from '../../../contexts/SidebarContext'
 
-// Utility functions for unit conversion
-const getUnitDisplay = (unit: any) => {
-  if (!unit) return 'NONE';
-  
-  // Handle object format with conversion factor
-  if (typeof unit === 'object' && unit.base) {
-    const base = unit.base || 'NONE';
-    const secondary = unit.secondary && unit.secondary !== 'None' ? unit.secondary : null;
+  const getUnitDisplay = (unit: any) => {
+    if (!unit) return 'NONE';
     
-    // Return secondary unit if available, otherwise return base unit
-    return secondary || base;
-  }
-  
-  // Handle string format like "Piece / Packet"
-  if (typeof unit === 'string' && unit.includes(' / ')) {
-    const parts = unit.split(' / ');
-    return parts[1] && parts[1] !== 'None' ? parts[1] : parts[0];
-  }
-  
-  // Fallback for simple string units
-  if (typeof unit === 'string') {
-    return unit || 'NONE';
-  }
-  
-  return 'NONE';
-};
+    if (typeof unit === 'object' && unit.base) {
+      const base = unit.base || 'NONE';
+      const secondary = unit.secondary && unit.secondary !== 'None' ? unit.secondary : null;
+      
+      return base;
+    }
+    
+    if (typeof unit === 'string' && unit.includes(' / ')) {
+      const parts = unit.split(' / ');
+      return parts[0] || 'NONE';
+    }
+    
+    if (typeof unit === 'string') {
+      return unit || 'NONE';
+    }
+    
+    return 'NONE';
+  };
 
 const convertQuantity = (currentQty: string, fromUnit: string, toUnit: string, itemData: any): string => {
   if (!currentQty || !fromUnit || !toUnit || fromUnit === toUnit) {
@@ -48,30 +43,23 @@ const convertQuantity = (currentQty: string, fromUnit: string, toUnit: string, i
   const unit = itemData.unit;
   if (!unit) return currentQty;
 
-  // Handle object format with conversion factor
   if (typeof unit === 'object' && unit.conversionFactor) {
     const factor = unit.conversionFactor;
     let convertedQty = qty;
     
-    // If converting from base to secondary, multiply by factor
     if (fromUnit === unit.base && toUnit === unit.secondary) {
       convertedQty = qty * factor;
     }
-    // If converting from secondary to base, divide by factor
     else if (fromUnit === unit.secondary && toUnit === unit.base) {
       convertedQty = qty / factor;
     }
     
-    // Round to nearest whole number for quantity
     return Math.round(convertedQty).toString();
   }
   
-  // Handle string format like "Piece / Packet"
   if (typeof unit === 'string' && unit.includes(' / ')) {
     const parts = unit.split(' / ');
     if (parts.length === 2) {
-      // Simple conversion: if going from first to second unit, multiply by 10
-      // This is a fallback conversion factor
       if (fromUnit === parts[0] && toUnit === parts[1]) {
         return Math.round(qty * 10).toString();
       }
@@ -95,30 +83,23 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
   const unit = itemData.unit;
   if (!unit) return currentPrice;
 
-  // Handle object format with conversion factor
   if (typeof unit === 'object' && unit.conversionFactor) {
     const factor = unit.conversionFactor;
     let convertedPrice = price;
     
-    // If converting from base to secondary, multiply by factor (price per unit increases)
     if (fromUnit === unit.base && toUnit === unit.secondary) {
       convertedPrice = price * factor;
     }
-    // If converting from secondary to base, divide by factor (price per unit decreases)
     else if (fromUnit === unit.secondary && toUnit === unit.base) {
       convertedPrice = price / factor;
     }
     
-    // Round to 2 decimal places for price
     return (Math.round(convertedPrice * 100) / 100).toFixed(2);
   }
   
-  // Handle string format like "Piece / Packet"
   if (typeof unit === 'string' && unit.includes(' / ')) {
     const parts = unit.split(' / ');
     if (parts.length === 2) {
-      // Simple conversion: if going from first to second unit, multiply by 10
-      // This is a fallback conversion factor
       if (fromUnit === parts[0] && toUnit === parts[1]) {
         return (Math.round(price * 10 * 100) / 100).toFixed(2);
       }
@@ -131,8 +112,7 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
   return currentPrice;
 };
 
-// This would be saved as: /app/dashboard/sale-order/create/page.js or /pages/dashboard/sale-order/create.js
-export default function CreateSalesOrderPage() {
+  export default function CreateSalesOrderPage() {
   const router = useRouter()
   const [formData, setFormData] = useState({
     invoiceDate: new Date().toISOString().split('T')[0],
@@ -160,27 +140,21 @@ export default function CreateSalesOrderPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   
-  // Import sidebar context for auto-collapse
   const { setIsCollapsed } = useSidebar();
   const [wasSidebarCollapsed, setWasSidebarCollapsed] = useState(false);
 
-  // Auto-collapse sidebar when page opens and restore when closing
   useEffect(() => {
-    // Store current sidebar state and collapse it
     const currentSidebarState = document.body.classList.contains('sidebar-collapsed') || 
                                document.documentElement.classList.contains('sidebar-collapsed');
     setWasSidebarCollapsed(currentSidebarState);
     
-    // Collapse sidebar for better form experience
     setIsCollapsed(true);
     
-    // Restore sidebar state when component unmounts
     return () => {
       setIsCollapsed(wasSidebarCollapsed);
     };
   }, [setIsCollapsed, wasSidebarCollapsed]);
 
-  // Handle quotation data from URL parameters
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
@@ -190,7 +164,6 @@ export default function CreateSalesOrderPage() {
         try {
           const quotationData = JSON.parse(decodeURIComponent(quotationParam));
           
-          // Pre-fill the form with quotation data
           setFormData(prev => ({
             ...prev,
             customer: quotationData.customerName || '',
@@ -209,7 +182,6 @@ export default function CreateSalesOrderPage() {
           
           setQuotationId(quotationData.quotationId || null);
           
-          // Show success message
           setToast({ 
             message: 'Quotation data loaded successfully! You can now convert it to a sales order.', 
             type: 'success' 
@@ -225,10 +197,8 @@ export default function CreateSalesOrderPage() {
     }
   }, []);
 
-  // Block ALL window/page scroll on arrow keys globally
   useEffect(() => {
     function blockAllArrowScroll(e: KeyboardEvent) {
-      // Only block if not focused on any input (let input's own onKeyDown handle it)
       if (
         ["ArrowDown", "ArrowUp"].includes(e.key) &&
         !(e.target instanceof HTMLInputElement)
@@ -240,13 +210,11 @@ export default function CreateSalesOrderPage() {
     return () => window.removeEventListener("keydown", blockAllArrowScroll);
   }, []);
 
-  // Unit options
   const unitOptions = ['NONE', 'PCS', 'KG', 'METER', 'LITER', 'BOX', 'DOZEN']
   const taxOptions = ['NONE', 'GST 5%', 'GST 12%', 'GST 18%', 'GST 28%']
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
-  // Calculate amount for each item
   useEffect(() => {
     setFormData(prev => ({
       ...prev,
@@ -257,7 +225,6 @@ export default function CreateSalesOrderPage() {
     }))
   }, [])
 
-  // Calculate totals
   const subtotal = formData.items.reduce((sum, item) => sum + item.amount, 0)
   const discountAmount = formData.discountType === '%' 
     ? (subtotal * formData.discount) / 100 
@@ -268,8 +235,6 @@ export default function CreateSalesOrderPage() {
     : 0
   const grandTotal = totalAfterDiscount + taxAmount
 
-  // Update item in the form
-  // Function to calculate appropriate price based on quantity and item data
   const calculatePriceForQuantity = (qty: number, itemData: any) => {
     if (!itemData) return 0;
     
@@ -278,12 +243,10 @@ export default function CreateSalesOrderPage() {
     const wholesalePrice = itemData.wholesalePrice || 0;
     const salePrice = itemData.salePrice || 0;
     
-    // If quantity meets or exceeds minimum wholesale quantity, use wholesale price
     if (quantity >= minWholesaleQty && wholesalePrice > 0) {
       return wholesalePrice;
     }
     
-    // Otherwise use regular sale price
     return salePrice;
   };
 
@@ -294,7 +257,6 @@ export default function CreateSalesOrderPage() {
         if (item.id === id) {
           let updatedItem = { ...item, [field]: value }
           
-          // If quantity is changing, recalculate price based on wholesale logic
           if (field === 'qty') {
             const selectedItem = itemSuggestions.find(i => i.name === item.item);
             if (selectedItem) {
@@ -314,7 +276,6 @@ export default function CreateSalesOrderPage() {
     }))
   }
 
-  // Add new row
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null);
 
   const addRow = () => {
@@ -332,13 +293,11 @@ export default function CreateSalesOrderPage() {
     }));
   };
 
-  // Remove row
   const removeRow = (id: number) => {
     if (formData.items.length === 1) return;
     setFormData(prev => ({ ...prev, items: prev.items.filter(item => item.id !== id) }));
   };
 
-  // Fetch parties for suggestions
   const fetchCustomerSuggestions = async () => {
     const token = getToken();
     if (!token) return;
@@ -348,12 +307,10 @@ export default function CreateSalesOrderPage() {
     } catch {}
   };
 
-  // Add state for items and suggestions
   const [itemSuggestions, setItemSuggestions] = useState<any[]>([])
   const [showItemSuggestions, setShowItemSuggestions] = useState<{[id: number]: boolean}>({})
   const [partyBalance, setPartyBalance] = useState<number|null>(null)
 
-  // Fetch items for suggestions
   const fetchItemSuggestions = async () => {
     const token = getToken();
     if (!token) return;
@@ -367,18 +324,15 @@ export default function CreateSalesOrderPage() {
     }
   };
 
-  // Debug effect to log item suggestions changes
   useEffect(() => {
     console.log('Item suggestions updated:', itemSuggestions);
   }, [itemSuggestions]);
 
-  // Fetch item suggestions on component mount
   useEffect(() => {
     console.log('Component mounted, fetching initial item suggestions...');
     fetchItemSuggestions();
   }, []);
 
-  // Fetch party balance when customer changes
   useEffect(() => {
     const fetchBalance = async () => {
       if (!formData.customer) {
@@ -397,7 +351,6 @@ export default function CreateSalesOrderPage() {
     fetchBalance();
   }, [formData.customer]);
 
-  // Save sales order
   const handleSave = async () => {
     if (!formData.customer.trim()) {
       setError('Customer name is required')
@@ -436,10 +389,8 @@ export default function CreateSalesOrderPage() {
       
       const result = await createSaleOrder(orderPayload, token);
       
-      // If this was converted from a quotation, update the quotation status
       if (quotationId && result.success) {
         try {
-          // Import the function to update quotation status
           const { updateQuotationStatus } = await import('../../../../http/quotations');
           await updateQuotationStatus(quotationId, 'Converted to Sale Order', result.data?.orderNumber, token);
           setToast({ 
@@ -465,12 +416,10 @@ export default function CreateSalesOrderPage() {
     }
   }
 
-  // Handle share functionality
   const handleShare = () => {
     alert('Share functionality to be implemented')
   }
 
-  // ItemRow component (inline, matching sale add)
   function ItemRow({
     item,
     index,
@@ -490,7 +439,6 @@ export default function CreateSalesOrderPage() {
   }) {
     const inputRef = React.useRef<HTMLInputElement>(null);
     const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
-    // Add state for item and unit dropdown highlight
     const [itemDropdownIndex, setItemDropdownIndex] = useState(0);
     const [unitDropdownIndex, setUnitDropdownIndex] = useState(0);
     const [isKeyboardNavigating, setIsKeyboardNavigating] = useState(false);
@@ -515,7 +463,6 @@ export default function CreateSalesOrderPage() {
         updateDropdownPosition();
         window.addEventListener('scroll', updateDropdownPosition, true);
         window.addEventListener('resize', updateDropdownPosition);
-        // Add click outside logic
         const handleClickOutside = (event: MouseEvent) => {
           if (
             inputRef.current &&
@@ -536,11 +483,10 @@ export default function CreateSalesOrderPage() {
     const handleFocus = () => {
       fetchItemSuggestions();
       setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: true }));
-      setItemDropdownIndex(0); // reset highlight
+      setItemDropdownIndex(0);
       updateDropdownPosition();
     };
 
-    // Prepare unit options
     const unitOptions = (() => {
       const options: DropdownOption[] = [];
       if (item.item) {
@@ -587,9 +533,7 @@ export default function CreateSalesOrderPage() {
             }}
             onFocus={handleFocus}
             onBlur={() => {
-              // Use a longer timeout to allow for keyboard navigation
               setTimeout(() => {
-                // Only close if the focus is not within the dropdown
                 const activeElement = document.activeElement;
                 const dropdown = document.querySelector(`[data-dropdown-id="${item.id}"]`);
                 if (!dropdown?.contains(activeElement)) {
@@ -668,30 +612,23 @@ export default function CreateSalesOrderPage() {
                       const unitDisplay = getUnitDisplay(i.unit);
                       handleItemChange(item.id, 'unit', unitDisplay);
                       
-                      // Set price based on the selected unit and wholesale logic
                       let initialPrice = i.salePrice || 0;
-                      
-                      if (i.unit && typeof i.unit === 'object' && i.unit.base && i.unit.secondary) {
-                        // If the default unit is secondary unit (Carton), salePrice is already correct
-                        // If user selects base unit (Box), convert price from secondary to base
-                        if (unitDisplay === i.unit.base && i.unit.conversionFactor) {
-                          // salePrice is for secondary unit (Carton), so convert to base unit (Box)
-                          initialPrice = (i.salePrice || 0) / i.unit.conversionFactor;
+                      if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
+                        if (unitDisplay === i.unit.base) {
+                          initialPrice = i.salePrice || 0;
+                        } else if (unitDisplay === i.unit.secondary) {
+                          initialPrice = (i.salePrice || 0) * i.unit.conversionFactor;
                         }
                       }
                       
-                      // Check if wholesale pricing should be applied
                       const minWholesaleQty = i.minimumWholesaleQuantity || 0;
                       const wholesalePrice = i.wholesalePrice || 0;
                       
-                      // Apply wholesale price if available (but don't set quantity automatically)
                       if (minWholesaleQty > 0 && wholesalePrice > 0) {
-                        // Apply wholesale price
-                        if (unitDisplay === i.unit?.base && i.unit?.conversionFactor) {
-                          // Convert wholesale price to base unit if needed
-                          initialPrice = wholesalePrice / i.unit.conversionFactor;
-                        } else {
+                        if (unitDisplay === i.unit?.base) {
                           initialPrice = wholesalePrice;
+                        } else if (unitDisplay === i.unit?.secondary) {
+                          initialPrice = wholesalePrice * i.unit.conversionFactor;
                         }
                       }
                       
@@ -731,30 +668,23 @@ export default function CreateSalesOrderPage() {
                         const unitDisplay = getUnitDisplay(i.unit);
                         handleItemChange(item.id, 'unit', unitDisplay);
                         
-                        // Set price based on the selected unit and wholesale logic
                         let initialPrice = i.salePrice || 0;
-                        
-                        if (i.unit && typeof i.unit === 'object' && i.unit.base && i.unit.secondary) {
-                          // If the default unit is secondary unit (Carton), salePrice is already correct
-                          // If user selects base unit (Box), convert price from secondary to base
-                          if (unitDisplay === i.unit.base && i.unit.conversionFactor) {
-                            // salePrice is for secondary unit (Carton), so convert to base unit (Box)
-                            initialPrice = (i.salePrice || 0) / i.unit.conversionFactor;
+                        if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
+                          if (unitDisplay === i.unit.base) {
+                            initialPrice = i.salePrice || 0;
+                          } else if (unitDisplay === i.unit.secondary) {
+                            initialPrice = (i.salePrice || 0) * i.unit.conversionFactor;
                           }
                         }
                         
-                        // Check if wholesale pricing should be applied
                         const minWholesaleQty = i.minimumWholesaleQuantity || 0;
                         const wholesalePrice = i.wholesalePrice || 0;
                         
-                        // Apply wholesale price if available (but don't set quantity automatically)
                         if (minWholesaleQty > 0 && wholesalePrice > 0) {
-                          // Apply wholesale price
-                          if (unitDisplay === i.unit?.base && i.unit?.conversionFactor) {
-                            // Convert wholesale price to base unit if needed
-                            initialPrice = wholesalePrice / i.unit.conversionFactor;
-                          } else {
+                          if (unitDisplay === i.unit?.base) {
                             initialPrice = wholesalePrice;
+                          } else if (unitDisplay === i.unit?.secondary) {
+                            initialPrice = wholesalePrice * i.unit.conversionFactor;
                           }
                         }
                         
@@ -800,43 +730,33 @@ export default function CreateSalesOrderPage() {
               const selectedItem = itemSuggestions.find(i => i.name === item.item);
               if (selectedItem) {
                 if (item.qty) {
-                  const convertedQty = convertQuantity(item.qty, item.unit, val, selectedItem);
-                  handleItemChange(item.id, 'qty', parseFloat(convertedQty) || 0);
+                  // Don't convert quantity - keep it the same
+                  const newPrice = calculatePriceForQuantity(parseFloat(item.qty) || 0, selectedItem);
                   
-                  // After converting quantity, recalculate price based on wholesale logic
-                  const newPrice = calculatePriceForQuantity(parseFloat(convertedQty) || 0, selectedItem);
-                  if (val === selectedItem.unit?.base && selectedItem.unit?.conversionFactor) {
-                    // Convert wholesale price to base unit if needed
-                    const convertedWholesalePrice = (newPrice || 0) / selectedItem.unit.conversionFactor;
-                    handleItemChange(item.id, 'price', convertedWholesalePrice);
+                  if (val === selectedItem.unit?.base) {
+                    if (newPrice > 0) {
+                      handleItemChange(item.id, 'price', newPrice);
+                    } else {
+                      handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
+                    }
+                  } else if (val === selectedItem.unit?.secondary) {
+                    if (newPrice > 0) {
+                      handleItemChange(item.id, 'price', newPrice * (selectedItem.unit?.conversionFactor || 1));
+                    } else {
+                      handleItemChange(item.id, 'price', (selectedItem.salePrice || 0) * (selectedItem.unit?.conversionFactor || 1));
+                    }
                   } else {
                     handleItemChange(item.id, 'price', newPrice);
                   }
-                               } else {
-                 // If no quantity, just set the price based on wholesale logic without setting quantity
-                 const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
-                 const wholesalePrice = selectedItem.wholesalePrice || 0;
-                 
-                 if (minWholesaleQty > 0 && wholesalePrice > 0) {
-                   // If wholesale pricing is available, set the wholesale price
-                   if (val === selectedItem.unit?.base && selectedItem.unit?.conversionFactor) {
-                     // Convert wholesale price to base unit if needed
-                     const convertedWholesalePrice = wholesalePrice / selectedItem.unit.conversionFactor;
-                     handleItemChange(item.id, 'price', convertedWholesalePrice);
-                   } else {
-                     handleItemChange(item.id, 'price', wholesalePrice);
-                   }
-                 } else {
-                   // Use regular sale price
-                   if (val === selectedItem.unit?.base && selectedItem.unit?.conversionFactor) {
-                     // Convert sale price to base unit if needed
-                     const convertedSalePrice = (selectedItem.salePrice || 0) / selectedItem.unit.conversionFactor;
-                     handleItemChange(item.id, 'price', convertedSalePrice);
-                   } else {
-                     handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
-                   }
-                 }
-               }
+                } else {
+                  if (val === selectedItem.unit?.base) {
+                    handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
+                  } else if (val === selectedItem.unit?.secondary) {
+                    handleItemChange(item.id, 'price', (selectedItem.salePrice || 0) * (selectedItem.unit?.conversionFactor || 1));
+                  } else {
+                    handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
+                  }
+                }
               }
               handleItemChange(item.id, 'unit', val);
             }}

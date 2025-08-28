@@ -801,11 +801,13 @@ export const getBillWiseProfit = async (req, res) => {
     function getLatestPurchasePrice(itemName) {
       const itemDoc = items.find(i => i.name && i.name.trim().toLowerCase() === itemName.trim().toLowerCase());
       if (itemDoc) {
-        return itemDoc.atPrice !== undefined && itemDoc.atPrice !== null
-          ? itemDoc.atPrice
-          : (itemDoc.purchasePrice !== undefined && itemDoc.purchasePrice !== null
-            ? itemDoc.purchasePrice
-            : 0);
+        // Use atPrice if it's greater than 0, otherwise fall back to purchasePrice
+        if (itemDoc.atPrice !== undefined && itemDoc.atPrice !== null && itemDoc.atPrice > 0) {
+          return itemDoc.atPrice;
+        } else if (itemDoc.purchasePrice !== undefined && itemDoc.purchasePrice !== null) {
+          return itemDoc.purchasePrice;
+        }
+        return 0;
       }
       return 0;
     }

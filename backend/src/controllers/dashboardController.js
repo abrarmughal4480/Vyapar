@@ -188,7 +188,7 @@ export const getDashboardStats = async (req, res) => {
     };
 
     // Parallel execution of optimized aggregations
-    const [sales, purchases, customers, items, revenueAgg, thisMonthAgg, lastMonthAgg, thisMonthOrders, lastMonthOrders, thisMonthProducts, lastMonthProducts, thisMonthCustomers, lastMonthCustomers, totalOrders, totalReceivableAgg, totalPayableAgg, creditNotesAgg, stockValueAgg, lowStockItems] = await Promise.all([
+    const [sales, purchases, customers, items, revenueAgg, thisMonthAgg, lastMonthAgg, thisMonthOrders, lastMonthOrders, thisMonthProducts, lastMonthProducts, thisMonthCustomers, lastMonthCustomers, totalOrders, creditNotesAgg, stockValueAgg, lowStockItems] = await Promise.all([
       Sale.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }], queryOptions),
       Purchase.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }], queryOptions),
       Party.countDocuments({ user: userId }).lean(),
@@ -209,9 +209,6 @@ export const getDashboardStats = async (req, res) => {
       Party.countDocuments({ user: userId, createdAt: { $gte: startOfThisMonth } }).lean(),
       Party.countDocuments({ user: userId, createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth } }).lean(),
       Sale.countDocuments({ userId: objectUserId }).lean(), // <-- total orders
-      // New: total receivable and payable
-      Sale.aggregate([{ $match: { userId: objectUserId, balance: { $gt: 0 } } }, { $group: { _id: null, total: { $sum: '$balance' } } }], queryOptions),
-      Purchase.aggregate([{ $match: { userId: objectUserId, balance: { $gt: 0 } } }, { $group: { _id: null, total: { $sum: '$balance' } } }], queryOptions),
       // New: total credit notes
       CreditNote.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }], queryOptions),
       // New: stock value calculation (stock quantity * purchase price) - optimized
@@ -321,6 +318,26 @@ export const getDashboardStats = async (req, res) => {
     const totalExpenses = await _getExpenseStatsForUser(userId);
     const cashInHand = await _getCashInHandForUser(userId);
 
+    // Calculate party balances using the same logic as the parties page
+    const parties = await Party.find({ user: objectUserId }).select('name _id openingBalance').lean();
+    
+    // Calculate total payable and receivable based on party opening balances only
+    // This matches the logic used in the parties page
+    let totalPayable = 0;
+    let totalReceivable = 0;
+    
+    parties.forEach(party => {
+      const openingBalance = party.openingBalance || 0;
+      
+      if (openingBalance > 0) {
+        // They owe us money (receivable)
+        totalReceivable += openingBalance;
+      } else if (openingBalance < 0) {
+        // We owe them money (payable)
+        totalPayable += Math.abs(openingBalance);
+      }
+    });
+
     const totalSales = sales && sales.length > 0 ? sales[0].total || 0 : 0;
     const totalCreditNotes = creditNotesAgg && creditNotesAgg.length > 0 ? creditNotesAgg[0].total || 0 : 0;
     const netRevenue = totalSales - totalCreditNotes;
@@ -377,8 +394,8 @@ export const getDashboardStats = async (req, res) => {
         productsChange,
         customersChange,
         totalOrders: totalOrders || 0,
-        totalReceivable: totalReceivableAgg && totalReceivableAgg.length > 0 ? totalReceivableAgg[0].total || 0 : 0,
-        totalPayable: totalPayableAgg && totalPayableAgg.length > 0 ? totalPayableAgg[0].total || 0 : 0,
+        totalReceivable: totalReceivable,
+        totalPayable: totalPayable,
         totalStockValue: totalStockValue,
         lowStockItems: totalStockIssues || 0,
         outOfStockItems: 0, // Will be calculated in detailed view
@@ -392,6 +409,9 @@ export const getDashboardStats = async (req, res) => {
     dashboardCache.set(cacheKey, {
       data: result,
     });
+
+    // Also invalidate party balances cache to ensure consistency
+    _invalidateSpecificCache(userId, 'party_balances');
 
     res.json(result);
   } catch (err) {
@@ -869,6 +889,21 @@ export const invalidateDashboardCache = (userId) => {
   console.log(`Fast dashboard cache invalidation for user: ${userId}`);
 };
 
+// Invalidate party balances cache specifically
+export const invalidatePartyBalancesCache = (userId) => {
+  _invalidateSpecificCache(userId, 'party_balances');
+  console.log(`Party balances cache invalidation for user: ${userId}`);
+};
+
+// Invalidate all dashboard caches for a user
+export const invalidateAllDashboardCaches = (userId) => {
+  _invalidateSpecificCache(userId, 'stats');
+  _invalidateSpecificCache(userId, 'party_balances');
+  _invalidateSpecificCache(userId, 'receivables');
+  _invalidateSpecificCache(userId, 'payables');
+  console.log(`All dashboard caches invalidated for user: ${userId}`);
+};
+
 // Utility function to clear all cache for a user
 export const clearAllCacheForUser = (userId) => {
   // Clear parties cache
@@ -1062,5 +1097,83 @@ export const getStockSummary = async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to get stock summary', error: err.message });
+  }
+};
+
+// Get party balances and categorize them as payable or receivable
+export const getPartyBalances = async (req, res) => {
+  try {
+    const userId = req.user && (req.user._id || req.user.id);
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    
+    // Check cache first
+    const cacheKey = _getDashboardCacheKey(userId, 'party_balances');
+    const cachedResult = dashboardCache.get(cacheKey);
+    
+    if (cachedResult) {
+      console.log('Returning cached party balances for user:', userId);
+      return res.json(cachedResult.data);
+    }
+    
+    const objectUserId = new mongoose.Types.ObjectId(userId);
+    
+    // Get all parties for this user
+    const parties = await Party.find({ user: objectUserId }).select('name _id openingBalance').lean();
+    
+    // Process each party and categorize them based on opening balance only
+    // This matches the logic used in the parties page
+    const partyBalances = parties.map(party => {
+      const openingBalance = party.openingBalance || 0;
+      
+      // Determine category based on opening balance
+      let category = 'neutral';
+      let amount = 0;
+      
+      if (openingBalance > 0) {
+        // They owe us money (receivable)
+        category = 'receivable';
+        amount = openingBalance;
+      } else if (openingBalance < 0) {
+        // We owe them money (payable)
+        category = 'payable';
+        amount = Math.abs(openingBalance);
+      }
+      
+      return {
+        _id: party._id,
+        name: party.name,
+        openingBalance: openingBalance,
+        salesBalance: 0, // Not used in this calculation
+        purchaseBalance: 0, // Not used in this calculation
+        netBalance: openingBalance,
+        category: category,
+        amount: amount
+      };
+    });
+    
+    // Separate into payable and receivable lists
+    const payables = partyBalances.filter(p => p.category === 'payable');
+    const receivables = partyBalances.filter(p => p.category === 'receivable');
+    
+    const result = {
+      success: true,
+      data: {
+        payables: payables.sort((a, b) => b.amount - a.amount),
+        receivables: receivables.sort((a, b) => b.amount - a.amount),
+        totalPayable: payables.reduce((sum, p) => sum + p.amount, 0),
+        totalReceivable: receivables.reduce((sum, p) => sum + p.amount, 0),
+        totalParties: parties.length
+      }
+    };
+    
+    // Cache the result
+    dashboardCache.set(cacheKey, {
+      data: result,
+    });
+    
+    res.json(result);
+  } catch (err) {
+    console.error('Error fetching party balances:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 }; 

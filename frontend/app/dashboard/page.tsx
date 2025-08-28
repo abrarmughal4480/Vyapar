@@ -28,7 +28,6 @@ import {
 import { fetchDashboardStats, fetchSalesOverviewForUser, fetchRecentActivityForUser } from '@/http/api';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import EnhancedModal from '../../components/EnhancedModal';
-import { getReceivables, getPayables } from '@/http/parties';
 import { getCurrentUserInfo, canAccessDashboard } from '../../lib/roleAccessControl';
 
 // Define your types here
@@ -372,13 +371,26 @@ export default function Dashboard() {
         const t = localStorage.getItem('token');
         token = t !== null ? t : undefined;
       }
-      const data = await getReceivables(token || '');
-      setReceivables(data || []);
+      // Use the new party balances API instead of the old receivables API
+      const response = await fetch(`${API_BASE_URL}/dashboard/party-balances`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          setReceivables(result.data.receivables || []);
+        } else {
+          setReceivables([]);
+        }
+      } else {
+        setReceivables([]);
+      }
     } catch (e) {
       setReceivables([]);
     }
     setLoadingReceivables(false);
   };
+
   const openPayableModal = async () => {
     setShowPayableModal(true);
     setLoadingPayables(true);
@@ -388,8 +400,20 @@ export default function Dashboard() {
         const t = localStorage.getItem('token');
         token = t !== null ? t : undefined;
       }
-      const data = await getPayables(token || '');
-      setPayables(data || []);
+      // Use the new party balances API instead of the old payables API
+      const response = await fetch(`${API_BASE_URL}/dashboard/party-balances`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          setPayables(result.data.payables || []);
+        } else {
+          setPayables([]);
+        }
+      } else {
+        setPayables([]);
+      }
     } catch (e) {
       setPayables([]);
     }
@@ -983,8 +1007,13 @@ export default function Dashboard() {
                       router.push(`/dashboard/parties?search=${encodeURIComponent(party.name)}`);
                     }}
                   >
-                    <span className="font-medium text-gray-900">{party.name}</span>
-                    <span className="text-green-600 font-semibold">PKR {party.amount.toLocaleString()}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium text-gray-900 block">{party.name}</span>
+                      <span className="text-xs text-gray-500">
+                        Opening Balance: PKR {party.openingBalance?.toLocaleString() || '0'}
+                      </span>
+                    </div>
+                    <span className="text-green-600 font-semibold">PKR {party.amount?.toLocaleString() || '0'}</span>
                   </li>
                 ))}
               </ul>
@@ -1014,8 +1043,13 @@ export default function Dashboard() {
                       router.push(`/dashboard/parties?search=${encodeURIComponent(party.name)}`);
                     }}
                   >
-                    <span className="font-medium text-gray-900">{party.name}</span>
-                    <span className="text-red-600 font-semibold">PKR {party.amount.toLocaleString()}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium text-gray-900 block">{party.name}</span>
+                      <span className="text-xs text-gray-500">
+                        Opening Balance: PKR {party.openingBalance?.toLocaleString() || '0'}
+                      </span>
+                    </div>
+                    <span className="text-red-600 font-semibold">PKR {party.amount?.toLocaleString() || '0'}</span>
                   </li>
                 ))}
               </ul>

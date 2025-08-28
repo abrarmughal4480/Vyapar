@@ -16,7 +16,7 @@ import creditNoteRoutes from './creditNote.js';
 import licenseKeyRoutes from './licenseKeys.js';
 import expenseRoutes from './expense.js';
 import cashBankRoutes from './cashBank.js';
-import { getDashboardStats, getSalesOverview, getRecentActivity, getProfile, updateProfile, getReceivablesList, getPayablesList, getDashboardPerformanceStats, testStockValue, getStockSummary, createDashboardIndexes } from '../controllers/dashboardController.js';
+import { getDashboardStats, getSalesOverview, getRecentActivity, getProfile, updateProfile, getReceivablesList, getPayablesList, getDashboardPerformanceStats, testStockValue, getStockSummary, createDashboardIndexes, getPartyBalances } from '../controllers/dashboardController.js';
 import sessionCheckRoutes from './sessionCheck.js';
 import { sendUserInvite, getUserInvites, getInvitesForMe, respondToInvite, deleteUserInvite, updateUserInvite, updateUserCompanyContext } from '../controllers/userInviteController.js';
 
@@ -90,6 +90,9 @@ router.get('/dashboard/test-stock-value', authMiddleware, testStockValue);
 
 // Stock summary route
 router.get('/dashboard/stock-summary', authMiddleware, getStockSummary);
+
+// Party balances route
+router.get('/dashboard/party-balances', authMiddleware, getPartyBalances);
 
 // Profit and Loss report route
 router.get('/api/reports/profit-and-loss', authMiddleware, profitAndLossController.getProfitAndLoss);

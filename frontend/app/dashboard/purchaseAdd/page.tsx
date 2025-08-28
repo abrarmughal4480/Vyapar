@@ -1329,34 +1329,36 @@ export default function AddPurchasePage() {
               <div className="flex justify-between items-center">
                 <div className="flex items-center space-x-6">
                   <h1 className="text-xl md:text-2xl font-bold text-gray-900">{pageTitle}</h1>
-                  {/* Tax Toggle Button */}
-                  <div className="flex items-center space-x-3">
-                    <span className="text-sm font-medium text-gray-700">Tax</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newTaxEnabled = !tacEnabled;
-                        setTacEnabled(newTaxEnabled);
-                        
-                        // If tax is enabled and we're in expenses mode, set payment type to Credit
-                        if (newTaxEnabled && isFromExpenses) {
-                          setNewPurchase(prev => ({ ...prev, paymentType: 'Credit' }));
-                        }
-                        
-                        console.log('Tax Toggled:', newTaxEnabled);
-                      }}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                        tacEnabled ? 'bg-blue-600' : 'bg-gray-300'
-                      }`}
-                    >
-                      <span className="sr-only">Toggle Tax</span>
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          tacEnabled ? 'translate-x-6' : 'translate-x-1'
+                  {/* Tax Toggle Button - Only for Expenses */}
+                  {isFromExpenses && (
+                    <div className="flex items-center space-x-3">
+                      <span className="text-sm font-medium text-gray-700">Tax</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newTaxEnabled = !tacEnabled;
+                          setTacEnabled(newTaxEnabled);
+                          
+                          // If tax is enabled and we're in expenses mode, set payment type to Credit
+                          if (newTaxEnabled && isFromExpenses) {
+                            setNewPurchase(prev => ({ ...prev, paymentType: 'Credit' }));
+                          }
+                          
+                          console.log('Tax Toggled:', newTaxEnabled);
+                        }}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                          tacEnabled ? 'bg-blue-600' : 'bg-gray-300'
                         }`}
-                      />
-                    </button>
-                  </div>
+                      >
+                        <span className="sr-only">Toggle Tax</span>
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            tacEnabled ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -2464,13 +2466,7 @@ export default function AddPurchasePage() {
                         Payment Type
                       </label>
                       <CustomDropdown
-                        options={isFromExpenses ? [
-                          ...(tacEnabled ? [{ value: 'Credit', label: 'Credit' }] : []),
-                          { value: 'Cash', label: 'Cash' },
-                          { value: 'Card', label: 'Card' },
-                          { value: 'UPI', label: 'UPI' },
-                          { value: 'Cheque', label: 'Cheque' }
-                        ] : [
+                        options={[
                           { value: 'Credit', label: 'Credit' },
                           { value: 'Cash', label: 'Cash' },
                           { value: 'Card', label: 'Card' },
@@ -2482,13 +2478,15 @@ export default function AddPurchasePage() {
                         className="mb-1 w-full"
                         dropdownIndex={paymentTypeDropdownIndex}
                         setDropdownIndex={setPaymentTypeDropdownIndex}
-                        optionsCount={isFromExpenses ? (tacEnabled ? 5 : 4) : 5}
+                        optionsCount={5}
                       />
                       
-                      {/* Received Amount Field for Credit Purchases */}
-                      {tacEnabled && newPurchase.paymentType === 'Credit' && (
+                      {/* Paid Amount Field for Credit Purchases/Orders */}
+                      {newPurchase.paymentType === 'Credit' && (
                         <div className="mt-3">
-                          <label className="block text-xs font-medium text-green-700 mb-1">Received Amount</label>
+                          <label className="block text-xs font-medium text-green-700 mb-1">
+                            {isFromExpenses ? 'Received Amount' : 'Paid Amount'}
+                          </label>
                           <input
                             type="number"
                             name="paid"
@@ -2499,7 +2497,7 @@ export default function AddPurchasePage() {
                             className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 ${
                               formErrors.paid ? 'border-red-300 bg-red-50 focus:ring-red-200' : 'border-green-200 focus:ring-green-200'
                             }`}
-                            placeholder={`Enter amount received (max PKR ${grandTotal.toFixed(2)})`}
+                            placeholder={`Enter ${isFromExpenses ? 'amount received' : 'amount paid'} (max PKR ${grandTotal.toFixed(2)})`}
                             onBlur={(e) => {
                               const paidAmount = Number(e.target.value);
                               if (paidAmount > grandTotal) {
@@ -2527,7 +2525,7 @@ export default function AddPurchasePage() {
                             <span>PKR {isFromExpenses ? subTotal.toFixed(2) : originalSubTotal.toFixed(2)}</span>
                           </div>
                           {/* Credit Information for Expenses */}
-                          {tacEnabled && newPurchase.paymentType === 'Credit' && newPurchase.paid && Number(newPurchase.paid) > 0 && (
+                          {newPurchase.paymentType === 'Credit' && newPurchase.paid && Number(newPurchase.paid) > 0 && (
                             <>
                               <div className="border-t border-blue-200 my-2"></div>
                               <div className="flex justify-between text-sm text-green-700">
@@ -2576,7 +2574,7 @@ export default function AddPurchasePage() {
                               <>
                                 <div className="border-t border-blue-200 my-2"></div>
                                 <div className="flex justify-between text-sm text-green-700">
-                                  <span>Amount Paid</span>
+                                  <span>{isFromExpenses ? 'Received Amount' : 'Amount Paid'}</span>
                                   <span>PKR {Number(newPurchase.paid).toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between text-sm text-red-700 font-semibold">

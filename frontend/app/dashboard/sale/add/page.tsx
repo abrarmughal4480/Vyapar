@@ -166,16 +166,16 @@ function getUnitDisplay(unit: any) {
     const base = unit.base || 'NONE';
     const secondary = unit.secondary && unit.secondary !== 'None' ? unit.secondary : null;
     
-    // Return secondary unit as default (Carton), not base unit (Box)
-    return secondary || base;
+    // Return base unit as default (Box), not secondary unit (Carton)
+    return base;
   }
   
   // Handle string format like "Piece / Packet"
   if (typeof unit === 'string') {
     if (unit.includes(' / ')) {
       const parts = unit.split(' / ');
-      // Return the second part (secondary unit) as default
-      return parts[1] || parts[0];
+      // Return the first part (base unit) as default
+      return parts[0] || 'NONE';
     }
     return unit || 'NONE';
   }
@@ -362,18 +362,12 @@ function ItemRow({
     const selectedItem = itemSuggestions.find(i => i.name === item.item);
     if (!selectedItem || !selectedItem.unit) return 'NONE';
     
-    // If the current unit is a display string, extract the base unit
-    if (item.unit && item.unit.includes(' / ')) {
-      const parts = item.unit.split(' / ');
-      return parts[0] || 'NONE';
-    }
-    
-    // If it's a single unit, return it
+    // Return the actual current unit value, not the default
     if (item.unit && item.unit !== 'NONE') {
       return item.unit;
     }
     
-    // Default to base unit from item data
+    // Only default to base unit if no unit is set
     const unit = selectedItem.unit;
     if (typeof unit === 'object' && unit.base) {
       return unit.base || 'NONE';
@@ -430,10 +424,8 @@ function ItemRow({
                 let initialPrice = selected.salePrice || 0;
                 
                 if (selected.unit && typeof selected.unit === 'object' && selected.unit.base && selected.unit.secondary) {
-                  // If the default unit is secondary unit (Carton), salePrice is already correct
-                  // If user selects base unit (Box), convert price from secondary to base
+                  // salePrice is for secondary unit (Carton), so convert to base unit (Box) since we're showing base unit
                   if (unitDisplay === selected.unit.base && selected.unit.conversionFactor) {
-                    // salePrice is for secondary unit (Carton), so convert to base unit (Box)
                     initialPrice = (selected.salePrice || 0) / selected.unit.conversionFactor;
                   }
                 }
@@ -446,7 +438,7 @@ function ItemRow({
                 if (minWholesaleQty > 0 && wholesalePrice > 0) {
                   // Apply wholesale price
                   if (unitDisplay === selected.unit?.base && selected.unit?.conversionFactor) {
-                    // Convert wholesale price to base unit if needed
+                    // Convert wholesale price to base unit since we're showing base unit
                     initialPrice = wholesalePrice / selected.unit.conversionFactor;
                   } else {
                     initialPrice = wholesalePrice;
@@ -481,10 +473,8 @@ function ItemRow({
                     let initialPrice = i.salePrice || 0;
                     
                     if (i.unit && typeof i.unit === 'object' && i.unit.base && i.unit.secondary) {
-                      // If the default unit is secondary unit (Carton), salePrice is already correct
-                      // If user selects base unit (Box), convert price from secondary to base
+                      // salePrice is for secondary unit (Carton), so convert to base unit (Box) since we're showing base unit
                       if (unitDisplay === i.unit.base && i.unit.conversionFactor) {
-                        // salePrice is for secondary unit (Carton), so convert to base unit (Box)
                         initialPrice = (i.salePrice || 0) / i.unit.conversionFactor;
                       }
                     }
@@ -497,7 +487,7 @@ function ItemRow({
                     if (minWholesaleQty > 0 && wholesalePrice > 0) {
                       // Apply wholesale price
                       if (unitDisplay === i.unit?.base && i.unit?.conversionFactor) {
-                        // Convert wholesale price to base unit if needed
+                        // Convert wholesale price to base unit since we're showing base unit
                         initialPrice = wholesalePrice / i.unit.conversionFactor;
                       } else {
                         initialPrice = wholesalePrice;
@@ -548,48 +538,38 @@ function ItemRow({
         <CustomDropdown
           options={unitOptions}
           value={getCurrentUnitValue()}
-          onChange={val => {
+                    onChange={val => {
             const selectedItem = itemSuggestions.find(i => i.name === item.item);
             if (selectedItem) {
+              // First convert quantity if it exists
               if (item.qty) {
                 const convertedQty = convertQuantity(item.qty, getCurrentUnitValue(), val, selectedItem);
                 handleItemChange(item.id, 'qty', convertedQty);
+              }
+              
+              // Now convert price based on the new unit
+              const currentPrice = parseFloat(item.price) || 0;
+              let newPrice = currentPrice;
+              
+              if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                const conversionFactor = selectedItem.unit.conversionFactor;
                 
-                                 // After converting quantity, recalculate price based on wholesale logic
-                 const newPrice = calculatePriceForQuantity(parseFloat(convertedQty) || 0, selectedItem);
-                if (val === selectedItem.unit?.base && selectedItem.unit?.conversionFactor) {
-                  // Convert wholesale price to base unit if needed
-                  const convertedWholesalePrice = (newPrice || 0) / selectedItem.unit.conversionFactor;
-                  handleItemChange(item.id, 'price', convertedWholesalePrice);
-                } else {
-                  handleItemChange(item.id, 'price', newPrice);
+                if (val === selectedItem.unit.base && getCurrentUnitValue() === selectedItem.unit.secondary) {
+                  // Converting from secondary to base (e.g., Carton to Box)
+                  // If current price is for secondary unit, convert to base unit
+                  newPrice = currentPrice / conversionFactor;
+                } else if (val === selectedItem.unit.secondary && getCurrentUnitValue() === selectedItem.unit.base) {
+                  // Converting from base to secondary (e.g., Box to Carton)
+                  // If current price is for base unit, convert to secondary unit
+                  newPrice = currentPrice * conversionFactor;
                 }
-                             } else {
-                 // If no quantity, just set the price based on wholesale logic without setting quantity
-                 const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
-                 const wholesalePrice = selectedItem.wholesalePrice || 0;
-                 
-                 if (minWholesaleQty > 0 && wholesalePrice > 0) {
-                   // If wholesale pricing is available, set the wholesale price
-                   if (val === selectedItem.unit?.base && selectedItem.unit?.conversionFactor) {
-                     // Convert wholesale price to base unit if needed
-                     const convertedWholesalePrice = wholesalePrice / selectedItem.unit.conversionFactor;
-                     handleItemChange(item.id, 'price', convertedWholesalePrice);
-                   } else {
-                     handleItemChange(item.id, 'price', wholesalePrice);
-                   }
-                 } else {
-                   // Use regular sale price
-                   if (val === selectedItem.unit?.base && selectedItem.unit?.conversionFactor) {
-                     // Convert sale price to base unit if needed
-                     const convertedSalePrice = (selectedItem.salePrice || 0) / selectedItem.unit.conversionFactor;
-                     handleItemChange(item.id, 'price', convertedSalePrice);
-                   } else {
-                     handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
-                   }
-                 }
-               }
+              }
+              
+              // Apply the new price
+              handleItemChange(item.id, 'price', newPrice);
             }
+            
+            // Update the unit
             handleItemChange(item.id, 'unit', val);
           }}
           dropdownIndex={unitDropdownIndex}

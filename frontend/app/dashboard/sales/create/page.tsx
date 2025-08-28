@@ -667,8 +667,36 @@ export default function CreateSalesOrderPage() {
                       handleItemChange(item.id, 'item', i.name);
                       const unitDisplay = getUnitDisplay(i.unit);
                       handleItemChange(item.id, 'unit', unitDisplay);
-                      handleItemChange(item.id, 'price', i.salePrice || 0);
-                      handleItemChange(item.id, 'qty', '1');
+                      
+                      // Set price based on the selected unit and wholesale logic
+                      let initialPrice = i.salePrice || 0;
+                      
+                      if (i.unit && typeof i.unit === 'object' && i.unit.base && i.unit.secondary) {
+                        // If the default unit is secondary unit (Carton), salePrice is already correct
+                        // If user selects base unit (Box), convert price from secondary to base
+                        if (unitDisplay === i.unit.base && i.unit.conversionFactor) {
+                          // salePrice is for secondary unit (Carton), so convert to base unit (Box)
+                          initialPrice = (i.salePrice || 0) / i.unit.conversionFactor;
+                        }
+                      }
+                      
+                      // Check if wholesale pricing should be applied
+                      const minWholesaleQty = i.minimumWholesaleQuantity || 0;
+                      const wholesalePrice = i.wholesalePrice || 0;
+                      
+                      // Apply wholesale price if available (but don't set quantity automatically)
+                      if (minWholesaleQty > 0 && wholesalePrice > 0) {
+                        // Apply wholesale price
+                        if (unitDisplay === i.unit?.base && i.unit?.conversionFactor) {
+                          // Convert wholesale price to base unit if needed
+                          initialPrice = wholesalePrice / i.unit.conversionFactor;
+                        } else {
+                          initialPrice = wholesalePrice;
+                        }
+                      }
+                      
+                      handleItemChange(item.id, 'price', initialPrice);
+                      handleItemChange(item.id, 'qty', 0); // Leave quantity empty
                       setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                     }}
                     ref={el => { 
@@ -702,8 +730,36 @@ export default function CreateSalesOrderPage() {
                         handleItemChange(item.id, 'item', i.name);
                         const unitDisplay = getUnitDisplay(i.unit);
                         handleItemChange(item.id, 'unit', unitDisplay);
-                        handleItemChange(item.id, 'price', i.salePrice || 0);
-                        handleItemChange(item.id, 'qty', '1');
+                        
+                        // Set price based on the selected unit and wholesale logic
+                        let initialPrice = i.salePrice || 0;
+                        
+                        if (i.unit && typeof i.unit === 'object' && i.unit.base && i.unit.secondary) {
+                          // If the default unit is secondary unit (Carton), salePrice is already correct
+                          // If user selects base unit (Box), convert price from secondary to base
+                          if (unitDisplay === i.unit.base && i.unit.conversionFactor) {
+                            // salePrice is for secondary unit (Carton), so convert to base unit (Box)
+                            initialPrice = (i.salePrice || 0) / i.unit.conversionFactor;
+                          }
+                        }
+                        
+                        // Check if wholesale pricing should be applied
+                        const minWholesaleQty = i.minimumWholesaleQuantity || 0;
+                        const wholesalePrice = i.wholesalePrice || 0;
+                        
+                        // Apply wholesale price if available (but don't set quantity automatically)
+                        if (minWholesaleQty > 0 && wholesalePrice > 0) {
+                          // Apply wholesale price
+                          if (unitDisplay === i.unit?.base && i.unit?.conversionFactor) {
+                            // Convert wholesale price to base unit if needed
+                            initialPrice = wholesalePrice / i.unit.conversionFactor;
+                          } else {
+                            initialPrice = wholesalePrice;
+                          }
+                        }
+                        
+                        handleItemChange(item.id, 'price', initialPrice);
+                        handleItemChange(item.id, 'qty', 0); // Leave quantity empty
                         setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                       }
                     }}
@@ -745,12 +801,42 @@ export default function CreateSalesOrderPage() {
               if (selectedItem) {
                 if (item.qty) {
                   const convertedQty = convertQuantity(item.qty, item.unit, val, selectedItem);
-                  handleItemChange(item.id, 'qty', convertedQty);
-                }
-                if (item.price) {
-                  const convertedPrice = convertPrice(item.price, item.unit, val, selectedItem);
-                  handleItemChange(item.id, 'price', convertedPrice);
-                }
+                  handleItemChange(item.id, 'qty', parseFloat(convertedQty) || 0);
+                  
+                  // After converting quantity, recalculate price based on wholesale logic
+                  const newPrice = calculatePriceForQuantity(parseFloat(convertedQty) || 0, selectedItem);
+                  if (val === selectedItem.unit?.base && selectedItem.unit?.conversionFactor) {
+                    // Convert wholesale price to base unit if needed
+                    const convertedWholesalePrice = (newPrice || 0) / selectedItem.unit.conversionFactor;
+                    handleItemChange(item.id, 'price', convertedWholesalePrice);
+                  } else {
+                    handleItemChange(item.id, 'price', newPrice);
+                  }
+                               } else {
+                 // If no quantity, just set the price based on wholesale logic without setting quantity
+                 const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
+                 const wholesalePrice = selectedItem.wholesalePrice || 0;
+                 
+                 if (minWholesaleQty > 0 && wholesalePrice > 0) {
+                   // If wholesale pricing is available, set the wholesale price
+                   if (val === selectedItem.unit?.base && selectedItem.unit?.conversionFactor) {
+                     // Convert wholesale price to base unit if needed
+                     const convertedWholesalePrice = wholesalePrice / selectedItem.unit.conversionFactor;
+                     handleItemChange(item.id, 'price', convertedWholesalePrice);
+                   } else {
+                     handleItemChange(item.id, 'price', wholesalePrice);
+                   }
+                 } else {
+                   // Use regular sale price
+                   if (val === selectedItem.unit?.base && selectedItem.unit?.conversionFactor) {
+                     // Convert sale price to base unit if needed
+                     const convertedSalePrice = (selectedItem.salePrice || 0) / selectedItem.unit.conversionFactor;
+                     handleItemChange(item.id, 'price', convertedSalePrice);
+                   } else {
+                     handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
+                   }
+                 }
+               }
               }
               handleItemChange(item.id, 'unit', val);
             }}
@@ -787,7 +873,7 @@ export default function CreateSalesOrderPage() {
                 const wholesalePrice = selectedItem.wholesalePrice || 0;
                 const currentPrice = parseFloat(item.price) || 0;
                 
-                if (qty >= minWholesaleQty && wholesalePrice > 0 && currentPrice === wholesalePrice) {
+                if (qty >= minWholesaleQty && wholesalePrice > 0 && Math.abs(currentPrice - wholesalePrice) < 0.01) {
                   return (
                     <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full shadow-sm">
                       Wholesale

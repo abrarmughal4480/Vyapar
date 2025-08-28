@@ -45,18 +45,6 @@ const reportTabs = [
     description: 'Financial performance overview',
     path: '/dashboard/reports/profit-and-loss'
   },
-  { 
-    id: 'cashflow', 
-    name: 'Cash Flow', 
-    description: 'Cash flow analysis',
-    path: '/dashboard/reports/cash-flow'
-  },
-  { 
-    id: 'balancesheet', 
-    name: 'Balance Sheet', 
-    description: 'Financial position summary',
-    path: '/dashboard/reports/balance-sheet'
-  },
 ];
 
 const partyReportTabs = [
@@ -71,30 +59,6 @@ const partyReportTabs = [
     name: 'Party Wise P&L',
     description: 'Profit/loss by party',
     path: '/dashboard/reports/party-wise-profit-and-loss'
-  },
-  {
-    id: 'all-parties',
-    name: 'All Parties',
-    description: 'Complete party overview',
-    path: '/dashboard/reports/all-parties'
-  },
-  {
-    id: 'party-report-by-item',
-    name: 'Party by Item',
-    description: 'Party analysis by items',
-    path: '/dashboard/reports/party-report-by-item'
-  },
-  {
-    id: 'sale-purchase-by-party',
-    name: 'Sale/Purchase by Party',
-    description: 'Transaction analysis by party',
-    path: '/dashboard/reports/sale-purchase-by-party'
-  },
-  {
-    id: 'sale-purchase-by-party-group',
-    name: 'Party Group Analysis',
-    description: 'Group-wise transaction analysis',
-    path: '/dashboard/reports/sale-purchase-by-party-group'
   },
 ];
 

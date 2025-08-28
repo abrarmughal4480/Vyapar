@@ -363,10 +363,10 @@ export const makePayment = async (req, res) => {
         const Party = (await import('../models/parties.js')).default;
         const supplierDoc = await Party.findOne({ name: purchase.supplierName, user: userId });
         if (supplierDoc) {
-          // Decrease supplier balance by the payment amount (you're paying them more money)
-          supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) - amount;
+          // Increase supplier balance by the payment amount (you're paying them, reducing debt)
+          supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + amount;
           await supplierDoc.save();
-          console.log(`Updated supplier ${purchase.supplierName} balance after payment: -${amount}`);
+          console.log(`Updated supplier ${purchase.supplierName} balance after payment: +${amount}`);
         }
       } catch (err) {
         console.error('Failed to update supplier balance after payment:', err);

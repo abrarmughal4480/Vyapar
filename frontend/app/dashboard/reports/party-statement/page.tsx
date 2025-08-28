@@ -463,35 +463,64 @@ const PartyStatementPage = () => {
       // Sort by date (newest first)
       allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+      // Debug: Log transactions for verification
+      console.log('All Transactions:', allTransactions);
+      console.log('Selected Party:', selectedParty);
+      console.log('Parties:', parties);
+
       setTransactions(allTransactions);
 
       // Calculate opening balance and current balance
       const selectedPartyData = parties.find(p => p.name === selectedParty);
-      const openingBal = selectedPartyData?.openingBalance || 0;
-      setOpeningBalance(openingBal);
-
-      // Calculate current balance
-      let currentBal = openingBal;
-      allTransactions.forEach(txn => {
-        if (txn.txnType === 'Sale Invoice') {
-          currentBal += txn.total - txn.received;
-        } else if (txn.txnType === 'Purchase Bill') {
-          currentBal -= txn.total - txn.paid;
-        } else if (txn.txnType === 'Payment In') {
-          currentBal += txn.received;
-        } else if (txn.txnType === 'Payment Out') {
-          currentBal -= txn.paid;
-        } else if (txn.txnType === 'Credit Note') {
-          currentBal += txn.balance; // Credit note reduces balance
-        } else if (txn.txnType === 'Expense') {
-          // For expenses: if it's a credit expense, it increases receivable balance
-          if (txn.paymentType === 'Credit' && txn.balance > 0) {
-            currentBal += txn.balance; // Add credit amount to receivable
+      
+      // Use currentBalance/balance as opening balance (what user wants)
+      const openingBal = selectedPartyData?.currentBalance || selectedPartyData?.balance || 0;
+      
+      // Try to get current balance from database first, fallback to calculation
+      let currentBal = selectedPartyData?.currentBalance || selectedPartyData?.balance;
+      
+      if (currentBal === undefined || currentBal === null) {
+        // Fallback: Calculate current balance manually
+        currentBal = openingBal;
+        allTransactions.forEach(txn => {
+          switch (txn.txnType) {
+            case 'Sale Invoice':
+              currentBal += txn.total - txn.received;
+              break;
+            case 'Purchase Bill':
+              currentBal -= txn.total - txn.paid;
+              break;
+            case 'Payment In':
+              currentBal += txn.received;
+              break;
+            case 'Payment Out':
+              currentBal -= txn.paid;
+              break;
+            case 'Credit Note':
+              currentBal += txn.balance;
+              break;
+            case 'Expense':
+              if (txn.paymentType === 'Credit' && txn.balance > 0) {
+                currentBal += txn.balance;
+              }
+              break;
           }
-        }
-        // Other transaction types (Quotation, Orders, Delivery Challan) don't affect running balance
-      });
+        });
+      }
+      
+      setOpeningBalance(openingBal);
       setCurrentBalance(currentBal);
+
+      // Debug: Log balance information
+      console.log('Balance Info:', {
+        partyName: selectedParty,
+        openingBalance: openingBal,
+        currentBalance: currentBal,
+        partyData: selectedPartyData,
+        calculatedBalance: currentBal,
+        hasDatabaseBalance: selectedPartyData?.currentBalance !== undefined,
+        note: 'Opening Balance now shows Current Balance from DB'
+      });
 
     } catch (error) {
       console.error('Error loading transactions:', error);
@@ -549,24 +578,40 @@ const PartyStatementPage = () => {
       switch (txn.txnType) {
         case 'Sale Invoice':
           totalSale += txn.total;
-          totalReceivable += txn.total - txn.received; // Outstanding amount
+          // For sales: outstanding amount = total - received
+          totalReceivable += txn.total - txn.received;
           break;
         case 'Purchase Bill':
           totalPurchase += txn.total;
+          // For purchases: outstanding amount = total - paid (this is what we owe)
+          totalReceivable -= txn.total - txn.paid;
           break;
         case 'Payment In':
           totalMoneyIn += txn.received;
-          totalReceivable -= txn.received; // Reduce receivable when payment received
+          // Payment received reduces receivable
+          totalReceivable -= txn.received;
           break;
         case 'Payment Out':
           totalMoneyOut += txn.paid;
+          // Payment made reduces payable (increases receivable)
+          totalReceivable += txn.paid;
+          break;
+        case 'Credit Note':
+          // Credit notes reduce receivable (they're like refunds)
+          totalReceivable += txn.balance; // balance is already negative
           break;
         case 'Expense':
           totalExpenses += txn.total;
-          // For credit expenses, add to receivable
+          // For credit expenses: add to receivable (what we're owed)
           if (txn.paymentType === 'Credit' && txn.balance > 0) {
             totalReceivable += txn.balance;
           }
+          break;
+        case 'Quotation':
+        case 'Sale Order':
+        case 'Purchase Order':
+        case 'Delivery Challan':
+          // These don't affect receivable/payable until converted to actual transactions
           break;
       }
     });
@@ -576,6 +621,17 @@ const PartyStatementPage = () => {
       if (txn.txnType === 'Sale Invoice' && txn.received > 0) {
         totalMoneyIn += txn.received;
       }
+    });
+
+    // Debug: Log summary calculations
+    console.log('Summary Totals Calculation:', {
+      totalSale,
+      totalPurchase,
+      totalMoneyIn,
+      totalMoneyOut,
+      totalReceivable,
+      totalExpenses,
+      transactionCount: filteredTransactions.length
     });
 
     return {
@@ -926,12 +982,15 @@ const PartyStatementPage = () => {
       {/* Balance Summary */}
       {selectedParty && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-          <div className="bg-gradient-to-br from-blue-100 to-blue-50 p-4 rounded-xl shadow group hover:shadow-md transition-all flex flex-col items-start">
-            <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-blue-500 text-white mb-2 text-lg">💰</div>
-            <div className="text-lg font-bold text-blue-700">
-              {formatCurrency(openingBalance)}
+          <div className="bg-gradient-to-br from-orange-100 to-orange-50 p-4 rounded-xl shadow group hover:shadow-md transition-all flex flex-col items-start">
+            <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-orange-500 text-white mb-2 text-lg">📋</div>
+            <div className={`text-lg font-bold ${summaryTotals.totalReceivable >= 0 ? 'text-orange-700' : 'text-red-700'}`}>
+              {formatCurrency(summaryTotals.totalReceivable)}
             </div>
-            <div className="text-xs text-gray-500">Opening Balance</div>
+            <div className="text-xs text-gray-500">Total Outstanding</div>
+            <div className="text-xs text-gray-400 mt-1">
+              {summaryTotals.totalReceivable >= 0 ? 'You are owed' : 'You owe'}
+            </div>
           </div>
           <div className="bg-gradient-to-br from-green-100 to-green-50 p-4 rounded-xl shadow group hover:shadow-md transition-all flex flex-col items-start">
             <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-green-500 text-white mb-2 text-lg">

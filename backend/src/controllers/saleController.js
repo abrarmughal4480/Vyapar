@@ -313,6 +313,9 @@ export const receivePayment = async (req, res) => {
       sale.discountValue = discountValue;
     }
 
+    // Calculate excess amount (if received amount is more than due balance)
+    const excessAmount = Math.max(0, amount - newBalance);
+    
     // Process payment (amount can be 0 if discount covers everything)
     if (amount > 0) {
       sale.received = (sale.received || 0) + amount;
@@ -324,18 +327,25 @@ export const receivePayment = async (req, res) => {
     
     await sale.save();
 
-    // Update party openingBalance only if there's an actual payment
-    if (amount > 0) {
-      try {
-        const Party = (await import('../models/parties.js')).default;
-        const partyDoc = await Party.findOne({ name: sale.partyName, user: sale.userId });
-        if (partyDoc) {
+    // Update party openingBalance
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      const partyDoc = await Party.findOne({ name: sale.partyName, user: sale.userId });
+      if (partyDoc) {
+        if (amount > 0) {
+          // Reduce party balance by the actual payment amount
           partyDoc.openingBalance = (partyDoc.openingBalance || 0) - amount;
-          await partyDoc.save();
         }
-      } catch (err) {
-        console.error('Failed to update party openingBalance on payment:', err);
+        
+        // If there's excess amount, add it as opening balance (credit for future)
+        if (excessAmount > 0) {
+          partyDoc.openingBalance = (partyDoc.openingBalance || 0) + excessAmount;
+        }
+        
+        await partyDoc.save();
       }
+    } catch (err) {
+      console.error('Failed to update party openingBalance on payment:', err);
     }
 
     res.json({ 
@@ -345,7 +355,9 @@ export const receivePayment = async (req, res) => {
       discountValue,
       newGrandTotal,
       newBalance: sale.balance,
-      paymentProcessed: amount > 0
+      paymentProcessed: amount > 0,
+      excessAmount: excessAmount > 0 ? excessAmount : 0,
+      openingBalanceSet: excessAmount > 0
     });
     
     // Only clear cache if user context exists
@@ -375,8 +387,44 @@ export const receivePartyPayment = async (req, res) => {
       balance: { $gt: 0 } 
     }).sort({ createdAt: 1 });
 
-    if (sales.length === 0) {
-      return res.status(404).json({ success: false, message: 'No outstanding sales found for this party' });
+    // Allow payments even when no outstanding sales (for setting opening balance)
+    if (sales.length === 0 && amount > 0) {
+      // If no outstanding sales but amount > 0, this is setting opening balance
+      try {
+        const Party = (await import('../models/parties.js')).default;
+        const partyDoc = await Party.findOne({ name: partyName, user: userId });
+        if (partyDoc) {
+          // Add amount as opening balance (credit for future)
+          partyDoc.openingBalance = (partyDoc.openingBalance || 0) + amount;
+          await partyDoc.save();
+        }
+        
+        res.json({ 
+          success: true, 
+          message: `Opening balance set for ${partyName}`,
+          updatedSales: 0,
+          remainingAmount: 0,
+          discountApplied: false,
+          discountValue: 0,
+          totalDiscountApplied: 0,
+          newTotalGrandTotal: 0,
+          newTotalOutstandingBalance: 0,
+          paymentProcessed: false,
+          excessAmount: amount,
+          openingBalanceSet: true
+        });
+        
+        clearAllCacheForUser(userId);
+        return;
+      } catch (err) {
+        console.error('Failed to set opening balance:', err);
+        return res.status(500).json({ success: false, message: 'Failed to set opening balance' });
+      }
+    } else if (sales.length === 0 && amount === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No outstanding sales found' 
+      });
     }
 
     // Calculate total outstanding balance for all sales
@@ -400,6 +448,9 @@ export const receivePartyPayment = async (req, res) => {
       newTotalOutstandingBalance = Math.max(0, totalOutstandingBalance - discountValue);
       newTotalGrandTotal = Math.max(0, totalGrandTotal - discountValue);
     }
+
+    // Calculate excess amount (if received amount is more than due balance after discount)
+    const excessAmount = Math.max(0, amount - newTotalOutstandingBalance);
 
     let remainingAmount = amount;
     const updatedSales = [];
@@ -439,23 +490,30 @@ export const receivePartyPayment = async (req, res) => {
       updatedSales.push(sale);
     }
 
-    // Update party openingBalance only if there's an actual payment
-    if (amount > 0) {
-      try {
-        const Party = (await import('../models/parties.js')).default;
-        const partyDoc = await Party.findOne({ name: partyName, user: userId });
-        if (partyDoc) {
+    // Update party openingBalance
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      const partyDoc = await Party.findOne({ name: partyName, user: userId });
+      if (partyDoc) {
+        if (amount > 0) {
+          // Reduce party balance by the actual payment amount
           partyDoc.openingBalance = (partyDoc.openingBalance || 0) - amount;
-          await partyDoc.save();
         }
-      } catch (err) {
-        console.error('Failed to update party openingBalance on payment:', err);
+        
+        // If there's excess amount, add it as opening balance (credit for future)
+        if (excessAmount > 0) {
+          partyDoc.openingBalance = (partyDoc.openingBalance || 0) + excessAmount;
+        }
+        
+        await partyDoc.save();
       }
+    } catch (err) {
+      console.error('Failed to update party openingBalance on payment:', err);
     }
 
     res.json({ 
       success: true, 
-      message: amount > 0 ? `Payment of PKR ${amount} processed successfully` : 'Discount applied successfully',
+      message: amount > 0 ? `Payment processed successfully` : 'Discount applied successfully',
       updatedSales: updatedSales.length,
       remainingAmount: remainingAmount > 0 ? remainingAmount : 0,
       discountApplied: discountValue > 0,
@@ -463,7 +521,9 @@ export const receivePartyPayment = async (req, res) => {
       totalDiscountApplied,
       newTotalGrandTotal,
       newTotalOutstandingBalance,
-      paymentProcessed: amount > 0
+      paymentProcessed: amount > 0,
+      excessAmount: excessAmount > 0 ? excessAmount : 0,
+      openingBalanceSet: excessAmount > 0
     });
     
     // Only clear cache if user context exists

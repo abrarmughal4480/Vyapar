@@ -36,13 +36,16 @@ export const createPaymentOut = async (req, res) => {
     const currentBalance = purchase.balance || 0;
     const currentPaid = purchase.paid || 0;
     
-    // Check if payment amount exceeds remaining balance
-    if (amount > currentBalance) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Payment amount (${amount}) cannot exceed remaining balance (${currentBalance})` 
-      });
-    }
+    // Calculate excess amount (if paid amount is more than remaining balance)
+    const excessAmount = Math.max(0, amount - currentBalance);
+    
+    // Remove validation to allow excess payments
+    // if (amount > currentBalance) {
+    //   return res.status(400).json({ 
+    //     success: false, 
+    //     message: `Payment amount (${amount}) cannot exceed remaining balance (${currentBalance})` 
+    //   });
+    // }
     
     // Update purchase payment and balance
     purchase.paid = currentPaid + amount;
@@ -76,6 +79,11 @@ export const createPaymentOut = async (req, res) => {
         const supplierCurrentBalance = supplierDoc.openingBalance || 0;
         supplierDoc.openingBalance = supplierCurrentBalance + amount;
         
+        // If there's excess amount, add it as opening balance (credit for future)
+        if (excessAmount > 0) {
+          supplierDoc.openingBalance = supplierDoc.openingBalance + excessAmount;
+        }
+        
         // Calculate and update partyBalanceAfterTransaction for payment out
         const partyBalanceAfterTransaction = supplierDoc.openingBalance;
         paymentOut.partyBalanceAfterTransaction = partyBalanceAfterTransaction;
@@ -91,7 +99,13 @@ export const createPaymentOut = async (req, res) => {
     console.log(`Payment out processed for purchase ${purchaseId}: Amount=${amount}, New Paid=${purchase.paid}, New Balance=${purchase.balance}`);
     console.log('Payment out record saved:', paymentOut.toObject());
     
-    res.status(201).json({ success: true, paymentOut, purchase });
+    res.status(201).json({ 
+      success: true, 
+      paymentOut, 
+      purchase,
+      excessAmount: excessAmount > 0 ? excessAmount : 0,
+      openingBalanceSet: excessAmount > 0
+    });
     clearAllCacheForUser(userId);
   } catch (err) {
     console.error('Payment out creation error:', err);
@@ -311,8 +325,44 @@ export const makeBulkPaymentToParty = async (req, res) => {
       balance: { $gt: 0 }
     }).sort({ createdAt: 1 }); // Pay older purchases first
     
-    if (purchases.length === 0) {
-      return res.status(404).json({ success: false, message: 'No outstanding purchases found for this supplier' });
+    // Allow payments even when no outstanding purchases (for setting opening balance)
+    if (purchases.length === 0 && amount > 0) {
+      // If no outstanding purchases but amount > 0, this is setting opening balance
+      try {
+        const Party = (await import('../models/parties.js')).default;
+        const supplierDoc = await Party.findOne({ name: supplierName, user: userId });
+        if (supplierDoc) {
+          // Add amount as opening balance (credit for future)
+          supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + amount;
+          await supplierDoc.save();
+        }
+        
+        res.json({ 
+          success: true, 
+          message: `Opening balance set for ${supplierName}`,
+          updatedPurchases: 0,
+          remainingAmount: 0,
+          discountApplied: false,
+          discountValue: 0,
+          totalDiscountApplied: 0,
+          newTotalGrandTotal: 0,
+          newTotalDueBalance: 0,
+          paymentProcessed: false,
+          excessAmount: amount,
+          openingBalanceSet: true
+        });
+        
+        clearAllCacheForUser(userId);
+        return;
+      } catch (err) {
+        console.error('Failed to set opening balance:', err);
+        return res.status(500).json({ success: false, message: 'Failed to set opening balance' });
+      }
+    } else if (purchases.length === 0 && amount === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No outstanding purchases found' 
+      });
     }
     
     // Calculate total due balance
@@ -337,19 +387,22 @@ export const makeBulkPaymentToParty = async (req, res) => {
       newTotalGrandTotal = Math.max(0, totalGrandTotal - discountValue);
     }
     
-    // Validate payment amount after discount
-    if (amount > 0 && amount > newTotalDueBalance) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Payment amount (${amount}) cannot exceed total due balance (${newTotalDueBalance})` 
-      });
-    }
+    // Calculate excess amount (if paid amount is more than due balance after discount)
+    const excessAmount = Math.max(0, amount - newTotalDueBalance);
+    
+    // Remove validation to allow excess payments
+    // if (amount > 0 && amount > newTotalDueBalance) {
+    //   return res.status(400).json({ 
+    //     success: false, 
+    //     message: `Payment amount (${amount}) cannot exceed total due balance (${newTotalDueBalance})` 
+    //   });
+    // }
     
     // If amount is 0, ensure there's a discount applied
     if (amount === 0 && (!discount || discount <= 0)) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Payment amount cannot be 0 unless a discount is applied' 
+        message: 'Payment amount cannot be 0 without discount' 
       });
     }
     
@@ -425,22 +478,29 @@ export const makeBulkPaymentToParty = async (req, res) => {
       }
     }
     
-    // Update supplier openingBalance only if there's an actual payment
-    if (amount > 0) {
-      try {
-        const Party = (await import('../models/parties.js')).default;
-        const supplierDoc = await Party.findOne({ name: supplierName, user: userId });
-        if (supplierDoc) {
+    // Update supplier openingBalance
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      const supplierDoc = await Party.findOne({ name: supplierName, user: userId });
+      if (supplierDoc) {
+        if (amount > 0) {
+          // Add payment amount to supplier balance
           supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + amount;
-          await supplierDoc.save();
         }
-      } catch (err) {
-        console.error('Failed to update supplier balance after payment:', err);
+        
+        // If there's excess amount, add it as opening balance (credit for future)
+        if (excessAmount > 0) {
+          supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + excessAmount;
+        }
+        
+        await supplierDoc.save();
       }
+    } catch (err) {
+      console.error('Failed to update supplier balance after payment:', err);
     }
     
     const message = amount > 0 
-      ? `Payment of PKR ${amount} processed successfully` 
+      ? `Payment processed successfully` 
       : 'Discount applied successfully';
     
     res.json({ 
@@ -453,7 +513,9 @@ export const makeBulkPaymentToParty = async (req, res) => {
       totalDiscountApplied,
       newTotalGrandTotal,
       newTotalDueBalance,
-      paymentProcessed: amount > 0
+      paymentProcessed: amount > 0,
+      excessAmount: excessAmount > 0 ? excessAmount : 0,
+      openingBalanceSet: excessAmount > 0
     });
     
     clearAllCacheForUser(userId);

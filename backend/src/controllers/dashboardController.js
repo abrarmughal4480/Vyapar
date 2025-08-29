@@ -408,10 +408,14 @@ export const getDashboardStats = async (req, res) => {
     // Cache the result
     dashboardCache.set(cacheKey, {
       data: result,
+      timestamp: new Date().toISOString(),
+      userId: userId
     });
 
     // Also invalidate party balances cache to ensure consistency
     _invalidateSpecificCache(userId, 'party_balances');
+
+    console.log(`📊 Dashboard stats cached for user: ${userId}, cache key: ${cacheKey}`);
 
     res.json(result);
   } catch (err) {
@@ -901,6 +905,17 @@ export const invalidateAllDashboardCaches = (userId) => {
   _invalidateSpecificCache(userId, 'party_balances');
   _invalidateSpecificCache(userId, 'receivables');
   _invalidateSpecificCache(userId, 'payables');
+  
+  // Also clear any other cache keys that might exist for this user
+  if (global.dashboardCache) {
+    const allKeys = Array.from(global.dashboardCache.keys());
+    const userKeys = allKeys.filter(key => key.includes(userId.toString()));
+    userKeys.forEach(key => {
+      global.dashboardCache.delete(key);
+      console.log(`Additional dashboard cache cleared: ${key}`);
+    });
+  }
+  
   console.log(`All dashboard caches invalidated for user: ${userId}`);
 };
 
@@ -918,10 +933,23 @@ export const clearAllCacheForUser = (userId) => {
     itemsCacheKeys.forEach(key => global.itemsCache.delete(key));
   }
   
-  // Clear dashboard cache
+  // Clear dashboard cache - IMPORTANT: Clear ALL dashboard cache keys for this user
   if (global.dashboardCache) {
     const dashboardCacheKeys = Array.from(global.dashboardCache.keys()).filter(key => key.startsWith(`dashboard_${userId}`));
-    dashboardCacheKeys.forEach(key => global.dashboardCache.delete(key));
+    dashboardCacheKeys.forEach(key => {
+      global.dashboardCache.delete(key);
+      console.log(`Dashboard cache cleared: ${key}`);
+    });
+  }
+  
+  // Also clear any other cache keys that might exist
+  if (global.dashboardCache) {
+    const allKeys = Array.from(global.dashboardCache.keys());
+    const userKeys = allKeys.filter(key => key.includes(userId.toString()));
+    userKeys.forEach(key => {
+      global.dashboardCache.delete(key);
+      console.log(`Additional cache cleared: ${key}`);
+    });
   }
   
   console.log(`All cache cleared for user: ${userId}`);
@@ -940,6 +968,132 @@ export const getDashboardPerformanceStats = async (req, res) => {
     return res.json({ success: true, data: stats });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to get performance stats', error: err.message });
+  }
+};
+
+// Force refresh dashboard data by clearing cache and fetching fresh data
+export const forceRefreshDashboard = async (req, res) => {
+  try {
+    const userId = req.user && (req.user._id || req.user.id);
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    
+    console.log(`🔄 Force refreshing dashboard for user: ${userId}`);
+    
+    // Clear all dashboard cache for this user
+    if (global.dashboardCache) {
+      const allKeys = Array.from(global.dashboardCache.keys());
+      const userKeys = allKeys.filter(key => key.includes(userId.toString()));
+      userKeys.forEach(key => {
+        global.dashboardCache.delete(key);
+        console.log(`Cache cleared: ${key}`);
+      });
+    }
+    
+    // Now fetch fresh data by calling the main dashboard function
+    // We'll simulate the request to get fresh data
+    const freshData = await getDashboardStats(req, res);
+    
+    console.log(`✅ Dashboard force refreshed for user: ${userId}`);
+    
+    return res.json({ success: true, message: 'Dashboard refreshed successfully' });
+  } catch (err) {
+    console.error('Error force refreshing dashboard:', err);
+    return res.status(500).json({ success: false, message: 'Failed to refresh dashboard', error: err.message });
+  }
+};
+
+// Manual cache clearing function for testing/debugging
+export const clearUserCache = async (req, res) => {
+  try {
+    const userId = req.user && (req.user._id || req.user.id);
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    
+    console.log(`🧹 Manually clearing cache for user: ${userId}`);
+    
+    // Clear all cache types for this user
+    clearAllCacheForUser(userId);
+    
+    return res.json({ 
+      success: true, 
+      message: 'Cache cleared successfully',
+      userId: userId,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error clearing user cache:', err);
+    return res.status(500).json({ success: false, message: 'Failed to clear cache', error: err.message });
+  }
+};
+
+// Debug function to check what's in the cache
+export const debugCache = async (req, res) => {
+  try {
+    const userId = req.user && (req.user._id || req.user.id);
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    
+    const cacheInfo = {
+      totalCacheSize: dashboardCache.size,
+      userCacheKeys: [],
+      allCacheKeys: Array.from(dashboardCache.keys()),
+      timestamp: new Date().toISOString()
+    };
+    
+    // Find all cache keys for this user
+    if (global.dashboardCache) {
+      const allKeys = Array.from(global.dashboardCache.keys());
+      cacheInfo.userCacheKeys = allKeys.filter(key => key.includes(userId.toString()));
+      
+      // Get cache values for this user
+      cacheInfo.userCacheData = {};
+      cacheInfo.userCacheKeys.forEach(key => {
+        const cached = global.dashboardCache.get(key);
+        cacheInfo.userCacheData[key] = {
+          hasData: !!cached,
+          timestamp: cached?.timestamp || 'N/A',
+          userId: cached?.userId || 'N/A'
+        };
+      });
+    }
+    
+    return res.json({ 
+      success: true, 
+      message: 'Cache debug info',
+      userId: userId,
+      cacheInfo: cacheInfo
+    });
+  } catch (err) {
+    console.error('Error debugging cache:', err);
+    return res.status(500).json({ success: false, message: 'Failed to debug cache', error: err.message });
+  }
+};
+
+// Force refresh specific cache type
+export const refreshSpecificCache = async (req, res) => {
+  try {
+    const userId = req.user && (req.user._id || req.user.id);
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    
+    const { cacheType } = req.params; // e.g., 'stats', 'party_balances', 'receivables', 'payables'
+    
+    if (!cacheType) {
+      return res.status(400).json({ success: false, message: 'Cache type is required' });
+    }
+    
+    console.log(`🔄 Refreshing specific cache: ${cacheType} for user: ${userId}`);
+    
+    // Clear specific cache
+    _invalidateSpecificCache(userId, cacheType);
+    
+    return res.json({ 
+      success: true, 
+      message: `Cache ${cacheType} refreshed successfully`,
+      userId: userId,
+      cacheType: cacheType,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error refreshing specific cache:', err);
+    return res.status(500).json({ success: false, message: 'Failed to refresh cache', error: err.message });
   }
 };
 

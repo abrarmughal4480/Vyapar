@@ -268,24 +268,38 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
     const amount = parseFloat(paidAmount) || 0;
     const discountAmount = parseFloat(discount) || 0;
     
+    // Calculate the actual due balance after discount
+    let actualDueBalance = selectedParty ? partyDueBalance : dueBalance;
+    if (discountAmount > 0) {
+      if (discountType === 'percentage') {
+        const discountInPkr = actualDueBalance * discountAmount / 100;
+        actualDueBalance = Math.max(0, actualDueBalance - discountInPkr);
+      } else {
+        actualDueBalance = Math.max(0, actualDueBalance - discountAmount);
+      }
+    }
+    
     // If discount reduces balance to 0, set received amount to 0
     let finalPaidAmount = amount;
     if (discountAmount > 0) {
       if (discountType === 'percentage') {
-        const discountInPkr = (selectedParty ? partyDueBalance : dueBalance) * discountAmount / 100;
-        if (discountInPkr >= (selectedParty ? partyDueBalance : dueBalance)) {
+        const discountInPkr = actualDueBalance * discountAmount / 100;
+        if (discountInPkr >= actualDueBalance) {
           finalPaidAmount = 0; // Discount covers entire balance
         } else {
           finalPaidAmount = Math.max(0, amount - discountInPkr);
         }
       } else {
-        if (discountAmount >= (selectedParty ? partyDueBalance : dueBalance)) {
+        if (discountAmount >= actualDueBalance) {
           finalPaidAmount = 0; // Discount covers entire balance
         } else {
           finalPaidAmount = Math.max(0, amount - discountAmount);
         }
       }
     }
+    
+    // Calculate excess amount (if paid amount is more than due balance)
+    const excessAmount = Math.max(0, finalPaidAmount - actualDueBalance);
     
     // Allow 0 amount if discount covers everything, otherwise require positive amount
     if (finalPaidAmount < 0 || (finalPaidAmount === 0 && discountAmount === 0)) {
@@ -301,11 +315,6 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
           currentBalance - (currentBalance * discountAmount / 100) : 
           currentBalance - discountAmount) : 
         currentBalance;
-      
-      if (finalPaidAmount > Math.max(0, balanceAfterDiscount)) {
-        setToast({ message: `Payment amount cannot exceed party due balance of PKR ${Math.max(0, balanceAfterDiscount).toLocaleString()}`, type: 'error' });
-        return;
-      }
     }
     
     try {
@@ -328,11 +337,17 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
         if (result && result.success) {
           let message = result.message || 'Bulk payment successful!';
           if (discountAmount > 0) {
-            message += ` with ${discountType === 'percentage' ? discountAmount + '%' : 'PKR ' + discountAmount} discount`;
+            message += ` (${discountType === 'percentage' ? discountAmount + '%' : 'PKR ' + discountAmount} discount)`;
           }
           if (finalPaidAmount === 0) {
             message += ' - Full amount covered by discount';
           }
+          
+          // Add message about excess amount being set as opening balance
+          if (excessAmount > 0) {
+            message += ` - PKR ${excessAmount.toLocaleString()} set as credit`;
+          }
+          
           setToast({ message, type: 'success' });
           // Refresh party totals after payment
           await fetchPartyTotals(selectedParty.name);
@@ -347,11 +362,12 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
             discountType,
             image,
             bulkPayment: true,
-            updatedPurchases: result.updatedPurchases
+            updatedPurchases: result.updatedPurchases,
+            excessAmount: excessAmount > 0 ? excessAmount : undefined
           });
           onClose();
         } else {
-          setToast({ message: result?.message || 'Failed to make bulk payment', type: 'error' });
+          setToast({ message: result?.message || 'Bulk payment failed', type: 'error' });
         }
       } else if (purchaseId) {
         // OLD: Individual purchase payment
@@ -369,11 +385,12 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
         if (result && result.success) {
           let message = 'Payment successful!';
           if (discountAmount > 0) {
-            message += ` with ${discountType === 'percentage' ? discountAmount + '%' : 'PKR ' + discountAmount} discount`;
+            message += ` (${discountType === 'percentage' ? discountAmount + '%' : 'PKR ' + discountAmount} discount)`;
           }
-          if (finalPaidAmount === 0) {
-            message += ' - Full amount covered by discount';
+          if (excessAmount > 0) {
+            message += ` - PKR ${excessAmount.toLocaleString()} set as credit`;
           }
+          
           setToast({ message, type: 'success' });
           if (onSave) onSave({ 
             partyName: selectedParty?.name || '', 
@@ -384,18 +401,19 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
             paidAmount: finalPaidAmount, 
             discount: discountAmount,
             discountType,
-            image 
+            image,
+            excessAmount: excessAmount > 0 ? excessAmount : undefined
           });
           onClose();
         } else {
-          setToast({ message: result?.message || 'Failed to make payment', type: 'error' });
+          setToast({ message: result?.message || 'Payment failed', type: 'error' });
         }
       } else {
-        setToast({ message: 'Please select a party to make payment', type: 'error' });
+        setToast({ message: 'Please select a party', type: 'error' });
       }
     } catch (err: any) {
       console.error('Payment error:', err);
-      setToast({ message: err?.message || 'Failed to make payment', type: 'error' });
+      setToast({ message: err?.message || 'Payment failed', type: 'error' });
     }
   };
 
@@ -564,6 +582,26 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
                 <div style={{ fontSize: 28, fontWeight: 800, color: '#2563eb', marginBottom: 18 }}>PKR {(selectedParty ? partyTotal : total).toLocaleString()}</div>
                 <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>Party Due Balance</div>
                 <div style={{ fontSize: 22, fontWeight: 700, color: '#ea580c' }}>PKR {(selectedParty ? partyDueBalance : dueBalance).toLocaleString()}</div>
+                
+                {/* Show message when no due balance */}
+                {(selectedParty ? partyDueBalance : dueBalance) === 0 && (
+                  <div style={{ 
+                    marginTop: 16, 
+                    padding: 12, 
+                    background: '#f0f9ff', 
+                    border: '1px solid #0ea5e9', 
+                    borderRadius: 8, 
+                    fontSize: 13, 
+                    color: '#0369a1',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                  }}>
+                    <span>💡</span>
+                    <span>No outstanding balance. You can still make payments to set credit.</span>
+                  </div>
+                )}
+                
                 {showDiscount && discount && parseFloat(discount) > 0 && (
                   <>
                     <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px', marginTop: 18 }}>After Discount</div>
@@ -625,6 +663,43 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
               <div>
                 <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Paid Amount</label>
                 <input type="number" value={paidAmount} onChange={e => setPaidAmount(e.target.value)} style={{ width: '100%', padding: 12, border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#334155', fontSize: 15, fontWeight: 500 }} placeholder="Enter amount paid" />
+                {/* Show excess amount indicator */}
+                {paidAmount && parseFloat(paidAmount) > 0 && (() => {
+                  const amount = parseFloat(paidAmount) || 0;
+                  const discountAmount = parseFloat(discount) || 0;
+                  let actualDueBalance = selectedParty ? partyDueBalance : dueBalance;
+                  
+                  if (discountAmount > 0) {
+                    if (discountType === 'percentage') {
+                      const discountInPkr = actualDueBalance * discountAmount / 100;
+                      actualDueBalance = Math.max(0, actualDueBalance - discountInPkr);
+                    } else {
+                      actualDueBalance = Math.max(0, actualDueBalance - discountAmount);
+                    }
+                  }
+                  
+                  const excess = Math.max(0, amount - actualDueBalance);
+                  if (excess > 0) {
+                    return (
+                      <div style={{ 
+                        marginTop: 8, 
+                        padding: 8, 
+                        background: '#fef3c7', 
+                        border: '1px solid #f59e0b', 
+                        borderRadius: 6, 
+                        fontSize: 13, 
+                        color: '#92400e',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6
+                      }}>
+                        <span>💰</span>
+                        <span>Excess amount of <strong>PKR {excess.toLocaleString()}</strong> will be set as credit</span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             </div>
           </div>

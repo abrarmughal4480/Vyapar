@@ -273,20 +273,34 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
     const discountAmount = parseFloat(discount) || 0;
     const token = (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
     
+    // Calculate the actual due balance after discount
+    let actualDueBalance = selectedParty ? partyTotalDue : dueBalance;
+    if (discountAmount > 0) {
+      if (discountType === 'percentage') {
+        const discountInPkr = actualDueBalance * discountAmount / 100;
+        actualDueBalance = Math.max(0, actualDueBalance - discountInPkr);
+      } else {
+        actualDueBalance = Math.max(0, actualDueBalance - discountAmount);
+      }
+    }
+    
     // If discount reduces balance to 0, set received amount to 0
     let finalReceivedAmount = amount;
     if (discountAmount > 0) {
       if (discountType === 'percentage') {
-        const discountInPkr = (selectedParty ? partyTotalDue : dueBalance) * discountAmount / 100;
-        if (discountInPkr >= (selectedParty ? partyTotalDue : dueBalance)) {
+        const discountInPkr = actualDueBalance * discountAmount / 100;
+        if (discountInPkr >= actualDueBalance) {
           finalReceivedAmount = 0; // Discount covers entire balance
         }
       } else {
-        if (discountAmount >= (selectedParty ? partyTotalDue : dueBalance)) {
+        if (discountAmount >= actualDueBalance) {
           finalReceivedAmount = 0; // Discount covers entire balance
         }
       }
     }
+    
+    // Calculate excess amount (if received amount is more than due balance)
+    const excessAmount = Math.max(0, finalReceivedAmount - actualDueBalance);
     
     try {
       let result;
@@ -325,34 +339,44 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
           receivedAmount: finalReceivedAmount, 
           discount: discountAmount,
           discountType,
-          image 
+          image,
+          excessAmount: excessAmount > 0 ? excessAmount : undefined
         });
         onClose();
         
         // Show success message with details
+        let message = '';
         if (selectedParty && result.updatedSales) {
-          let message = `Payment received! Updated ${result.updatedSales} sale(s)`;
+          message = `Payment received! (${result.updatedSales} sales)`;
           if (result.discountApplied) {
-            message += ` with ${result.discountType === '%' ? result.discountValue + '%' : 'PKR ' + result.discountValue} discount`;
+            message += ` (${result.discountType === '%' ? result.discountValue + '%' : 'PKR ' + result.discountValue} discount)`;
           }
           if (finalReceivedAmount === 0) {
             message += ' - Full amount covered by discount';
           }
-          setToast({ 
-            message, 
-            type: 'success' 
-          });
         } else if (finalReceivedAmount === 0) {
-          setToast({ 
-            message: 'Full amount covered by discount - No payment needed', 
-            type: 'success' 
-          });
+          message = 'Discount applied - No payment needed';
+        } else {
+          message = 'Payment received!';
+          if (discountAmount > 0) {
+            message += ` (${discountType === 'percentage' ? discountAmount + '%' : 'PKR ' + discountAmount} discount)`;
+          }
         }
+        
+        // Add message about excess amount being set as opening balance
+        if (excessAmount > 0) {
+          message += ` - PKR ${excessAmount.toLocaleString()} set as credit`;
+        }
+        
+        setToast({ 
+          message, 
+          type: 'success' 
+        });
       } else {
-        setToast({ message: result?.message || 'Failed to receive payment', type: 'error' });
+        setToast({ message: result?.message || 'Payment failed', type: 'error' });
       }
     } catch (err: any) {
-      setToast({ message: err?.message || 'Failed to receive payment', type: 'error' });
+      setToast({ message: err?.message || 'Payment failed', type: 'error' });
     }
   };
 
@@ -525,6 +549,25 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
                   </div>
                 )}
               </div>
+              
+              {/* Show message when no due balance */}
+              {(selectedParty ? partyTotalDue : dueBalance) === 0 && (
+                <div style={{ 
+                  marginTop: 16, 
+                  padding: 12, 
+                  background: '#f0f9ff', 
+                  border: '1px solid #0ea5e9', 
+                  borderRadius: 8, 
+                  fontSize: 13, 
+                  color: '#0369a1',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }}>
+                  <span>💡</span>
+                                      <span>No outstanding balance. You can still make payments to set credit.</span>
+                </div>
+              )}
             </div>
             {showDiscount && (
               <div>
@@ -569,6 +612,43 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
             <div>
               <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Received Amount</label>
               <input type="number" value={receivedAmount} onChange={e => setReceivedAmount(e.target.value)} style={{ width: '100%', padding: 12, border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#334155', fontSize: 15, fontWeight: 500 }} placeholder="Enter amount received" />
+              {/* Show excess amount indicator */}
+              {receivedAmount && parseFloat(receivedAmount) > 0 && (() => {
+                const amount = parseFloat(receivedAmount) || 0;
+                const discountAmount = parseFloat(discount) || 0;
+                let actualDueBalance = selectedParty ? partyTotalDue : dueBalance;
+                
+                if (discountAmount > 0) {
+                  if (discountType === 'percentage') {
+                    const discountInPkr = actualDueBalance * discountAmount / 100;
+                    actualDueBalance = Math.max(0, actualDueBalance - discountInPkr);
+                  } else {
+                    actualDueBalance = Math.max(0, actualDueBalance - discountAmount);
+                  }
+                }
+                
+                const excess = Math.max(0, amount - actualDueBalance);
+                if (excess > 0) {
+                  return (
+                    <div style={{ 
+                      marginTop: 8, 
+                      padding: 8, 
+                      background: '#fef3c7', 
+                      border: '1px solid #f59e0b', 
+                      borderRadius: 6, 
+                      fontSize: 13, 
+                      color: '#92400e',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}>
+                      <span>💰</span>
+                                              <span>Excess amount of <strong>PKR {excess.toLocaleString()}</strong> will be set as credit</span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
           </div>
         </div>

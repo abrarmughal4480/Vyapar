@@ -282,16 +282,8 @@ function ItemRow({
                   }
                 }
                 
-                const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
-                const wholesalePrice = selectedItem.wholesalePrice || 0;
-                
-                if (minWholesaleQty > 0 && wholesalePrice > 0) {
-                  if (unitDisplay === selectedItem.unit?.base) {
-                    initialPrice = wholesalePrice;
-                  } else if (unitDisplay === selectedItem.unit?.secondary) {
-                    initialPrice = wholesalePrice * selectedItem.unit.conversionFactor;
-                  }
-                }
+                // Don't apply wholesale price immediately - only when quantity meets minimum requirement
+                // The wholesale price will be applied when quantity changes via calculatePriceForQuantity function
                 
                 handleItemChange(index, 'price', initialPrice.toString());
                 handleItemChange(index, 'qty', '1');
@@ -341,16 +333,8 @@ function ItemRow({
                         }
                       }
                       
-                      const minWholesaleQty = i.minimumWholesaleQuantity || 0;
-                      const wholesalePrice = i.wholesalePrice || 0;
-                      
-                      if (minWholesaleQty > 0 && wholesalePrice > 0) {
-                        if (unitDisplay === i.unit?.base) {
-                          initialPrice = wholesalePrice;
-                        } else if (unitDisplay === i.unit?.secondary) {
-                          initialPrice = wholesalePrice * i.unit.conversionFactor;
-                        }
-                      }
+                      // Don't apply wholesale price immediately - only when quantity meets minimum requirement
+                      // The wholesale price will be applied when quantity changes via calculatePriceForQuantity function
                       
                       handleItemChange(index, 'price', initialPrice.toString());
                       handleItemChange(index, 'qty', '1');
@@ -471,29 +455,48 @@ function ItemRow({
           onChange={val => {
             const selectedItem = itemSuggestions.find(i => i.name === item.item);
             if (selectedItem) {
+              // Don't convert quantity - keep it the same
+              // Only update price based on the new unit and current quantity
               if (item.qty) {
-                const newPrice = calculatePriceForQuantity(parseFloat(item.qty) || 0, selectedItem);
-                
-                if (val === selectedItem.unit?.base) {
-                  if (newPrice > 0) {
-                    handleItemChange(index, 'price', newPrice.toString());
-                  } else {
-                    handleItemChange(index, 'price', (selectedItem.salePrice || 0).toString());
+                // Convert current quantity to base unit for wholesale check
+                let convertedQty = parseFloat(item.qty) || 0;
+                if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                  if (val === selectedItem.unit.secondary) {
+                    convertedQty = convertedQty * selectedItem.unit.conversionFactor;
                   }
-                } else if (val === selectedItem.unit?.secondary) {
-                  if (newPrice > 0) {
-                    handleItemChange(index, 'price', (newPrice * (selectedItem.unit?.conversionFactor || 1)).toString());
+                }
+                
+                const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
+                const wholesalePrice = selectedItem.wholesalePrice || 0;
+                
+                let finalPrice;
+                if (convertedQty >= minWholesaleQty && wholesalePrice > 0) {
+                  // Apply wholesale pricing
+                  if (val === selectedItem.unit?.base) {
+                    finalPrice = wholesalePrice;
+                  } else if (val === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                    finalPrice = wholesalePrice * selectedItem.unit.conversionFactor;
                   } else {
-                    handleItemChange(index, 'price', ((selectedItem.salePrice || 0) * (selectedItem.unit?.conversionFactor || 1)).toString());
+                    finalPrice = wholesalePrice;
                   }
                 } else {
-                  handleItemChange(index, 'price', newPrice.toString());
+                  // Apply regular sale pricing
+                  if (val === selectedItem.unit?.base) {
+                    finalPrice = selectedItem.salePrice || 0;
+                  } else if (val === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                    finalPrice = (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor;
+                  } else {
+                    finalPrice = selectedItem.salePrice || 0;
+                  }
                 }
+                
+                handleItemChange(index, 'price', finalPrice.toString());
               } else {
+                // If no quantity, just set the sale price converted to appropriate unit
                 if (val === selectedItem.unit?.base) {
                   handleItemChange(index, 'price', (selectedItem.salePrice || 0).toString());
-                } else if (val === selectedItem.unit?.secondary) {
-                  handleItemChange(index, 'price', ((selectedItem.salePrice || 0) * (selectedItem.unit?.conversionFactor || 1)).toString());
+                } else if (val === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                  handleItemChange(index, 'price', ((selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor).toString());
                 } else {
                   handleItemChange(index, 'price', (selectedItem.salePrice || 0).toString());
                 }
@@ -536,13 +539,50 @@ function ItemRow({
         )}
       </td>
       <td className="py-2 px-2">
-        <input
-          type="number"
-          value={item.price}
-          min={0}
-          onChange={e => handleItemChange(index, 'price', e.target.value)}
-          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-        />
+        <div className="relative">
+          <input
+            type="number"
+            value={item.price}
+            min={0}
+            onChange={e => handleItemChange(index, 'price', e.target.value)}
+            className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+          />
+          {/* Wholesale price indicator */}
+          {(() => {
+            const selectedItem = itemSuggestions.find(i => i.name === item.item);
+            if (selectedItem && item.qty) {
+              const qty = parseFloat(item.qty) || 0;
+              const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
+              const wholesalePrice = selectedItem.wholesalePrice || 0;
+              const currentPrice = parseFloat(item.price) || 0;
+              
+              // Convert quantity to base unit for comparison
+              let convertedQty = qty;
+              if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                if (item.unit === selectedItem.unit.secondary) {
+                  convertedQty = qty * selectedItem.unit.conversionFactor;
+                }
+              }
+              
+              // Calculate expected wholesale price for current unit
+              let expectedWholesalePrice = wholesalePrice;
+              if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                if (item.unit === selectedItem.unit.secondary) {
+                  expectedWholesalePrice = wholesalePrice * selectedItem.unit.conversionFactor;
+                }
+              }
+              
+              if (convertedQty >= minWholesaleQty && wholesalePrice > 0 && Math.abs(currentPrice - expectedWholesalePrice) < 0.01) {
+                return (
+                  <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full shadow-sm">
+                    Wholesale
+                  </div>
+                );
+              }
+            }
+            return null;
+          })()}
+        </div>
       </td>
       <td className="py-2 px-2">
         <span className="text-gray-900 font-semibold">{isNaN(item.amount) ? '0.00' : item.amount.toFixed(2)} {item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? item.unit : ''}</span>
@@ -690,6 +730,49 @@ export default function CreateSalesOrderPage() {
         items: prev.items.map((item, i) => {
           if (i === index) {
             const updatedItem = { ...item, [field]: value }
+            
+            // If quantity is changing, recalculate price based on wholesale logic
+            if (field === 'qty') {
+              const selectedItem = itemSuggestions.find(i => i.name === item.item);
+              if (selectedItem) {
+                // First check if wholesale pricing should be applied
+                const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
+                const wholesalePrice = selectedItem.wholesalePrice || 0;
+                
+                // Convert quantity to base unit for comparison
+                let convertedQty = value;
+                if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                  if (updatedItem.unit === selectedItem.unit.secondary) {
+                    convertedQty = value * selectedItem.unit.conversionFactor;
+                  }
+                }
+                
+                let finalPrice;
+                if (convertedQty >= minWholesaleQty && wholesalePrice > 0) {
+                  // Apply wholesale pricing
+                  if (updatedItem.unit === selectedItem.unit?.base) {
+                    finalPrice = wholesalePrice;
+                  } else if (updatedItem.unit === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                    finalPrice = wholesalePrice * selectedItem.unit.conversionFactor;
+                  } else {
+                    finalPrice = wholesalePrice;
+                  }
+                } else {
+                  // Apply regular sale pricing
+                  if (updatedItem.unit === selectedItem.unit?.base) {
+                    finalPrice = selectedItem.salePrice || 0;
+                  } else if (updatedItem.unit === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                    finalPrice = (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor;
+                  } else {
+                    finalPrice = selectedItem.salePrice || 0;
+                  }
+                }
+                
+                updatedItem.price = finalPrice.toString();
+                console.log(`Wholesale price calculation: qty=${value}, convertedQty=${convertedQty}, minWholesaleQty=${minWholesaleQty}, wholesalePrice=${wholesalePrice}, finalPrice=${finalPrice}`);
+              }
+            }
+            
             if (field === 'qty' || field === 'price') {
               const qty = parseFloat(updatedItem.qty) || 0;
               const price = parseFloat(updatedItem.price) || 0;

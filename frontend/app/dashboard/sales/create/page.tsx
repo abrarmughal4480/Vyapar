@@ -261,9 +261,41 @@ export default function CreateSalesOrderPage() {
           if (field === 'qty') {
             const selectedItem = itemSuggestions.find(i => i.name === item.item);
             if (selectedItem) {
-              const newPrice = calculatePriceForQuantity(value, selectedItem);
-              updatedItem.price = newPrice;
-              console.log(`Wholesale price calculation: qty=${value}, minWholesaleQty=${selectedItem.minimumWholesaleQuantity}, wholesalePrice=${selectedItem.wholesalePrice}, newPrice=${newPrice}`);
+              // First check if wholesale pricing should be applied
+              const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
+              const wholesalePrice = selectedItem.wholesalePrice || 0;
+
+              // Convert quantity to base unit for comparison
+              let convertedQty = value;
+              if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                if (updatedItem.unit === selectedItem.unit.secondary) {
+                  convertedQty = value * selectedItem.unit.conversionFactor;
+                }
+              }
+
+              let finalPrice;
+              if (convertedQty >= minWholesaleQty && wholesalePrice > 0) {
+                // Apply wholesale pricing
+                if (updatedItem.unit === selectedItem.unit?.base) {
+                  finalPrice = wholesalePrice;
+                } else if (updatedItem.unit === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                  finalPrice = wholesalePrice * selectedItem.unit.conversionFactor;
+                } else {
+                  finalPrice = wholesalePrice;
+                }
+              } else {
+                // Apply regular sale pricing
+                if (updatedItem.unit === selectedItem.unit?.base) {
+                  finalPrice = selectedItem.salePrice || 0;
+                } else if (updatedItem.unit === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                  finalPrice = (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor;
+                } else {
+                  finalPrice = selectedItem.salePrice || 0;
+                }
+              }
+
+              updatedItem.price = finalPrice;
+              console.log(`Wholesale price calculation: qty=${value}, convertedQty=${convertedQty}, minWholesaleQty=${minWholesaleQty}, wholesalePrice=${wholesalePrice}, finalPrice=${finalPrice}`);
             }
           }
 
@@ -528,25 +560,41 @@ export default function CreateSalesOrderPage() {
             ref={inputRef}
             type="text"
             value={item.item}
-            onChange={e => {
-              handleItemChange(item.id, 'item', e.target.value);
+            onChange={(e) => {
+              handleItemChange(item.id, "item", e.target.value);
               setItemDropdownIndex(0); // reset highlight
             }}
             onFocus={handleFocus}
             onBlur={() => {
               setTimeout(() => {
-                const activeElement = document.activeElement;
-                const dropdown = document.querySelector(`[data-dropdown-id="${item.id}"]`);
+                const activeElement = document.activeElement as Element | null;
+                const dropdown = document.querySelector(
+                  `[data-dropdown-id="${item.id}"]`
+                );
                 if (!dropdown?.contains(activeElement)) {
                   setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
                 }
               }, 300);
             }}
+            onMouseDown={(e) => {
+              // Ensure the input receives focus even if a parent prevented default
+              if (document.activeElement !== e.currentTarget) {
+                e.preventDefault();
+                e.currentTarget.focus();
+              }
+            }}
             className="item-dropdown-input w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
             placeholder="Enter item name..."
             data-testid={`item-input-${item.id}`}
-            onKeyDown={e => {
-              console.log('Items dropdown key pressed:', e.key, 'Dropdown open:', showItemSuggestions[item.id], 'Current index:', itemDropdownIndex);
+            onKeyDown={(e) => {
+              console.log(
+                "Items dropdown key pressed:",
+                e.key,
+                "Dropdown open:",
+                showItemSuggestions[item.id],
+                "Current index:",
+                itemDropdownIndex
+              );
 
               if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
                 e.preventDefault();
@@ -554,42 +602,55 @@ export default function CreateSalesOrderPage() {
               }
 
               if (!showItemSuggestions[item.id]) {
-                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                   handleFocus();
                 }
                 return;
               }
 
-              const filtered = itemSuggestions.filter(i => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()));
+              const filtered = itemSuggestions.filter(
+                (i) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase())
+              );
               const optionsCount = filtered.length;
 
-              console.log('Filtered items count:', optionsCount, 'Current index:', itemDropdownIndex);
+              console.log(
+                "Filtered items count:",
+                optionsCount,
+                "Current index:",
+                itemDropdownIndex
+              );
 
-              if (e.key === 'ArrowDown') {
+              if (e.key === "ArrowDown") {
                 setIsKeyboardNavigating(true);
                 const newIndex = Math.min(itemDropdownIndex + 1, optionsCount - 1);
-                console.log('ArrowDown: setting index to', newIndex);
+                console.log("ArrowDown: setting index to", newIndex);
                 setItemDropdownIndex(newIndex);
-              } else if (e.key === 'ArrowUp') {
+              } else if (e.key === "ArrowUp") {
                 setIsKeyboardNavigating(true);
                 const newIndex = Math.max(itemDropdownIndex - 1, 0);
-                console.log('ArrowUp: setting index to', newIndex);
+                console.log("ArrowUp: setting index to", newIndex);
                 setItemDropdownIndex(newIndex);
-              } else if (e.key === 'Enter') {
+              } else if (e.key === "Enter") {
                 const idx = itemDropdownIndex;
                 const selected = filtered[idx];
                 if (selected) {
                   setIsKeyboardNavigating(false);
-                  handleItemChange(item.id, 'item', selected.name);
+                  handleItemChange(item.id, "item", selected.name);
                   const unitDisplay = getUnitDisplay(selected.unit);
-                  handleItemChange(item.id, 'unit', unitDisplay);
-                  handleItemChange(item.id, 'price', selected.salePrice || 0);
-                  handleItemChange(item.id, 'qty', '1');
-                  setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+                  handleItemChange(item.id, "unit", unitDisplay);
+                  handleItemChange(item.id, "price", selected.salePrice || 0);
+                  handleItemChange(item.id, "qty", "1");
+                  setShowItemSuggestions((prev: any) => ({
+                    ...prev,
+                    [item.id]: false,
+                  }));
                 }
-              } else if (e.key === 'Escape') {
+              } else if (e.key === "Escape") {
                 setIsKeyboardNavigating(false);
-                setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+                setShowItemSuggestions((prev: any) => ({
+                  ...prev,
+                  [item.id]: false,
+                }));
               }
             }}
           />
@@ -622,16 +683,8 @@ export default function CreateSalesOrderPage() {
                         }
                       }
 
-                      const minWholesaleQty = i.minimumWholesaleQuantity || 0;
-                      const wholesalePrice = i.wholesalePrice || 0;
-
-                      if (minWholesaleQty > 0 && wholesalePrice > 0) {
-                        if (unitDisplay === i.unit?.base) {
-                          initialPrice = wholesalePrice;
-                        } else if (unitDisplay === i.unit?.secondary) {
-                          initialPrice = wholesalePrice * i.unit.conversionFactor;
-                        }
-                      }
+                      // Don't apply wholesale price immediately - only when quantity meets minimum requirement
+                      // The wholesale price will be applied when quantity changes via calculatePriceForQuantity function
 
                       handleItemChange(item.id, 'price', initialPrice);
                       handleItemChange(item.id, 'qty', 0); // Leave quantity empty
@@ -678,16 +731,8 @@ export default function CreateSalesOrderPage() {
                           }
                         }
 
-                        const minWholesaleQty = i.minimumWholesaleQuantity || 0;
-                        const wholesalePrice = i.wholesalePrice || 0;
-
-                        if (minWholesaleQty > 0 && wholesalePrice > 0) {
-                          if (unitDisplay === i.unit?.base) {
-                            initialPrice = wholesalePrice;
-                          } else if (unitDisplay === i.unit?.secondary) {
-                            initialPrice = wholesalePrice * i.unit.conversionFactor;
-                          }
-                        }
+                        // Don't apply wholesale price immediately - only when quantity meets minimum requirement
+                        // The wholesale price will be applied when quantity changes via calculatePriceForQuantity function
 
                         handleItemChange(item.id, 'price', initialPrice);
                         handleItemChange(item.id, 'qty', 0); // Leave quantity empty
@@ -730,30 +775,48 @@ export default function CreateSalesOrderPage() {
             onChange={val => {
               const selectedItem = itemSuggestions.find(i => i.name === item.item);
               if (selectedItem) {
+                // Don't convert quantity - keep it the same
+                // Only update price based on the new unit and current quantity
                 if (item.qty) {
-                  // Don't convert quantity - keep it the same
-                  const newPrice = calculatePriceForQuantity(parseFloat(item.qty) || 0, selectedItem);
-
-                  if (val === selectedItem.unit?.base) {
-                    if (newPrice > 0) {
-                      handleItemChange(item.id, 'price', newPrice);
-                    } else {
-                      handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
+                  // Convert current quantity to base unit for wholesale check
+                  let convertedQty = parseFloat(item.qty) || 0;
+                  if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                    if (val === selectedItem.unit.secondary) {
+                      convertedQty = convertedQty * selectedItem.unit.conversionFactor;
                     }
-                  } else if (val === selectedItem.unit?.secondary) {
-                    if (newPrice > 0) {
-                      handleItemChange(item.id, 'price', newPrice * (selectedItem.unit?.conversionFactor || 1));
+                  }
+
+                  const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
+                  const wholesalePrice = selectedItem.wholesalePrice || 0;
+
+                  let finalPrice;
+                  if (convertedQty >= minWholesaleQty && wholesalePrice > 0) {
+                    // Apply wholesale pricing
+                    if (val === selectedItem.unit?.base) {
+                      finalPrice = wholesalePrice;
+                    } else if (val === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                      finalPrice = wholesalePrice * selectedItem.unit.conversionFactor;
                     } else {
-                      handleItemChange(item.id, 'price', (selectedItem.salePrice || 0) * (selectedItem.unit?.conversionFactor || 1));
+                      finalPrice = wholesalePrice;
                     }
                   } else {
-                    handleItemChange(item.id, 'price', newPrice);
+                    // Apply regular sale pricing
+                    if (val === selectedItem.unit?.base) {
+                      finalPrice = selectedItem.salePrice || 0;
+                    } else if (val === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                      finalPrice = (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor;
+                    } else {
+                      finalPrice = selectedItem.salePrice || 0;
+                    }
                   }
+
+                  handleItemChange(item.id, 'price', finalPrice);
                 } else {
+                  // If no quantity, just set the sale price converted to appropriate unit
                   if (val === selectedItem.unit?.base) {
                     handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
-                  } else if (val === selectedItem.unit?.secondary) {
-                    handleItemChange(item.id, 'price', (selectedItem.salePrice || 0) * (selectedItem.unit?.conversionFactor || 1));
+                  } else if (val === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                    handleItemChange(item.id, 'price', (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor);
                   } else {
                     handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
                   }
@@ -794,7 +857,23 @@ export default function CreateSalesOrderPage() {
                 const wholesalePrice = selectedItem.wholesalePrice || 0;
                 const currentPrice = parseFloat(item.price) || 0;
 
-                if (qty >= minWholesaleQty && wholesalePrice > 0 && Math.abs(currentPrice - wholesalePrice) < 0.01) {
+                // Convert quantity to base unit for comparison
+                let convertedQty = qty;
+                if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                  if (item.unit === selectedItem.unit.secondary) {
+                    convertedQty = qty * selectedItem.unit.conversionFactor;
+                  }
+                }
+
+                // Calculate expected wholesale price for current unit
+                let expectedWholesalePrice = wholesalePrice;
+                if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                  if (item.unit === selectedItem.unit.secondary) {
+                    expectedWholesalePrice = wholesalePrice * selectedItem.unit.conversionFactor;
+                  }
+                }
+
+                if (convertedQty >= minWholesaleQty && wholesalePrice > 0 && Math.abs(currentPrice - expectedWholesalePrice) < 0.01) {
                   return (
                     <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full shadow-sm">
                       Wholesale
@@ -1127,10 +1206,10 @@ export default function CreateSalesOrderPage() {
                   <label
                     htmlFor="imageUpload"
                     className={`flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-200 ${imageUploading
-                        ? 'border-blue-300 bg-blue-50 text-blue-700 cursor-not-allowed'
-                        : uploadedImage
-                          ? 'border-green-500 bg-green-50 text-green-700'
-                          : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50'
+                      ? 'border-blue-300 bg-blue-50 text-blue-700 cursor-not-allowed'
+                      : uploadedImage
+                        ? 'border-green-500 bg-green-50 text-green-700'
+                        : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50'
                       }`}
                   >
                     <span>{imageUploading ? '⏳' : uploadedImage ? '✅' : '🖼️'}</span>

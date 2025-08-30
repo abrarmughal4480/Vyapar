@@ -38,7 +38,7 @@ const itemSchema = new mongoose.Schema({
   description: { type: String },
   supplier: { type: String },
   status: { type: String, enum: ['Active', 'Inactive', 'Discontinued'], default: 'Active' },
-  type: { type: String, enum: ['Product', 'Service'] },
+  type: { type: String, enum: ['Product', 'Service'], default: 'Product' },
   imageUrl: { type: String },
   atPrice: { type: Number },
   asOfDate: { type: String }

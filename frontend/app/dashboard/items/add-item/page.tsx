@@ -305,6 +305,13 @@ function AddItemPageInner() {
     }
   }, [showStatusDropdown])
 
+  // Handle type change to Service - switch to pricing tab if on stock tab
+  useEffect(() => {
+    if (newItem.type === 'Service' && activeTab === 'stock') {
+      setActiveTab('pricing');
+    }
+  }, [newItem.type, activeTab])
+
   // Set default asOfDate on client only to avoid hydration mismatch
   useEffect(() => {
     if (!newItem.asOfDate) {
@@ -461,7 +468,7 @@ function AddItemPageInner() {
 
   const tabs = [
     { id: 'pricing', name: 'Pricing', icon: '💰' },
-    { id: 'stock', name: 'Stock', icon: '📦' }
+    ...(newItem.type !== 'Service' ? [{ id: 'stock', name: 'Stock', icon: '📦' }] : [])
   ]
 
   // Calculate profit metrics
@@ -584,7 +591,14 @@ function AddItemPageInner() {
                         <li
                           key={cat}
                           className={`px-4 py-2 cursor-pointer rounded-lg transition-all hover:bg-blue-50 ${newItem.category === cat ? 'font-semibold text-blue-600' : 'text-gray-700'} ${categoryDropdownIndex === idx ? 'bg-blue-100' : ''}`}
-                          onClick={() => { setNewItem(prev => ({ ...prev, category: cat })); setShowCategoryDropdown(false); }}
+                          onClick={() => { 
+                            setNewItem(prev => ({ ...prev, category: cat })); 
+                            // If switching to Service type and currently on stock tab, switch to pricing tab
+                            if (newItem.type === 'Service' && activeTab === 'stock') {
+                              setActiveTab('pricing');
+                            }
+                            setShowCategoryDropdown(false); 
+                          }}
                           role="option"
                           aria-selected={newItem.category === cat}
                           onMouseEnter={() => setCategoryDropdownIndex(idx)}
@@ -624,6 +638,10 @@ function AddItemPageInner() {
                         onKeyDown={e => {
                           if (e.key === 'Enter' && customCategory.trim()) {
                             setNewItem(prev => ({ ...prev, category: customCategory.trim() }));
+                            // If switching to Service type and currently on stock tab, switch to pricing tab
+                            if (newItem.type === 'Service' && activeTab === 'stock') {
+                              setActiveTab('pricing');
+                            }
                             setShowCustomCategoryInput(false);
                             setCustomCategory('');
                           }
@@ -848,24 +866,26 @@ function AddItemPageInner() {
                   {formErrors.salePrice && <p className="text-xs text-red-500 mt-1">{formErrors.salePrice}</p>}
                 </div>
 
-                <div className="max-w-md mt-4">
-                  <label className="block text-sm font-medium text-gray-900 mb-3">
-                    Purchase Price (PKR)
-                  </label>
-                  <input
-                    type="number"
-                    name="purchasePrice"
-                    value={newItem.purchasePrice ?? ''}
-                    onChange={handleInputChange}
-                    className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
-                      formErrors.purchasePrice ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
-                    } focus:ring-2 focus:ring-blue-200 focus:outline-none text-lg`}
-                    placeholder="Purchase Price"
-                  />
-                  {formErrors.purchasePrice && <p className="text-xs text-red-500 mt-1">{formErrors.purchasePrice}</p>}
-                </div>
+                {newItem.type !== 'Service' && (
+                  <div className="max-w-md mt-4">
+                    <label className="block text-sm font-medium text-gray-900 mb-3">
+                      Purchase Price (PKR)
+                    </label>
+                    <input
+                      type="number"
+                      name="purchasePrice"
+                      value={newItem.purchasePrice ?? ''}
+                      onChange={handleInputChange}
+                      className={`w-full px-4 py-3 border-2 rounded-lg transition-all duration-200 ${
+                        formErrors.purchasePrice ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'
+                      } focus:ring-2 focus:ring-blue-200 focus:outline-none text-lg`}
+                      placeholder="Purchase Price"
+                    />
+                    {formErrors.purchasePrice && <p className="text-xs text-red-500 mt-1">{formErrors.purchasePrice}</p>}
+                  </div>
+                )}
 
-                {/* Add Wholesale Price */}
+                                {/* Add Wholesale Price */}
                 <div>
                   <button
                     type="button"
@@ -963,7 +983,7 @@ function AddItemPageInner() {
             )}
 
             {/* Stock Tab */}
-            {activeTab === 'stock' && (
+            {activeTab === 'stock' && newItem.type !== 'Service' && (
               <div className="space-y-6">
                 {/* Opening Stock Section */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

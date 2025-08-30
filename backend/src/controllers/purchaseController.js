@@ -429,10 +429,74 @@ export const deletePurchase = async (req, res) => {
   try {
     const userId = req.user && req.user._id;
     const { purchaseId } = req.params;
-    const purchase = await Purchase.findOneAndDelete({ _id: purchaseId, userId });
+    
+    // Find the purchase before deleting to get all the data we need
+    const purchase = await Purchase.findOne({ _id: purchaseId, userId });
     if (!purchase) {
       return res.status(404).json({ success: false, message: 'Purchase not found or not authorized' });
     }
+    
+    // Step 1: Revert stock for all items
+    if (purchase.items && Array.isArray(purchase.items)) {
+      for (const purchaseItem of purchase.items) {
+        const dbItem = await Item.findOne({ userId: userId.toString(), name: purchaseItem.item });
+        if (dbItem) {
+          let stockQuantity = Number(purchaseItem.qty);
+          
+          // Handle unit conversion for stock reversal
+          if (dbItem.unit) {
+            const itemUnit = dbItem.unit;
+            const purchaseUnit = purchaseItem.unit;
+            
+            if (typeof itemUnit === 'object' && itemUnit.base && itemUnit.secondary) {
+              if (purchaseUnit === itemUnit.secondary && itemUnit.conversionFactor) {
+                stockQuantity = Number(purchaseItem.qty) * itemUnit.conversionFactor;
+              } else if (purchaseUnit === itemUnit.base) {
+                stockQuantity = Number(purchaseItem.qty);
+              }
+            } else if (typeof itemUnit === 'string' && itemUnit.includes(' / ')) {
+              const parts = itemUnit.split(' / ');
+              const baseUnit = parts[0];
+              const secondaryUnit = parts[1];
+              
+              if (purchaseUnit === secondaryUnit) {
+                stockQuantity = Number(purchaseItem.qty) * 12; // Default conversion factor
+              } else if (purchaseUnit === baseUnit) {
+                stockQuantity = Number(purchaseItem.qty);
+              }
+            }
+          }
+          
+
+          
+          dbItem.stock = Math.max(0, (dbItem.stock || 0) - stockQuantity);
+          await dbItem.save();
+        }
+      }
+    }
+    
+    // Step 2: Restore supplier balance
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      const supplierDoc = await Party.findOne({ name: purchase.supplierName, user: userId });
+      if (supplierDoc) {
+        // Calculate the unpaid amount that was affecting the supplier balance
+        const unpaidAmount = purchase.grandTotal - (purchase.paid || 0);
+        
+        // For credit payments, restore the balance (add back the unpaid amount)
+        if (purchase.paymentType !== 'Cash') {
+          supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + unpaidAmount;
+          await supplierDoc.save();
+
+        }
+      }
+    } catch (err) {
+      console.error('Failed to restore supplier balance:', err);
+    }
+    
+    // Step 3: Delete the purchase
+    await Purchase.findByIdAndDelete(purchaseId);
+    
     res.json({ success: true, message: 'Purchase deleted successfully' });
     clearAllCacheForUser(userId);
   } catch (err) {

@@ -51,7 +51,8 @@ const partiesController = {
         address,
         gstNumber,
         partyType,
-        openingBalance,
+        openingBalance: openingBalance || 0,
+        firstOpeningBalance: openingBalance || 0, // Save the first opening balance
         pan,
         city,
         state,
@@ -61,14 +62,20 @@ const partiesController = {
         note,
         user: req.user.id
       });
+      
       await party.save();
-      console.log(`Party created successfully: ${party.name} (ID: ${party._id}) by user ${req.user.id}`);
+      
+      console.log(`Party created successfully: ${party.name} (ID: ${party._id}) by user ${req.user.id} with first opening balance: ${openingBalance || 0}`);
       
       // Clear cache for this user
       partiesController._clearUserCache(req.user.id);
       invalidateDashboardCache(req.user.id); // Invalidate dashboard cache
       
-      return res.status(201).json({ success: true, data: party });
+      return res.status(201).json({ 
+        success: true, 
+        data: party,
+        message: `Party "${party.name}" created successfully with opening balance: ${openingBalance || 0}`
+      });
     } catch (err) {
       return res.status(500).json({ success: false, message: 'Failed to create party', error: err.message });
     }
@@ -111,7 +118,7 @@ const partiesController = {
       
       // Use lean() for better performance when you don't need Mongoose document methods
       const parties = await Party.find(query)
-        .select('name phone email address gstNumber partyType openingBalance pan city state pincode tags status note createdAt')
+        .select('name phone email address gstNumber partyType openingBalance firstOpeningBalance pan city state pincode tags status note createdAt')
         .sort({ name: 1 })
         .lean();
       
@@ -151,6 +158,7 @@ const partiesController = {
         gstNumber: req.body.gstNumber,
         partyType: req.body.partyType,
         openingBalance: req.body.openingBalance,
+        // Note: firstOpeningBalance is NOT included here - it should never change
         pan: req.body.pan,
         city: req.body.city,
         state: req.body.state,
@@ -159,21 +167,28 @@ const partiesController = {
         status: req.body.status,
         note: req.body.note
       };
+      
       const party = await Party.findOneAndUpdate(
         { _id: partyId, user: req.user.id },
         { $set: updateFields },
         { new: true }
       );
+      
       if (!party) {
         return res.status(404).json({ success: false, message: 'Party not found or not authorized' });
       }
-      console.log(`Party updated successfully: ${party.name} (ID: ${party._id}) by user ${req.user.id}`);
+      
+      console.log(`Party updated successfully: ${party.name} (ID: ${party._id}) by user ${req.user.id}. Opening balance changed to: ${req.body.openingBalance}, First opening balance remains: ${party.firstOpeningBalance}`);
       
       // Clear cache for this user
       partiesController._clearUserCache(req.user.id);
       invalidateDashboardCache(req.user.id); // Invalidate dashboard cache
       
-      return res.json({ success: true, data: party });
+      return res.json({ 
+        success: true, 
+        data: party,
+        message: `Party "${party.name}" updated successfully. Opening balance: ${req.body.openingBalance}, First opening balance: ${party.firstOpeningBalance}`
+      });
     } catch (err) {
       return res.status(500).json({ success: false, message: 'Failed to update party', error: err.message });
     }
@@ -216,6 +231,7 @@ const partiesController = {
             email: p.email || '',
             address: p.address || '',
             openingBalance,
+            firstOpeningBalance: openingBalance, // Save the first opening balance
             user: userId
           };
         });
@@ -285,6 +301,7 @@ const partiesController = {
         data: { 
           partyName: party.name,
           openingBalance: partyOpeningBalance,
+          firstOpeningBalance: party.firstOpeningBalance || 0,
           salesBalance: salesData.totalBalance,
           salesReceived: salesData.totalReceived,
           salesGrandTotal: salesData.totalGrandTotal,
@@ -296,6 +313,34 @@ const partiesController = {
       });
     } catch (err) {
       return res.status(500).json({ success: false, message: 'Failed to get party balance', error: err.message });
+    }
+  },
+
+  // Get opening balance history for a party
+  getOpeningBalanceHistory: async (req, res) => {
+    try {
+      const partyId = req.params.partyId;
+      const userId = req.user.id;
+      
+      // Get party info
+      const party = await Party.findOne({ _id: partyId, user: userId });
+      if (!party) {
+        return res.status(404).json({ success: false, message: 'Party not found' });
+      }
+      
+      return res.json({ 
+        success: true, 
+        data: { 
+          partyName: party.name,
+          currentOpeningBalance: party.openingBalance || 0,
+          firstOpeningBalance: party.firstOpeningBalance || 0,
+          balanceChange: (party.openingBalance || 0) - (party.firstOpeningBalance || 0),
+          createdAt: party.createdAt,
+          updatedAt: party.updatedAt
+        } 
+      });
+    } catch (err) {
+      return res.status(500).json({ success: false, message: 'Failed to get opening balance history', error: err.message });
     }
   },
   // Performance monitoring function

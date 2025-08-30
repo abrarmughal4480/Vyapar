@@ -2,6 +2,7 @@ import CreditNote from '../models/creditNote.js';
 import Item from '../models/items.js';
 import mongoose from 'mongoose';
 import { clearAllCacheForUser } from './dashboardController.js';
+import { consumeStockFIFO } from './itemsController.js';
 
 export const createCreditNote = async (req, res) => {
   try {
@@ -13,11 +14,46 @@ export const createCreditNote = async (req, res) => {
     if (!userId) {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
-    // Increment stock for each item (reverse of sale)
+    // Increment stock for each item (reverse of sale) using FIFO method
     for (const noteItem of items) {
       const dbItem = await Item.findOne({ userId: userId.toString(), name: noteItem.item });
       if (dbItem) {
-        dbItem.stock = (dbItem.stock || 0) + Number(noteItem.qty);
+        const quantity = Number(noteItem.qty);
+        
+        // Handle FIFO stock restoration if available
+        if (dbItem.stockValuationMethod === 'FIFO' && dbItem.stockBatches && dbItem.stockBatches.length > 0) {
+          console.log(`FIFO stock restoration for credit note item: ${noteItem.item}`);
+          
+          // For credit notes, we need to restore stock to the most recent batches
+          // This is a simplified approach - in a real scenario, you might want to track
+          // which specific batches were consumed in the original sale
+          
+          // Create a new batch for the restored stock
+          const restoredBatch = {
+            quantity: quantity,
+            purchasePrice: dbItem.purchasePrice || 0, // Use current purchase price
+            purchaseDate: new Date(),
+            purchaseId: null, // No purchase reference for credit note
+            remainingQuantity: quantity,
+            batchId: `CREDIT_NOTE_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+          };
+          
+          // Add to stock batches
+          if (!dbItem.stockBatches) {
+            dbItem.stockBatches = [];
+          }
+          dbItem.stockBatches.push(restoredBatch);
+          
+          // Update total stock
+          dbItem.stock = (dbItem.stock || 0) + quantity;
+          
+          console.log(`Restored ${quantity} units to ${noteItem.item} via credit note, new stock: ${dbItem.stock}`);
+        } else {
+          // Fallback to simple stock restoration for non-FIFO items
+          dbItem.stock = (dbItem.stock || 0) + quantity;
+          console.log(`Restored ${quantity} units to ${noteItem.item} (non-FIFO method), new stock: ${dbItem.stock}`);
+        }
+        
         await dbItem.save();
       }
     }

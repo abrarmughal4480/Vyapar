@@ -18,6 +18,16 @@ const itemSchema = new mongoose.Schema({
   openingQuantity: { type: Number },
   openingStockQuantity: { type: Number },
   location: { type: String },
+  // FIFO Stock Management
+  stockBatches: [{
+    quantity: { type: Number, required: true },
+    purchasePrice: { type: Number, required: true },
+    purchaseDate: { type: Date, required: true },
+    purchaseId: { type: String }, // Reference to purchase document
+    remainingQuantity: { type: Number, required: true },
+    batchId: { type: String, required: true } // Unique identifier for each batch
+  }],
+  stockValuationMethod: { type: String, enum: ['FIFO', 'LIFO', 'WAC'], default: 'FIFO' },
   // Tax related fields
   taxRate: { type: Number, default: 0 },
   taxRateRaw: { type: String }, // Original string from import

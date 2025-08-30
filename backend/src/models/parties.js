@@ -9,6 +9,7 @@ const partySchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // Reference to the user who created the party
   partyType: { type: String },
   openingBalance: { type: Number, default: 0 },
+  firstOpeningBalance: { type: Number, default: 0 },
   pan: { type: String },
   city: { type: String },
   state: { type: String },

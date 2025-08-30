@@ -2,6 +2,7 @@ import Sale from '../models/sale.js';
 import Item from '../models/items.js';
 import mongoose from 'mongoose';
 import { clearAllCacheForUser } from './dashboardController.js';
+import { consumeStockFIFO } from './itemsController.js';
 
 function getUnitDisplay(unit) {
   if (!unit) return '';
@@ -23,66 +24,90 @@ export const createSale = async (req, res) => {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
     const userIdObj = new mongoose.Types.ObjectId(userId);
-    // Decrement stock for each item
+    // Decrement stock for each item using FIFO method
     for (const saleItem of items) {
-      // Find the item by userId and name
+      // Convert quantity to base unit for stock calculation
+      let stockQuantity = Number(saleItem.qty);
+      
+      // Check if unit conversion is needed
       const dbItem = await Item.findOne({ userId: userIdObj.toString(), name: saleItem.item });
-      if (dbItem) {
-        // Convert quantity to base unit for stock calculation
-        let stockQuantity = Number(saleItem.qty);
+      if (dbItem && dbItem.unit) {
+        const itemUnit = dbItem.unit;
+        const saleUnit = saleItem.unit;
         
-        // Check if unit conversion is needed
-        if (dbItem.unit) {
-          const itemUnit = dbItem.unit;
-          const saleUnit = saleItem.unit;
-          
-          // Handle object format unit
-          if (typeof itemUnit === 'object' && itemUnit.base && itemUnit.secondary) {
-            // If sale unit is secondary unit, convert to base unit
-            if (saleUnit === itemUnit.secondary && itemUnit.conversionFactor) {
-              stockQuantity = Number(saleItem.qty) * itemUnit.conversionFactor;
-            }
-            // If sale unit is base unit, use as is
-            else if (saleUnit === itemUnit.base) {
-              stockQuantity = Number(saleItem.qty);
-            }
-            // For custom units or other cases, use as is
-            else {
-              stockQuantity = Number(saleItem.qty);
-            }
+        // Handle object format unit
+        if (typeof itemUnit === 'object' && itemUnit.base && itemUnit.secondary) {
+          // If sale unit is secondary unit, convert to base unit
+          if (saleUnit === itemUnit.secondary && itemUnit.conversionFactor) {
+            stockQuantity = Number(saleItem.qty) * itemUnit.conversionFactor;
           }
-          // Handle string format unit (like "Piece / Dozen")
-          else if (typeof itemUnit === 'string' && itemUnit.includes(' / ')) {
-            const parts = itemUnit.split(' / ');
-            const baseUnit = parts[0];
-            const secondaryUnit = parts[1];
-            
-            // If sale unit is secondary unit, convert to base unit (assuming 1:12 ratio)
-            if (saleUnit === secondaryUnit) {
-              stockQuantity = Number(saleItem.qty) * 12; // Default conversion factor
-            }
-            // If sale unit is base unit, use as is
-            else if (saleUnit === baseUnit) {
-              stockQuantity = Number(saleItem.qty);
-            }
-            // For other cases, use as is
-            else {
-              stockQuantity = Number(saleItem.qty);
-            }
+          // If sale unit is base unit, use as is
+          else if (saleUnit === itemUnit.base) {
+            stockQuantity = Number(saleItem.qty);
           }
-          // For simple string units, use as is
+          // For custom units or other cases, use as is
           else {
             stockQuantity = Number(saleItem.qty);
           }
         }
+        // Handle string format unit (like "Piece / Dozen")
+        else if (typeof itemUnit === 'string' && itemUnit.includes(' / ')) {
+          const parts = itemUnit.split(' / ');
+          const baseUnit = parts[0];
+          const secondaryUnit = parts[1];
+          
+          // If sale unit is secondary unit, convert to base unit (assuming 1:12 ratio)
+          if (saleUnit === secondaryUnit) {
+            stockQuantity = Number(saleItem.qty) * 12; // Default conversion factor
+          }
+          // If sale unit is base unit, use as is
+          else if (saleUnit === baseUnit) {
+            stockQuantity = Number(saleItem.qty);
+          }
+          // For other cases, use as is
+          else {
+            stockQuantity = Number(saleItem.qty);
+          }
+        }
+        // For simple string units, use as is
+        else {
+          stockQuantity = Number(saleItem.qty);
+        }
+      }
+      
+      // Use FIFO method to consume stock
+      if (dbItem && dbItem.stockValuationMethod === 'FIFO' && dbItem.stockBatches && dbItem.stockBatches.length > 0) {
+        const fifoResult = await consumeStockFIFO(userIdObj.toString(), saleItem.item, stockQuantity);
         
-        console.log(`Stock cutting for item: ${saleItem.item}`);
+        if (fifoResult.success) {
+          console.log(`FIFO stock consumption for ${saleItem.item}:`, {
+            quantity: stockQuantity,
+            consumedBatches: fifoResult.consumedBatches.length,
+            totalCost: fifoResult.totalCost,
+            actualConsumed: fifoResult.actualConsumed
+          });
+          
+          // Add FIFO details to sale item for profit calculation
+          saleItem.fifoDetails = {
+            consumedBatches: fifoResult.consumedBatches,
+            totalCost: fifoResult.totalCost,
+            averageCost: fifoResult.totalCost / fifoResult.actualConsumed
+          };
+        } else {
+          console.error(`FIFO stock consumption failed for ${saleItem.item}:`, fifoResult.error);
+          // Fallback to simple stock reduction
+          dbItem.stock = Math.max(0, (dbItem.stock || 0) - stockQuantity);
+          await dbItem.save();
+        }
+      } else {
+        // Fallback to simple stock reduction for non-FIFO items
+        console.log(`Stock cutting for item: ${saleItem.item} (non-FIFO method)`);
         console.log(`Sale quantity: ${saleItem.qty} ${saleItem.unit}`);
         console.log(`Stock quantity to cut: ${stockQuantity}`);
         console.log(`Current stock: ${dbItem.stock}`);
         console.log(`New stock: ${dbItem.stock - stockQuantity}`);
         
-        dbItem.stock = (dbItem.stock || 0) - stockQuantity;
+        dbItem.stock = Math.max(0, (dbItem.stock || 0) - stockQuantity);
         await dbItem.save();
       }
     }
@@ -634,13 +659,56 @@ export const deleteSale = async (req, res) => {
           }
         }
         
-        console.log(`Restoring stock for item: ${saleItem.item}`);
-        console.log(`Sale quantity: ${saleItem.qty} ${saleItem.unit}`);
-        console.log(`Stock quantity to restore: ${stockQuantity}`);
-        console.log(`Current stock: ${dbItem.stock}`);
-        console.log(`New stock: ${dbItem.stock + stockQuantity}`);
+        // Handle FIFO stock restoration if available
+        if (saleItem.fifoDetails && saleItem.fifoDetails.consumedBatches && dbItem.stockBatches) {
+          console.log(`Restoring FIFO stock for item: ${saleItem.item}`);
+          
+          // Restore consumed batches in reverse order (LIFO for restoration)
+          const consumedBatches = saleItem.fifoDetails.consumedBatches;
+          for (let i = consumedBatches.length - 1; i >= 0; i--) {
+            const consumedBatch = consumedBatches[i];
+            
+            // Find the corresponding batch in the item's stockBatches
+            const existingBatch = dbItem.stockBatches.find(batch => 
+              batch.batchId === consumedBatch.batchId
+            );
+            
+            if (existingBatch) {
+              // Restore the consumed quantity
+              existingBatch.remainingQuantity += consumedBatch.quantity;
+              console.log(`Restored ${consumedBatch.quantity} units to batch ${consumedBatch.batchId}`);
+            } else {
+              // If batch doesn't exist, create a new one (this shouldn't happen normally)
+              console.warn(`Batch ${consumedBatch.batchId} not found, creating new batch`);
+              const newBatch = {
+                quantity: consumedBatch.quantity,
+                purchasePrice: consumedBatch.purchasePrice,
+                purchaseDate: new Date(),
+                purchaseId: null, // No purchase reference for restored stock
+                remainingQuantity: consumedBatch.quantity,
+                batchId: `RESTORED_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+              };
+              dbItem.stockBatches.push(newBatch);
+            }
+          }
+          
+          // Update total stock
+          dbItem.stock += stockQuantity;
+          console.log(`Restored stock for item: ${saleItem.item}`);
+          console.log(`Sale quantity: ${saleItem.qty} ${saleItem.unit}`);
+          console.log(`Stock quantity restored: ${stockQuantity}`);
+          console.log(`Current stock: ${dbItem.stock}`);
+        } else {
+          // Fallback to simple stock restoration for non-FIFO items
+          console.log(`Restoring stock for item: ${saleItem.item} (non-FIFO method)`);
+          console.log(`Sale quantity: ${saleItem.qty} ${saleItem.unit}`);
+          console.log(`Stock quantity to restore: ${stockQuantity}`);
+          console.log(`Current stock: ${dbItem.stock}`);
+          console.log(`New stock: ${dbItem.stock + stockQuantity}`);
+          
+          dbItem.stock = (dbItem.stock || 0) + stockQuantity;
+        }
         
-        dbItem.stock = (dbItem.stock || 0) + stockQuantity;
         await dbItem.save();
       }
     }
@@ -700,7 +768,7 @@ export const updateSale = async (req, res) => {
       });
     });
     
-    // Update stock for all items
+    // Update stock for all items using FIFO method
     const allItems = new Set([...oldItemMap.keys(), ...newItemMap.keys()]);
     
     for (const itemName of allItems) {
@@ -744,11 +812,50 @@ export const updateSale = async (req, res) => {
         }
       }
       
-      // Adjust stock: add back old quantity, subtract new quantity
-      const stockAdjustment = oldStockQty - newStockQty;
-      dbItem.stock = (dbItem.stock || 0) + stockAdjustment;
-      
-      console.log(`Stock adjustment for ${itemName}: old=${oldStockQty}, new=${newStockQty}, adjustment=${stockAdjustment}, final=${dbItem.stock}`);
+      // Handle FIFO stock adjustment
+      if (dbItem.stockValuationMethod === 'FIFO' && dbItem.stockBatches && dbItem.stockBatches.length > 0) {
+        console.log(`FIFO stock adjustment for ${itemName}: old=${oldStockQty}, new=${newStockQty}`);
+        
+        // First, restore old stock (add back what was consumed)
+        if (oldStockQty > 0) {
+          // This would require restoring the specific FIFO batches that were consumed
+          // For now, we'll use a simplified approach and update the total stock
+          dbItem.stock = (dbItem.stock || 0) + oldStockQty;
+          console.log(`Restored ${oldStockQty} units to ${itemName}, new stock: ${dbItem.stock}`);
+        }
+        
+        // Then, consume new stock using FIFO
+        if (newStockQty > 0) {
+          const fifoResult = await consumeStockFIFO(userId.toString(), itemName, newStockQty);
+          
+          if (fifoResult.success) {
+            console.log(`FIFO stock consumption for ${itemName}:`, {
+              quantity: newStockQty,
+              consumedBatches: fifoResult.consumedBatches.length,
+              totalCost: fifoResult.totalCost
+            });
+            
+            // Update the newItem with FIFO details for the updated sale
+            if (newItem) {
+              newItem.fifoDetails = {
+                consumedBatches: fifoResult.consumedBatches,
+                totalCost: fifoResult.totalCost,
+                averageCost: fifoResult.totalCost / fifoResult.actualConsumed
+              };
+            }
+          } else {
+            console.error(`FIFO stock consumption failed for ${itemName}:`, fifoResult.error);
+            // Fallback to simple stock reduction
+            dbItem.stock = Math.max(0, (dbItem.stock || 0) - newStockQty);
+          }
+        }
+      } else {
+        // Fallback to simple stock adjustment for non-FIFO items
+        const stockAdjustment = oldStockQty - newStockQty;
+        dbItem.stock = (dbItem.stock || 0) + stockAdjustment;
+        
+        console.log(`Simple stock adjustment for ${itemName}: old=${oldStockQty}, new=${newStockQty}, adjustment=${stockAdjustment}, final=${dbItem.stock}`);
+      }
       
       await dbItem.save();
     }

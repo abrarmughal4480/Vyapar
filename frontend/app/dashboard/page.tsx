@@ -362,8 +362,24 @@ export default function Dashboard() {
     }
   };
 
+  // Support functions
+  const openSupportModal = () => {
+    setShowSupportModal(true);
+  };
+
+  const handleEmailSupport = () => {
+    const subject = encodeURIComponent('Devease Digital Dashboard Support Request');
+    const body = encodeURIComponent(`Hello Devease Support Team,\n\nI need assistance with the Devease Digital Dashboard.\n\nBusiness Name: ${user?.businessName || 'N/A'}\nUser Email: ${user?.email || 'N/A'}\n\nIssue Description:\n\nBest regards,\n${user?.name || 'User'}`);
+    window.open(`mailto:deveasedigital@gmail.com?subject=${subject}&body=${body}`, '_blank');
+  };
+
+  const handleCallSupport = () => {
+    window.open('tel:+923326282035', '_blank');
+  };
+
   const openReceivableModal = async () => {
     setShowReceivableModal(true);
+    document.body.style.overflow = 'hidden';
     setLoadingReceivables(true);
     try {
       let token: string | undefined = undefined;
@@ -393,6 +409,7 @@ export default function Dashboard() {
 
   const openPayableModal = async () => {
     setShowPayableModal(true);
+    document.body.style.overflow = 'hidden';
     setLoadingPayables(true);
     try {
       let token: string | undefined = undefined;
@@ -422,6 +439,7 @@ export default function Dashboard() {
 
   const openStockSummaryModal = async () => {
     setShowStockSummaryModal(true);
+    document.body.style.overflow = 'hidden';
     setLoadingStockSummary(true);
     try {
       let token: string | undefined = undefined;
@@ -441,23 +459,6 @@ export default function Dashboard() {
     }
     setLoadingStockSummary(false);
   };
-
-  // Support functions
-  const openSupportModal = () => {
-    setShowSupportModal(true);
-  };
-
-  const handleEmailSupport = () => {
-    const subject = encodeURIComponent('Devease Digital Dashboard Support Request');
-    const body = encodeURIComponent(`Hello Devease Support Team,\n\nI need assistance with the Devease Digital Dashboard.\n\nBusiness Name: ${user?.businessName || 'N/A'}\nUser Email: ${user?.email || 'N/A'}\n\nIssue Description:\n\nBest regards,\n${user?.name || 'User'}`);
-    window.open(`mailto:deveasedigital@gmail.com?subject=${subject}&body=${body}`, '_blank');
-  };
-
-  const handleCallSupport = () => {
-    window.open('tel:+923326282035', '_blank');
-  };
-
-
 
   // Enhanced stats array with modern styling
   const dashboardStats = [
@@ -987,7 +988,10 @@ export default function Dashboard() {
       {/* Modals for Receivables/Payables/Stock Summary */}
       <EnhancedModal
         isOpen={showReceivableModal}
-        onClose={() => setShowReceivableModal(false)}
+        onClose={() => {
+          setShowReceivableModal(false);
+          document.body.style.overflow = 'auto';
+        }}
         title="Total Receivable List"
       >
         {loadingReceivables ? (
@@ -1004,14 +1008,12 @@ export default function Dashboard() {
                     className="py-2 flex justify-between items-center cursor-pointer hover:bg-emerald-50 px-2 rounded"
                     onClick={() => {
                       setShowReceivableModal(false);
+                      document.body.style.overflow = 'auto';
                       router.push(`/dashboard/parties?search=${encodeURIComponent(party.name)}`);
                     }}
                   >
                     <div className="flex-1 min-w-0">
                       <span className="font-medium text-gray-900 block">{party.name}</span>
-                      <span className="text-xs text-gray-500">
-                        Opening Balance: PKR {party.openingBalance?.toLocaleString() || '0'}
-                      </span>
                     </div>
                     <span className="text-green-600 font-semibold">PKR {party.amount?.toLocaleString() || '0'}</span>
                   </li>
@@ -1023,7 +1025,10 @@ export default function Dashboard() {
       </EnhancedModal>
       <EnhancedModal
         isOpen={showPayableModal}
-        onClose={() => setShowPayableModal(false)}
+        onClose={() => {
+          setShowPayableModal(false);
+          document.body.style.overflow = 'auto';
+        }}
         title="Total Payable List"
       >
         {loadingPayables ? (
@@ -1040,14 +1045,12 @@ export default function Dashboard() {
                     className="py-2 flex justify-between items-center cursor-pointer hover:bg-red-50 px-2 rounded"
                     onClick={() => {
                       setShowPayableModal(false);
+                      document.body.style.overflow = 'auto';
                       router.push(`/dashboard/parties?search=${encodeURIComponent(party.name)}`);
                     }}
                   >
                     <div className="flex-1 min-w-0">
                       <span className="font-medium text-gray-900 block">{party.name}</span>
-                      <span className="text-xs text-gray-500">
-                        Opening Balance: PKR {party.openingBalance?.toLocaleString() || '0'}
-                      </span>
                     </div>
                     <span className="text-red-600 font-semibold">PKR {party.amount?.toLocaleString() || '0'}</span>
                   </li>
@@ -1059,7 +1062,10 @@ export default function Dashboard() {
       </EnhancedModal>
       <EnhancedModal
         isOpen={showStockSummaryModal}
-        onClose={() => setShowStockSummaryModal(false)}
+        onClose={() => {
+          setShowStockSummaryModal(false);
+          document.body.style.overflow = 'auto';
+        }}
         title="Low Stock Summary"
       >
         {loadingStockSummary ? (

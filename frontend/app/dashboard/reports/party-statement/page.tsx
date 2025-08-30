@@ -32,6 +32,7 @@ interface Transaction {
   isExpense?: boolean;
   receivedAmount?: number;
   creditAmount?: number;
+  isOpeningBalance?: boolean;
 }
 
 const PartyStatementPage = () => {
@@ -45,6 +46,7 @@ const PartyStatementPage = () => {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [currentBalance, setCurrentBalance] = useState(0);
   const [openingBalance, setOpeningBalance] = useState(0);
+  const [firstOpeningBalance, setFirstOpeningBalance] = useState(0);
   const [filterType, setFilterType] = useState('All');
   const [showDateDropdown, setShowDateDropdown] = useState(false);
 
@@ -108,7 +110,6 @@ const PartyStatementPage = () => {
 
   // Filter transactions when search or date filters change
   useEffect(() => {
-    // This is now handled by useMemo, no need for manual filtering
   }, [transactions, searchTerm, dateFrom, dateTo]);
 
   // Date dropdown outside click handler
@@ -149,7 +150,6 @@ const PartyStatementPage = () => {
         setParties([]);
       }
     } catch (error) {
-      console.error('Error loading parties:', error);
       setError('Failed to load parties. Please try again.');
       setParties([]);
     } finally {
@@ -178,7 +178,6 @@ const PartyStatementPage = () => {
         return;
       }
 
-      // Make all API calls in parallel for better performance
       const [
         salesResult,
         purchasesResult,
@@ -203,60 +202,48 @@ const PartyStatementPage = () => {
         getExpenses(token)
       ]);
 
-      // Process sales transactions
       const sales = salesResult?.success && Array.isArray(salesResult.sales) 
         ? salesResult.sales.filter((sale: any) => sale.partyName === selectedParty)
         : [];
 
-      // Process purchase transactions
       const purchases = purchasesResult?.success && Array.isArray(purchasesResult.purchases) 
         ? purchasesResult.purchases.filter((purchase: any) => purchase.supplierName === selectedParty)
         : [];
 
-      // Process payment transactions
       const payments = paymentsResult?.success && Array.isArray(paymentsResult.payments) 
         ? paymentsResult.payments.filter((payment: any) => payment.supplierName === selectedParty)
         : [];
 
-      // Process payment out transactions
       const paymentOuts = paymentOutsResult?.success && Array.isArray(paymentOutsResult.paymentOuts)
         ? paymentOutsResult.paymentOuts.filter((out: any) => out.supplierName === selectedParty)
         : [];
 
-      // Process quotation transactions
       const quotations = quotationsResult?.success && Array.isArray(quotationsResult.data)
         ? quotationsResult.data.filter((quotation: any) => quotation.customerName === selectedParty)
         : [];
 
-      // Process sale order transactions
       const saleOrders = saleOrdersResult?.success && Array.isArray(saleOrdersResult.data)
         ? saleOrdersResult.data.filter((order: any) => order.customerName === selectedParty)
         : [];
 
-      // Process purchase order transactions
       const purchaseOrders = purchaseOrdersResult?.success && Array.isArray(purchaseOrdersResult.data)
         ? purchaseOrdersResult.data.filter((order: any) => order.supplierName === selectedParty)
         : [];
 
-      // Process credit note transactions
       const creditNotes = creditNotesResult?.success && Array.isArray(creditNotesResult.creditNotes)
         ? creditNotesResult.creditNotes.filter((note: any) => note.partyName === selectedParty)
         : [];
 
-      // Process delivery challan transactions
       const deliveryChallans = deliveryChallansResult?.success && Array.isArray(deliveryChallansResult.data)
         ? deliveryChallansResult.data.filter((challan: any) => challan.customerName === selectedParty)
         : [];
 
-      // Process expense transactions
       const expenses = expensesResult?.success && Array.isArray(expensesResult.data)
         ? expensesResult.data.filter((expense: any) => expense.party === selectedParty)
         : [];
 
-      // Combine and format transactions
       const allTransactions: Transaction[] = [];
 
-      // Add sales transactions
       sales.forEach((sale: any) => {
         allTransactions.push({
           id: sale._id || sale.id,
@@ -273,7 +260,6 @@ const PartyStatementPage = () => {
           partyBalanceAfterTransaction: sale.partyBalanceAfterTransaction || 0
         });
 
-        // If there's a received amount, also add it as a Payment In transaction
         if (sale.received && sale.received > 0) {
           allTransactions.push({
             id: `payment-in-${sale._id}`,
@@ -292,7 +278,6 @@ const PartyStatementPage = () => {
         }
       });
 
-      // Add purchase transactions
       purchases.forEach((purchase: any) => {
         allTransactions.push({
           id: purchase._id || purchase.id,
@@ -310,7 +295,6 @@ const PartyStatementPage = () => {
         });
       });
 
-      // Add payment transactions
       payments.forEach((payment: any) => {
         allTransactions.push({
           id: payment._id || payment.id,
@@ -328,7 +312,6 @@ const PartyStatementPage = () => {
         });
       });
 
-      // Add payment out transactions
       paymentOuts.forEach((out: any) => {
         allTransactions.push({
           id: out._id || out.id,
@@ -346,7 +329,6 @@ const PartyStatementPage = () => {
         });
       });
 
-      // Add quotation transactions
       quotations.forEach((quotation: any) => {
         allTransactions.push({
           id: quotation._id || quotation.id,
@@ -364,7 +346,6 @@ const PartyStatementPage = () => {
         });
       });
 
-      // Add sale order transactions
       saleOrders.forEach((order: any) => {
         allTransactions.push({
           id: order._id || order.id,
@@ -382,7 +363,6 @@ const PartyStatementPage = () => {
         });
       });
 
-      // Add purchase order transactions
       purchaseOrders.forEach((order: any) => {
         allTransactions.push({
           id: order._id || order.id,
@@ -400,7 +380,6 @@ const PartyStatementPage = () => {
         });
       });
 
-      // Add credit note transactions
       creditNotes.forEach((note: any) => {
         allTransactions.push({
           id: note._id || note.id,
@@ -418,7 +397,6 @@ const PartyStatementPage = () => {
         });
       });
 
-      // Add delivery challan transactions
       deliveryChallans.forEach((challan: any) => {
         allTransactions.push({
           id: challan._id || challan.id,
@@ -436,7 +414,6 @@ const PartyStatementPage = () => {
         });
       });
 
-      // Add expense transactions
       expenses.forEach((expense: any) => {
         const receivedAmount = expense.receivedAmount || 0;
         const creditAmount = expense.totalAmount - receivedAmount;
@@ -450,7 +427,7 @@ const PartyStatementPage = () => {
           total: expense.totalAmount || 0,
           received: receivedAmount,
           paid: 0,
-          balance: creditAmount, // For expenses: total - received = credit amount
+          balance: creditAmount,
           partyName: expense.party,
           description: expense.description,
           partyBalanceAfterTransaction: expense.partyBalanceAfterTransaction || 0,
@@ -460,40 +437,21 @@ const PartyStatementPage = () => {
         });
       });
 
-      // Sort by date (newest first)
       allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-      // Debug: Log transactions for verification
-      console.log('All Transactions:', allTransactions);
-      console.log('Selected Party:', selectedParty);
-      console.log('Parties:', parties);
 
       setTransactions(allTransactions);
 
-      // Calculate opening balance and current balance
       const selectedPartyData = parties.find(p => p.name === selectedParty);
       
-      // Use openingBalance from database directly as current balance
       const openingBal = selectedPartyData?.openingBalance || 0;
       const currentBal = selectedPartyData?.openingBalance || 0;
       
       setOpeningBalance(openingBal);
       setCurrentBalance(currentBal);
 
-      // Debug: Log balance information
-      console.log('Balance Info:', {
-        partyName: selectedParty,
-        openingBalance: openingBal,
-        currentBalance: currentBal,
-        partyData: selectedPartyData,
-        databaseOpeningBalance: selectedPartyData?.openingBalance,
-        databaseCurrentBalance: selectedPartyData?.currentBalance,
-        databaseBalance: selectedPartyData?.balance,
-        note: 'Using openingBalance from DB directly as current balance'
-      });
+      setFirstOpeningBalance(selectedPartyData?.firstOpeningBalance || 0);
 
     } catch (error) {
-      console.error('Error loading transactions:', error);
       setError('Failed to load transactions. Please try again.');
       setTransactions([]);
     } finally {
@@ -532,8 +490,32 @@ const PartyStatementPage = () => {
       });
     }
 
+    // Add opening balance row if party is selected (even when no other transactions)
+    if (selectedParty) {
+      const selectedPartyData = parties.find(p => p.name === selectedParty);
+      const partyCreationDate = selectedPartyData?.createdAt || new Date().toISOString();
+      
+      const openingBalanceRow = {
+        id: 'opening-balance',
+        date: partyCreationDate,
+        txnType: 'Opening Balance' as any,
+        refNo: 'OB-001',
+        paymentType: firstOpeningBalance >= 0 ? 'Receivable' : 'Payable',
+        total: 0,
+        received: 0,
+        paid: 0,
+        balance: firstOpeningBalance,
+        partyName: selectedParty,
+        description: 'Initial opening balance when party was created',
+        partyBalanceAfterTransaction: firstOpeningBalance,
+        isOpeningBalance: true
+      };
+      
+      filtered.unshift(openingBalanceRow);
+    }
+
     return filtered;
-  }, [transactions, searchTerm, dateFrom, dateTo]);
+  }, [transactions, searchTerm, dateFrom, dateTo, selectedParty, firstOpeningBalance, parties]);
 
   // Memoized summary totals calculation
   const summaryTotals = useMemo(() => {
@@ -549,31 +531,25 @@ const PartyStatementPage = () => {
       switch (txn.txnType) {
         case 'Sale Invoice':
           totalSale += txn.total;
-          // For sales: outstanding amount = total - received (money owed to you)
           totalReceivable += txn.total - txn.received;
           break;
         case 'Purchase Bill':
           totalPurchase += txn.total;
-          // For purchases: outstanding amount = total - paid (money you owe)
           totalPayable += txn.total - txn.paid;
           break;
         case 'Payment In':
           totalMoneyIn += txn.received;
-          // Payment received reduces receivable
           totalReceivable -= txn.received;
           break;
         case 'Payment Out':
           totalMoneyOut += txn.paid;
-          // Payment made reduces payable
           totalPayable -= txn.paid;
           break;
         case 'Credit Note':
-          // Credit notes reduce receivable (they're like refunds)
-          totalReceivable += txn.balance; // balance is already negative
+          totalReceivable += txn.balance;
           break;
         case 'Expense':
           totalExpenses += txn.total;
-          // For credit expenses: add to receivable (what you're owed)
           if (txn.paymentType === 'Credit' && txn.balance > 0) {
             totalReceivable += txn.balance;
           }
@@ -582,28 +558,22 @@ const PartyStatementPage = () => {
         case 'Sale Order':
         case 'Purchase Order':
         case 'Delivery Challan':
-          // These don't affect receivable/payable until converted to actual transactions
           break;
+      }
+      
+      if (txn.isOpeningBalance) {
+        if (txn.balance > 0) {
+          totalReceivable += txn.balance;
+        } else if (txn.balance < 0) {
+          totalPayable += Math.abs(txn.balance);
+        }
       }
     });
 
-    // Also add received amounts from Sale Invoices to total money in
     filteredTransactions.forEach(txn => {
       if (txn.txnType === 'Sale Invoice' && txn.received > 0) {
         totalMoneyIn += txn.received;
       }
-    });
-
-    // Debug: Log summary calculations
-    console.log('Summary Totals Calculation:', {
-      totalSale,
-      totalPurchase,
-      totalMoneyIn,
-      totalMoneyOut,
-      totalReceivable,
-      totalPayable,
-      totalExpenses,
-      transactionCount: filteredTransactions.length
     });
 
     return {
@@ -618,19 +588,15 @@ const PartyStatementPage = () => {
   }, [filteredTransactions]);
 
   const filterTransactions = () => {
-    // This function is now simplified since filtering is handled by useMemo
-    // We just need to trigger a re-render when filters change
   };
 
   const calculateSummaryTotals = (transactions: Transaction[]) => {
-    // This function is now replaced by useMemo above
   };
 
 
   const handleFilterTypeChange = (newFilterType: string) => {
     setFilterType(newFilterType);
     if (newFilterType === 'Custom') {
-      // Keep current date range
       return;
     }
     
@@ -645,7 +611,7 @@ const PartyStatementPage = () => {
         break;
       case 'Yesterday':
         const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setDate(today.getDate() - 1);
         fromDate = yesterday.toISOString().split('T')[0];
         toDate = yesterday.toISOString().split('T')[0];
         break;
@@ -691,7 +657,6 @@ const PartyStatementPage = () => {
       setToast({ message: 'Please select a party first', type: 'error' });
       return;
     }
-    // Implement print functionality
     window.print();
   };
 
@@ -700,7 +665,6 @@ const PartyStatementPage = () => {
       setToast({ message: 'Please select a party first', type: 'error' });
       return;
     }
-    // Implement export functionality
     setToast({ message: 'Export functionality coming soon', type: 'success' });
   };
 
@@ -709,7 +673,6 @@ const PartyStatementPage = () => {
       setToast({ message: 'Please select a party first', type: 'error' });
       return;
     }
-    // Implement share functionality
     setToast({ message: 'Share functionality coming soon', type: 'success' });
   };
 
@@ -1056,24 +1019,34 @@ const PartyStatementPage = () => {
                       } else if (txn.txnType === 'Payment Out') {
                         runningBalance -= txn.paid;
                       } else if (txn.txnType === 'Credit Note') {
-                        runningBalance += txn.balance; // Credit note reduces balance
+                        runningBalance += txn.balance;
                       } else if (txn.txnType === 'Expense') {
-                        // For expenses: if it's a credit expense, it increases receivable balance
                         if (txn.paymentType === 'Credit' && txn.balance > 0) {
-                          runningBalance += txn.balance; // Add credit amount to receivable
+                          runningBalance += txn.balance;
                         }
                       }
-                      // Other transaction types (Quotation, Orders, Delivery Challan) don't affect running balance
                     }
 
                     return (
-                      <tr key={transaction.id} className={`hover:bg-blue-50/40 transition-all ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                      <tr key={transaction.id} className={`hover:bg-blue-50/40 transition-all ${
+                        transaction.isOpeningBalance 
+                          ? 'bg-blue-50/70 hover:bg-blue-50/90 border-l-4 border-l-blue-500' 
+                          : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                      }`}>
                         <td className="px-4 py-3 text-xs text-gray-900 whitespace-nowrap text-center">
-                          {formatDate(transaction.date)}
+                          {transaction.isOpeningBalance ? (
+                            formatDate(transaction.date)
+                          ) : (
+                            formatDate(transaction.date)
+                          )}
                         </td>
                         <td className="px-4 py-3 text-xs whitespace-nowrap text-center">
-                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getTxnTypeColor(transaction.txnType)}`}>
-                            {transaction.txnType}
+                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                            transaction.isOpeningBalance 
+                              ? 'bg-blue-100 text-blue-800' 
+                              : getTxnTypeColor(transaction.txnType)
+                          }`}>
+                            {transaction.isOpeningBalance ? 'Opening Balance' : transaction.txnType}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-xs text-blue-700 font-bold whitespace-nowrap text-center">
@@ -1083,22 +1056,32 @@ const PartyStatementPage = () => {
                           {transaction.paymentType}
                         </td>
                         <td className="px-4 py-3 text-xs font-semibold text-blue-700 whitespace-nowrap text-center">
-                          {formatCurrency(transaction.total)}
+                          {transaction.isOpeningBalance ? (
+                            <span className="text-blue-600 font-medium">-</span>
+                          ) : (
+                            formatCurrency(transaction.total)
+                          )}
                         </td>
                         <td className="px-4 py-3 text-xs font-semibold text-green-600 whitespace-nowrap text-center">
-                          {transaction.txnType === 'Sale Invoice' || transaction.txnType === 'Payment In' 
-                            ? formatCurrency(transaction.received)
-                            : transaction.txnType === 'Expense' 
-                              ? formatCurrency(transaction.receivedAmount || 0)
-                              : formatCurrency(transaction.paid)
-                          }
+                          {transaction.isOpeningBalance ? (
+                            <span className="text-gray-500 text-xs">-</span>
+                          ) : (
+                            transaction.txnType === 'Sale Invoice' || transaction.txnType === 'Payment In' 
+                              ? formatCurrency(transaction.received)
+                              : transaction.txnType === 'Expense' 
+                                ? formatCurrency(transaction.receivedAmount || 0)
+                                : formatCurrency(transaction.paid)
+                          )}
                         </td>
                         <td className="px-4 py-3 text-xs font-semibold text-orange-600 whitespace-nowrap text-center">
-                          {transaction.txnType === 'Payment In' || transaction.txnType === 'Payment Out' || transaction.txnType === 'Delivery Challan' ? '' : 
-                           transaction.txnType === 'Expense' ? 
-                             (transaction.paymentType === 'Credit' ? formatCurrency(transaction.balance) : 'PKR 0.00') : 
-                           formatCurrency(transaction.balance)
-                          }
+                          {transaction.isOpeningBalance ? (
+                            <span className="text-gray-500 text-xs">-</span>
+                          ) : (
+                            transaction.txnType === 'Payment In' || transaction.txnType === 'Payment Out' || transaction.txnType === 'Delivery Challan' ? '' : 
+                             transaction.txnType === 'Expense' ? 
+                               (transaction.paymentType === 'Credit' ? formatCurrency(transaction.balance) : 'PKR 0.00') : 
+                               formatCurrency(transaction.balance)
+                          )}
                         </td>
                         <td className="px-4 py-3 text-xs font-semibold text-center">
                           <span className={(transaction.partyBalanceAfterTransaction || 0) >= 0 ? 'text-green-600' : 'text-red-600'}>
@@ -1106,14 +1089,25 @@ const PartyStatementPage = () => {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-xs font-medium whitespace-nowrap text-center">
-                          <div className="flex justify-center gap-2">
-                            <button className="text-blue-600 hover:text-blue-800">
-                              <Eye size={14} />
-                            </button>
-                            <button className="text-gray-600 hover:text-gray-800">
-                              <Printer size={14} />
-                            </button>
-                          </div>
+                          {transaction.isOpeningBalance ? (
+                            <div className="flex justify-center gap-2">
+                              <button className="text-blue-600 hover:text-blue-800">
+                                <Eye size={14} />
+                              </button>
+                              <button className="text-gray-600 hover:text-gray-800">
+                                <Printer size={14} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex justify-center gap-2">
+                              <button className="text-blue-600 hover:text-blue-800">
+                                <Eye size={14} />
+                              </button>
+                              <button className="text-gray-600 hover:text-gray-800">
+                                <Printer size={14} />
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );

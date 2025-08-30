@@ -2,7 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { Settings } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { getExpenses, getExpenseStats } from '../../../http/expenses';
+import { getExpenses, getExpenseStats, deleteExpense } from '../../../http/expenses';
+import TableActionMenu from '../../components/TableActionMenu';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 export default function ExpensesPage() {
   const [activeTab, setActiveTab] = useState('Categories');
@@ -13,6 +15,9 @@ export default function ExpensesPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedItem, setSelectedItem] = useState<string>('');
   const [filteredExpenses, setFilteredExpenses] = useState<any[]>([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [expenseToDelete, setExpenseToDelete] = useState<any>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const router = useRouter();
 
   // Fetch expenses and stats when component mounts
@@ -95,6 +100,74 @@ export default function ExpensesPage() {
     }
     
     setFilteredExpenses(filtered);
+  };
+
+  // Function to handle edit expense
+  const handleEditExpense = (expense: any) => {
+    router.push(`/dashboard/purchaseAdd?from=expenses&edit=true&id=${expense._id}`);
+  };
+
+  // Function to handle delete expense
+  const handleDeleteExpense = (expense: any) => {
+    setExpenseToDelete(expense);
+    setDeleteDialogOpen(true);
+  };
+
+  // Function to confirm delete
+  const confirmDelete = async () => {
+    if (!expenseToDelete) return;
+    
+    try {
+      setDeleteLoading(true);
+      await deleteExpense(expenseToDelete._id);
+      
+      // Remove the deleted expense from both arrays
+      setExpenses(prev => prev.filter(exp => exp._id !== expenseToDelete._id));
+      setFilteredExpenses(prev => prev.filter(exp => exp._id !== expenseToDelete._id));
+      
+      // Close dialog and reset state
+      setDeleteDialogOpen(false);
+      setExpenseToDelete(null);
+      
+      // Refresh the page data
+      const fetchData = async () => {
+        try {
+          const [expensesResponse, statsResponse] = await Promise.all([
+            getExpenses(),
+            getExpenseStats()
+          ]);
+          
+          setExpenses(expensesResponse.data || []);
+          setExpenseStats(statsResponse.data || { byCategory: [], byItem: [] });
+          
+          // Reapply current filter
+          if (selectedCategory) {
+            const filtered = expensesResponse.data.filter((expense: any) => 
+              expense.expenseCategory && expense.expenseCategory.toLowerCase() === selectedCategory.toLowerCase()
+            );
+            setFilteredExpenses(filtered);
+          } else if (selectedItem) {
+            const filtered = expensesResponse.data.filter((expense: any) => 
+              expense.items && expense.items.some((item: any) => 
+                item.item && item.item.toLowerCase() === selectedItem.toLowerCase()
+              )
+            );
+            setFilteredExpenses(filtered);
+          } else {
+            setFilteredExpenses(expensesResponse.data || []);
+          }
+        } catch (error) {
+          console.error('Error refreshing data:', error);
+        }
+      };
+      
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting expense:', error);
+      alert('Failed to delete expense. Please try again.');
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   return (
@@ -352,12 +425,13 @@ export default function ExpensesPage() {
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Payment Type</th>
                   <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Amount</th>
                   <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Balance</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-3 text-sm text-center text-gray-500">
+                    <td colSpan={7} className="px-4 py-3 text-sm text-center text-gray-500">
                       Loading...
                     </td>
                   </tr>
@@ -385,11 +459,17 @@ export default function ExpensesPage() {
                           'PKR 0'
                         }
                       </td>
+                      <td className="px-4 py-3 text-sm text-center">
+                        <TableActionMenu
+                          onEdit={() => handleEditExpense(expense)}
+                          onDelete={() => handleDeleteExpense(expense)}
+                        />
+                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="px-4 py-3 text-sm text-center text-gray-500">
+                    <td colSpan={7} className="px-4 py-3 text-sm text-center text-gray-500">
                       {selectedCategory || selectedItem ? 'No expenses found for selected filter' : 'No expenses found'}
                     </td>
                   </tr>
@@ -399,6 +479,21 @@ export default function ExpensesPage() {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        title="Delete Expense"
+        description={`Are you sure you want to delete expense ${expenseToDelete?.expenseNumber}? This action cannot be undone.`}
+        onCancel={() => {
+          setDeleteDialogOpen(false);
+          setExpenseToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        loading={deleteLoading}
+        confirmText="Delete"
+        cancelText="Cancel"
+      />
     </div>
   );
 }

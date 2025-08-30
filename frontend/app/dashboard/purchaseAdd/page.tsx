@@ -9,7 +9,7 @@ import { fetchPartiesByUserId, getPartyBalance } from '../../../http/parties';
 import { getUserItems } from '../../../http/items';
 import { createPurchase, updatePurchase } from '../../../http/purchases';
 import { createPurchaseOrder, updatePurchaseOrder } from '../../../http/purchaseOrders';
-import { createExpense } from '../../../http/expenses';
+import { createExpense, getExpenseById, updateExpense } from '../../../http/expenses';
 import { jwtDecode } from 'jwt-decode';
 import { useSearchParams } from 'next/navigation';
 import { getPurchaseById } from '../../../http/purchases';
@@ -578,55 +578,107 @@ export default function AddPurchasePage() {
   useEffect(() => {
     if (editId) {
       setIsEditMode(true);
-      setPageTitle('Edit Purchase Bill');
-      const fetchEditData = async () => {
-        try {
-          const token = getToken();
-          if (!token) return;
-          const result = await getPurchaseById(editId, token);
-          if (result && result.success && result.purchase) {
-            // Map API data to form fields
-            setNewPurchase(prev => ({
-              ...prev,
-              partyName: result.purchase.supplierName || '',
-              phoneNo: result.purchase.phoneNo || '',
-              billDate: result.purchase.createdAt ? new Date(result.purchase.createdAt).toISOString().split('T')[0] : '',
-              invoiceDate: result.purchase.createdAt ? new Date(result.purchase.createdAt).toISOString().split('T')[0] : '',
-              items: (result.purchase.items || []).map((item: any, idx: number) => ({
-                id: idx + 1,
-                category: item.category || 'ALL',
-                item: item.item || '',
-                itemCode: item.itemCode || '',
-                qty: item.qty?.toString() || '',
-                unit: item.unit || 'NONE',
-                customUnit: item.customUnit || '',
-                price: item.price?.toString() || '',
-                amount: item.amount || 0,
-                discountPercentage: item.discountPercentage || '',
-                discountAmount: item.discountAmount || ''
-              })),
-              discount: result.purchase.discount?.toString() || '',
-              discountAmount: result.purchase.discountAmount?.toString() || '',
-              discountType: result.purchase.discountType || '%',
-              tax: result.purchase.tax?.toString() || '',
-              taxAmount: result.purchase.taxAmount?.toString() || '',
-              taxType: result.purchase.taxType || '%',
-              paymentType: result.purchase.paymentType || 'Cash',
-              paid: result.purchase.paid?.toString() || '',
-              description: result.purchase.description || '',
-              editingId: editId
-            }));
-            if (result.purchase.imageUrl) {
-              setUploadedImage(result.purchase.imageUrl);
+      
+      // Check if we're editing an expense or purchase
+      if (isFromExpenses) {
+        setPageTitle('Edit Expense');
+        const fetchExpenseData = async () => {
+          try {
+            const token = getToken();
+            if (!token) return;
+            const result = await getExpenseById(editId);
+            if (result && result.success && result.data) {
+              const expense = result.data;
+              // Map expense data to form fields
+              setExpenseCategory(expense.expenseCategory || '');
+              setNewPurchase(prev => ({
+                ...prev,
+                partyName: expense.party || '',
+                phoneNo: expense.phoneNo || '',
+                billDate: expense.expenseDate ? new Date(expense.expenseDate).toISOString().split('T')[0] : '',
+                invoiceDate: expense.expenseDate ? new Date(expense.expenseDate).toISOString().split('T')[0] : '',
+                items: (expense.items || []).map((item: any, idx: number) => ({
+                  id: idx + 1,
+                  category: expense.expenseCategory || 'ALL',
+                  item: item.item || '',
+                  itemCode: item.itemCode || '',
+                  qty: '1', // Expenses don't have quantity, always 1
+                  unit: 'NONE', // Expenses don't have units
+                  customUnit: '',
+                  price: item.amount?.toString() || '',
+                  amount: item.amount || 0,
+                  discountPercentage: '',
+                  discountAmount: ''
+                })),
+                discount: '',
+                discountAmount: '',
+                discountType: '%',
+                tax: '',
+                taxAmount: '',
+                taxType: '%',
+                paymentType: expense.paymentType || 'Cash',
+                paid: expense.receivedAmount?.toString() || '',
+                description: expense.description || '',
+                editingId: editId
+              }));
+              // Expenses don't have images in the current model
             }
+          } catch (err) {
+            setToast({ message: 'Failed to fetch expense for edit', type: 'error' });
           }
-        } catch (err) {
-          setToast({ message: 'Failed to fetch purchase for edit', type: 'error' });
-        }
-      };
-      fetchEditData();
+        };
+        fetchExpenseData();
+      } else {
+        setPageTitle('Edit Purchase Bill');
+        const fetchEditData = async () => {
+          try {
+            const token = getToken();
+            if (!token) return;
+            const result = await getPurchaseById(editId, token);
+            if (result && result.success && result.purchase) {
+              // Map API data to form fields
+              setNewPurchase(prev => ({
+                ...prev,
+                partyName: result.purchase.supplierName || '',
+                phoneNo: result.purchase.phoneNo || '',
+                billDate: result.purchase.createdAt ? new Date(result.purchase.createdAt).toISOString().split('T')[0] : '',
+                invoiceDate: result.purchase.createdAt ? new Date(result.purchase.createdAt).toISOString().split('T')[0] : '',
+                items: (result.purchase.items || []).map((item: any, idx: number) => ({
+                  id: idx + 1,
+                  category: item.category || 'ALL',
+                  item: item.item || '',
+                  itemCode: item.itemCode || '',
+                  qty: item.qty?.toString() || '',
+                  unit: item.unit || 'NONE',
+                  customUnit: item.customUnit || '',
+                  price: item.price?.toString() || '',
+                  amount: item.amount || 0,
+                  discountPercentage: item.discountPercentage || '',
+                  discountAmount: item.discountAmount || ''
+                })),
+                discount: result.purchase.discount || '',
+                discountAmount: result.purchase.discountAmount || '',
+                discountType: result.purchase.discountType || '%',
+                tax: result.purchase.tax || '',
+                taxAmount: result.purchase.taxAmount || '',
+                taxType: result.purchase.taxType || '%',
+                paymentType: result.purchase.paymentType || 'Cash',
+                paid: result.purchase.paid || '',
+                description: result.purchase.description || '',
+                editingId: editId
+              }));
+              if (result.purchase.imageUrl) {
+                setUploadedImage(result.purchase.imageUrl);
+              }
+            }
+          } catch (err) {
+            setToast({ message: 'Failed to fetch purchase for edit', type: 'error' });
+          }
+        };
+        fetchEditData();
+      }
     }
-  }, [editId]);
+  }, [editId, isFromExpenses]);
 
   // Clear party balance when party name changes
   useEffect(() => {
@@ -1118,7 +1170,7 @@ export default function AddPurchasePage() {
       let redirectPath;
 
       if (isFromExpenses) {
-        // Create expense
+        // Create or update expense
         const expenseData = {
           expenseCategory: expenseCategory,
           party: tacEnabled && newPurchase.taxPartyName ? newPurchase.taxPartyName : (newPurchase.partyName || 'Unknown'),
@@ -1140,9 +1192,17 @@ export default function AddPurchasePage() {
           description: newPurchase.description || ''
         };
 
-        console.log('Creating expense with data:', expenseData);
-        response = await createExpense(expenseData);
-        successMessage = 'Expense created successfully!';
+        if (isEditMode && editId) {
+          // Update existing expense
+          console.log('Updating expense with data:', expenseData);
+          response = await updateExpense(editId, expenseData);
+          successMessage = 'Expense updated successfully!';
+        } else {
+          // Create new expense
+          console.log('Creating expense with data:', expenseData);
+          response = await createExpense(expenseData);
+          successMessage = 'Expense created successfully!';
+        }
         redirectPath = '/dashboard/expenses';
       } else if (pageType === 'purchase-order') {
         // Create purchase order

@@ -191,3 +191,38 @@ export const getExpenseStats = async (filters?: any) => {
     throw error;
   }
 };
+
+// Get party expense balance
+export const getPartyExpenseBalance = async (partyId?: string, partyName?: string) => {
+  try {
+    const token = getToken();
+    if (!token) {
+      throw new Error('Authentication token not found');
+    }
+
+    const queryParams = new URLSearchParams();
+    if (partyId) {
+      queryParams.append('partyId', partyId);
+    } else if (partyName) {
+      queryParams.append('partyName', partyName);
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/expenses/party-balance?${queryParams}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to fetch party expense balance');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error fetching party expense balance:', error);
+    throw error;
+  }
+};

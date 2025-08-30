@@ -6,7 +6,8 @@ import {
   getExpenseById,
   updateExpense,
   deleteExpense,
-  getExpenseStats
+  getExpenseStats,
+  getPartyExpenseBalance
 } from '../controllers/expenseController.js';
 
 const router = express.Router();
@@ -22,6 +23,9 @@ router.get('/', getExpenses);
 
 // Get expense statistics
 router.get('/stats', getExpenseStats);
+
+// Get party expense balance
+router.get('/party-balance', getPartyExpenseBalance);
 
 // Get expense by ID
 router.get('/:id', getExpenseById);

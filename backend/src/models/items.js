@@ -2,38 +2,28 @@ import mongoose from 'mongoose';
 
 const itemSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
-  itemId: { type: String, required: true }, // unique per user
+  itemId: { type: String, required: true },
   name: { type: String, required: true },
   category: { type: String },
   subcategory: { type: String },
-  hsn: { type: String }, // HSN code for tax purposes
+  hsn: { type: String },
   salePrice: { type: Number },
   purchasePrice: { type: Number },
   wholesalePrice: { type: Number },
   minimumWholesaleQuantity: { type: Number, default: 0 },
-  discountType: { type: String }, // Percentage, Fixed, etc.
+  discountType: { type: String },
   saleDiscount: { type: Number, default: 0 },
   stock: { type: Number },
   minStock: { type: Number },
   openingQuantity: { type: Number },
   openingStockQuantity: { type: Number },
   location: { type: String },
-  // FIFO Stock Management
-  stockBatches: [{
-    quantity: { type: Number, required: true },
-    purchasePrice: { type: Number, required: true },
-    purchaseDate: { type: Date, required: true },
-    purchaseId: { type: String }, // Reference to purchase document
-    remainingQuantity: { type: Number, required: true },
-    batchId: { type: String, required: true } // Unique identifier for each batch
-  }],
-  stockValuationMethod: { type: String, enum: ['FIFO', 'LIFO', 'WAC'], default: 'FIFO' },
-  // Tax related fields
+  
   taxRate: { type: Number, default: 0 },
-  taxRateRaw: { type: String }, // Original string from import
+  taxRateRaw: { type: String },
   inclusiveOfTax: { type: Boolean, default: false },
-  inclusiveOfTaxRaw: { type: String }, // Original string from import
-  // Unit conversion fields
+  inclusiveOfTaxRaw: { type: String },
+  
   unit: {
     base: { type: String },
     secondary: { type: String },
@@ -41,9 +31,9 @@ const itemSchema = new mongoose.Schema({
     customBase: { type: String },
     customSecondary: { type: String }
   },
-  conversionRate: { type: Number }, // For unit conversion
-  conversionRateRaw: { type: String }, // Original string from import
-  // Additional fields
+  conversionRate: { type: Number },
+  conversionRateRaw: { type: String },
+  
   sku: { type: String },
   description: { type: String },
   supplier: { type: String },
@@ -52,15 +42,37 @@ const itemSchema = new mongoose.Schema({
   imageUrl: { type: String },
   atPrice: { type: Number },
   asOfDate: { type: String }
-}, { timestamps: true }); // <-- Enable timestamps
+}, { timestamps: true });
 
 itemSchema.index({ userId: 1, itemId: 1 }, { unique: true });
+itemSchema.index({ userId: 1, name: 1 });
+itemSchema.index({ userId: 1, category: 1 });
+itemSchema.index({ userId: 1, status: 1 });
+itemSchema.index({ userId: 1, type: 1 });
+itemSchema.index({ userId: 1, hsn: 1 });
 
-// Add additional indexes for better performance
-itemSchema.index({ userId: 1, name: 1 }); // For name-based searches
-itemSchema.index({ userId: 1, category: 1 }); // For category filtering
-itemSchema.index({ userId: 1, status: 1 }); // For status filtering
-itemSchema.index({ userId: 1, type: 1 }); // For type filtering
-itemSchema.index({ userId: 1, hsn: 1 }); // For HSN code searches
+itemSchema.methods.addStock = function(quantity, purchasePrice, purchaseId, supplier) {
+  this.stock = (this.stock || 0) + quantity;
+  this.purchasePrice = purchasePrice;
+  
+  return this.save();
+};
+
+itemSchema.methods.reduceStock = function(quantity) {
+  if ((this.stock || 0) < quantity) {
+    throw new Error('Insufficient stock available');
+  }
+  
+  this.stock -= quantity;
+  return this.save();
+};
+
+itemSchema.methods.getStockDetails = function() {
+  const details = {
+    totalStock: this.stock || 0
+  };
+  
+  return details;
+};
 
 export default mongoose.model('Item', itemSchema);

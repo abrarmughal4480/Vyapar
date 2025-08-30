@@ -2,7 +2,6 @@ import Sale from '../models/sale.js';
 import Item from '../models/items.js';
 import mongoose from 'mongoose';
 import { clearAllCacheForUser } from './dashboardController.js';
-import { consumeStockFIFO } from './itemsController.js';
 
 function getUnitDisplay(unit) {
   if (!unit) return '';
@@ -24,7 +23,8 @@ export const createSale = async (req, res) => {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
     const userIdObj = new mongoose.Types.ObjectId(userId);
-    // Decrement stock for each item using FIFO method
+    
+    // Decrement stock for each item
     for (const saleItem of items) {
       // Convert quantity to base unit for stock calculation
       let stockQuantity = Number(saleItem.qty);
@@ -75,42 +75,36 @@ export const createSale = async (req, res) => {
         }
       }
       
-      // Use FIFO method to consume stock
-      if (dbItem && dbItem.stockValuationMethod === 'FIFO' && dbItem.stockBatches && dbItem.stockBatches.length > 0) {
-        const fifoResult = await consumeStockFIFO(userIdObj.toString(), saleItem.item, stockQuantity);
-        
-        if (fifoResult.success) {
-          console.log(`FIFO stock consumption for ${saleItem.item}:`, {
+      // Use simple stock reduction method
+      if (dbItem) {
+        try {
+          // Use the simple reduceStock method from the items model
+          await dbItem.reduceStock(stockQuantity);
+          
+          console.log(`Stock reduction for ${saleItem.item}:`, {
             quantity: stockQuantity,
-            consumedBatches: fifoResult.consumedBatches.length,
-            totalCost: fifoResult.totalCost,
-            actualConsumed: fifoResult.actualConsumed
+            currentStock: dbItem.stock
           });
           
-          // Add FIFO details to sale item for profit calculation
-          saleItem.fifoDetails = {
-            consumedBatches: fifoResult.consumedBatches,
-            totalCost: fifoResult.totalCost,
-            averageCost: fifoResult.totalCost / fifoResult.actualConsumed
+          // Calculate average cost for profit calculation
+          const stockDetails = dbItem.getStockDetails();
+          let averageCost = stockDetails.totalStock > 0 ? (dbItem.purchasePrice || 0) : 0;
+          
+          // Add cost details to sale item for profit calculation
+          saleItem.costDetails = {
+            averageCost: averageCost,
+            totalCost: averageCost * stockQuantity
           };
-        } else {
-          console.error(`FIFO stock consumption failed for ${saleItem.item}:`, fifoResult.error);
+          
+        } catch (error) {
+          console.error(`Stock reduction failed for ${saleItem.item}:`, error.message);
           // Fallback to simple stock reduction
           dbItem.stock = Math.max(0, (dbItem.stock || 0) - stockQuantity);
           await dbItem.save();
         }
-      } else {
-        // Fallback to simple stock reduction for non-FIFO items
-        console.log(`Stock cutting for item: ${saleItem.item} (non-FIFO method)`);
-        console.log(`Sale quantity: ${saleItem.qty} ${saleItem.unit}`);
-        console.log(`Stock quantity to cut: ${stockQuantity}`);
-        console.log(`Current stock: ${dbItem.stock}`);
-        console.log(`New stock: ${dbItem.stock - stockQuantity}`);
-        
-        dbItem.stock = Math.max(0, (dbItem.stock || 0) - stockQuantity);
-        await dbItem.save();
       }
     }
+    
     // Calculate original subtotal (before discounts) and final subtotal
     const originalSubTotal = items.reduce((sum, item) => {
       const qty = Number(item.qty) || 0;
@@ -159,6 +153,7 @@ export const createSale = async (req, res) => {
     
     // Calculate grandTotal
     const grandTotal = Math.max(0, originalSubTotal - totalDiscount + taxValue);
+    
     // Generate invoice number for this user
     let invoiceNo = 'INV001';
     const lastSale = await Sale.findOne({ userId: userIdObj }).sort({ createdAt: -1 });
@@ -169,12 +164,14 @@ export const createSale = async (req, res) => {
         invoiceNo = `INV${nextNum}`;
       }
     }
+    
     // Handle received amount for all payment types
     let received = 0;
     if (req.body.receivedAmount !== undefined && req.body.receivedAmount !== null) {
       received = Number(req.body.receivedAmount) || 0;
     }
     const balance = grandTotal - received;
+    
     const sale = new Sale({
       ...req.body,
       userId: userIdObj,
@@ -187,6 +184,7 @@ export const createSale = async (req, res) => {
       balance,
       received
     });
+    
     await sale.save();
     
     // Map unit fields for frontend
@@ -197,6 +195,7 @@ export const createSale = async (req, res) => {
         unit: typeof item.unit === 'object' ? getUnitDisplay(item.unit) : item.unit
       }));
     }
+    
     // If this sale was converted from a sales order, update the order status
     if (req.body.sourceOrderId) {
       try {
@@ -244,6 +243,7 @@ export const createSale = async (req, res) => {
     } catch (err) {
       console.error('Failed to update party openingBalance:', err);
     }
+    
     console.log(`Successfully created sale invoice for user: ${sale.userId}`);
     clearAllCacheForUser(userId); // Invalidate all related caches
     res.status(201).json({ success: true, sale: saleObj });
@@ -659,54 +659,17 @@ export const deleteSale = async (req, res) => {
           }
         }
         
-        // Handle FIFO stock restoration if available
-        if (saleItem.fifoDetails && saleItem.fifoDetails.consumedBatches && dbItem.stockBatches) {
-          console.log(`Restoring FIFO stock for item: ${saleItem.item}`);
+        // Handle simple stock restoration
+        if (dbItem) {
+          console.log(`Restoring stock for item: ${saleItem.item}`);
           
-          // Restore consumed batches in reverse order (LIFO for restoration)
-          const consumedBatches = saleItem.fifoDetails.consumedBatches;
-          for (let i = consumedBatches.length - 1; i >= 0; i--) {
-            const consumedBatch = consumedBatches[i];
-            
-            // Find the corresponding batch in the item's stockBatches
-            const existingBatch = dbItem.stockBatches.find(batch => 
-              batch.batchId === consumedBatch.batchId
-            );
-            
-            if (existingBatch) {
-              // Restore the consumed quantity
-              existingBatch.remainingQuantity += consumedBatch.quantity;
-              console.log(`Restored ${consumedBatch.quantity} units to batch ${consumedBatch.batchId}`);
-            } else {
-              // If batch doesn't exist, create a new one (this shouldn't happen normally)
-              console.warn(`Batch ${consumedBatch.batchId} not found, creating new batch`);
-              const newBatch = {
-                quantity: consumedBatch.quantity,
-                purchasePrice: consumedBatch.purchasePrice,
-                purchaseDate: new Date(),
-                purchaseId: null, // No purchase reference for restored stock
-                remainingQuantity: consumedBatch.quantity,
-                batchId: `RESTORED_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-              };
-              dbItem.stockBatches.push(newBatch);
-            }
-          }
+          // Simple stock restoration
+          dbItem.stock = (dbItem.stock || 0) + stockQuantity;
           
-          // Update total stock
-          dbItem.stock += stockQuantity;
           console.log(`Restored stock for item: ${saleItem.item}`);
           console.log(`Sale quantity: ${saleItem.qty} ${saleItem.unit}`);
           console.log(`Stock quantity restored: ${stockQuantity}`);
           console.log(`Current stock: ${dbItem.stock}`);
-        } else {
-          // Fallback to simple stock restoration for non-FIFO items
-          console.log(`Restoring stock for item: ${saleItem.item} (non-FIFO method)`);
-          console.log(`Sale quantity: ${saleItem.qty} ${saleItem.unit}`);
-          console.log(`Stock quantity to restore: ${stockQuantity}`);
-          console.log(`Current stock: ${dbItem.stock}`);
-          console.log(`New stock: ${dbItem.stock + stockQuantity}`);
-          
-          dbItem.stock = (dbItem.stock || 0) + stockQuantity;
         }
         
         await dbItem.save();
@@ -768,7 +731,7 @@ export const updateSale = async (req, res) => {
       });
     });
     
-    // Update stock for all items using FIFO method
+    // Update stock for all items
     const allItems = new Set([...oldItemMap.keys(), ...newItemMap.keys()]);
     
     for (const itemName of allItems) {
@@ -812,51 +775,52 @@ export const updateSale = async (req, res) => {
         }
       }
       
-      // Handle FIFO stock adjustment
-      if (dbItem.stockValuationMethod === 'FIFO' && dbItem.stockBatches && dbItem.stockBatches.length > 0) {
-        console.log(`FIFO stock adjustment for ${itemName}: old=${oldStockQty}, new=${newStockQty}`);
+      // Handle simple stock adjustment
+      if (dbItem) {
+        console.log(`Stock adjustment for ${itemName}: old=${oldStockQty}, new=${newStockQty}`);
         
         // First, restore old stock (add back what was consumed)
         if (oldStockQty > 0) {
-          // This would require restoring the specific FIFO batches that were consumed
-          // For now, we'll use a simplified approach and update the total stock
           dbItem.stock = (dbItem.stock || 0) + oldStockQty;
           console.log(`Restored ${oldStockQty} units to ${itemName}, new stock: ${dbItem.stock}`);
         }
         
-        // Then, consume new stock using FIFO
+        // Then, consume new stock
         if (newStockQty > 0) {
-          const fifoResult = await consumeStockFIFO(userId.toString(), itemName, newStockQty);
-          
-          if (fifoResult.success) {
-            console.log(`FIFO stock consumption for ${itemName}:`, {
+          try {
+            await dbItem.reduceStock(newStockQty);
+            
+            console.log(`Stock consumption for ${itemName}:`, {
               quantity: newStockQty,
-              consumedBatches: fifoResult.consumedBatches.length,
-              totalCost: fifoResult.totalCost
+              currentStock: dbItem.stock
             });
             
-            // Update the newItem with FIFO details for the updated sale
+            // Calculate average cost for profit calculation
+            const stockDetails = dbItem.getStockDetails();
+            let averageCost = stockDetails.totalStock > 0 ? (dbItem.purchasePrice || 0) : 0;
+            
+            // Update the newItem with cost details for the updated sale
             if (newItem) {
-              newItem.fifoDetails = {
-                consumedBatches: fifoResult.consumedBatches,
-                totalCost: fifoResult.totalCost,
-                averageCost: fifoResult.totalCost / fifoResult.actualConsumed
+              newItem.costDetails = {
+                averageCost: averageCost,
+                totalCost: averageCost * newStockQty
               };
             }
-          } else {
-            console.error(`FIFO stock consumption failed for ${itemName}:`, fifoResult.error);
+            
+          } catch (error) {
+            console.error(`Stock consumption failed for ${itemName}:`, error.message);
             // Fallback to simple stock reduction
             dbItem.stock = Math.max(0, (dbItem.stock || 0) - newStockQty);
           }
         }
       } else {
-        // Fallback to simple stock adjustment for non-FIFO items
+        // Simple stock adjustment
         const stockAdjustment = oldStockQty - newStockQty;
         dbItem.stock = (dbItem.stock || 0) + stockAdjustment;
         
         console.log(`Simple stock adjustment for ${itemName}: old=${oldStockQty}, new=${newStockQty}, adjustment=${stockAdjustment}, final=${dbItem.stock}`);
       }
-      
+
       await dbItem.save();
     }
 
@@ -907,7 +871,7 @@ export const updateSale = async (req, res) => {
     
     // Calculate old and new credit amounts
     const oldCreditAmount = oldSale.paymentType === 'Credit' ? (oldSale.balance || 0) : 0;
-    const newCreditAmount = updateData.paymentType === 'Credit' ? balance : 0;
+    const newCreditAmount = updateData.paymentType === 'Credit' ? (grandTotal - (updateData.received || 0)) : 0;
     
     if (oldSale.partyName !== updateData.partyName) {
       // Old party: minus old credit amount

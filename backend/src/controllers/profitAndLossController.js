@@ -132,23 +132,8 @@ export const getProfitAndLoss = async (req, res) => {
     const closingStockTotal = items.reduce((sum, item) => {
       const stock = item.stock || 0;
       
-      // Use FIFO stock valuation if available, otherwise fallback to purchasePrice
-      let costPerUnit = item.purchasePrice || 0;
-      
-      if (item.stockValuationMethod === 'FIFO' && item.stockBatches && item.stockBatches.length > 0) {
-        // Calculate weighted average cost from FIFO batches
-        let totalValue = 0;
-        let totalQuantity = 0;
-        
-        for (const batch of item.stockBatches) {
-          totalValue += batch.remainingQuantity * batch.purchasePrice;
-          totalQuantity += batch.remainingQuantity;
-        }
-        
-        if (totalQuantity > 0) {
-          costPerUnit = totalValue / totalQuantity;
-        }
-      }
+      // Use simple purchase price for cost calculation
+      const costPerUnit = item.purchasePrice || 0;
       
       return sum + (stock * costPerUnit);
     }, 0);

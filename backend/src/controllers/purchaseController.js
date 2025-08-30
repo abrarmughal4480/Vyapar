@@ -21,7 +21,7 @@ export const createPurchase = async (req, res) => {
       fullBody: req.body
     });
     
-    // Increment stock for each item using FIFO method
+    // Increment stock for each item
     for (const purchaseItem of items) {
       // Find the item by userId and name
       const dbItem = await Item.findOne({ userId: userId.toString(), name: purchaseItem.item });
@@ -74,31 +74,11 @@ export const createPurchase = async (req, res) => {
           }
         }
         
-        // Create new stock batch for FIFO tracking
-        const newBatch = {
-          quantity: stockQuantity,
-          purchasePrice: Number(purchaseItem.price),
-          purchaseDate: new Date(),
-          purchaseId: null, // Will be set after purchase is saved
-          remainingQuantity: stockQuantity,
-          batchId: `BATCH_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-        };
-        
-        // Initialize stockBatches array if it doesn't exist
-        if (!dbItem.stockBatches) {
-          dbItem.stockBatches = [];
-        }
-        
-        // Add new batch to the beginning (FIFO - newest first in array, but oldest first when selling)
-        dbItem.stockBatches.unshift(newBatch);
-        
         // Update total stock
         dbItem.stock = (dbItem.stock || 0) + stockQuantity;
         
-        // Set stock valuation method to FIFO if not already set
-        if (!dbItem.stockValuationMethod) {
-          dbItem.stockValuationMethod = 'FIFO';
-        }
+        // Update purchase price
+        dbItem.purchasePrice = Number(purchaseItem.price);
         
         console.log(`Stock adding for item: ${purchaseItem.item}`);
         console.log(`Purchase quantity: ${purchaseItem.qty} ${purchaseItem.unit}`);
@@ -106,7 +86,6 @@ export const createPurchase = async (req, res) => {
         console.log(`Purchase price: ${purchaseItem.price}`);
         console.log(`Current stock: ${dbItem.stock}`);
         console.log(`New stock: ${dbItem.stock}`);
-        console.log(`Stock batches count: ${dbItem.stockBatches.length}`);
         
         await dbItem.save();
       }
@@ -190,19 +169,6 @@ export const createPurchase = async (req, res) => {
     });
     
     await purchase.save();
-    
-    // Update purchaseId in stock batches
-    for (const purchaseItem of items) {
-      const dbItem = await Item.findOne({ userId: userId.toString(), name: purchaseItem.item });
-      if (dbItem && dbItem.stockBatches && dbItem.stockBatches.length > 0) {
-        // Find the most recent batch (first in array) and update purchaseId
-        const mostRecentBatch = dbItem.stockBatches[0];
-        if (mostRecentBatch.purchaseId === null) {
-          mostRecentBatch.purchaseId = purchase._id.toString();
-          await dbItem.save();
-        }
-      }
-    }
     
     console.log('Purchase saved to database:', {
       _id: purchase._id,
@@ -507,26 +473,6 @@ export const deletePurchase = async (req, res) => {
             }
           }
           
-          // Remove stock batches for this purchase (FIFO reversal)
-          if (dbItem.stockBatches && Array.isArray(dbItem.stockBatches)) {
-            // Find and remove batches that match this purchase
-            const purchaseId = purchase._id.toString();
-            const batchesToRemove = dbItem.stockBatches.filter(batch => 
-              batch.purchaseId === purchaseId
-            );
-            
-            // Calculate total quantity to remove from batches
-            const totalBatchQuantity = batchesToRemove.reduce((sum, batch) => sum + batch.quantity, 0);
-            
-            // Remove the batches
-            dbItem.stockBatches = dbItem.stockBatches.filter(batch => 
-              batch.purchaseId !== purchaseId
-            );
-            
-            console.log(`Removed ${batchesToRemove.length} stock batches for purchase ${purchaseId}`);
-            console.log(`Total quantity removed from batches: ${totalBatchQuantity}`);
-          }
-          
           // Update total stock
           dbItem.stock = Math.max(0, (dbItem.stock || 0) - stockQuantity);
           await dbItem.save();
@@ -653,24 +599,6 @@ export const updatePurchase = async (req, res) => {
             }
           }
         }
-        
-        // Create new stock batch for FIFO tracking
-        const newBatch = {
-          quantity: stockQuantity,
-          purchasePrice: Number(newItem.price),
-          purchaseDate: new Date(),
-          purchaseId: purchaseId, // Use the current purchase ID
-          remainingQuantity: stockQuantity,
-          batchId: `BATCH_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-        };
-        
-        // Initialize stockBatches array if it doesn't exist
-        if (!dbItem.stockBatches) {
-          dbItem.stockBatches = [];
-        }
-        
-        // Add new batch to the beginning (FIFO - newest first in array, but oldest first when selling)
-        dbItem.stockBatches.unshift(newBatch);
         
         // Update total stock
         dbItem.stock = (dbItem.stock || 0) + stockQuantity;

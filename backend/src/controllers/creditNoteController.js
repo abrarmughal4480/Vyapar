@@ -1,61 +1,36 @@
 import CreditNote from '../models/creditNote.js';
 import Item from '../models/items.js';
+import User from '../models/user.js';
+import Party from '../models/parties.js';
 import mongoose from 'mongoose';
 import { clearAllCacheForUser } from './dashboardController.js';
-import { consumeStockFIFO } from './itemsController.js';
 
 export const createCreditNote = async (req, res) => {
   try {
-    const { partyName, items } = req.body;
-    if (!partyName || !items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ success: false, message: 'Missing required fields' });
-    }
     const userId = req.user && req.user._id;
     if (!userId) {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
-    // Increment stock for each item (reverse of sale) using FIFO method
+    
+    const { partyName, items } = req.body;
+    if (!partyName || !items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+    
+    // Increment stock for each item (reverse of sale)
     for (const noteItem of items) {
       const dbItem = await Item.findOne({ userId: userId.toString(), name: noteItem.item });
+      // Restore stock for the item
       if (dbItem) {
-        const quantity = Number(noteItem.qty);
+        const quantity = noteItem.qty || 0;
         
-        // Handle FIFO stock restoration if available
-        if (dbItem.stockValuationMethod === 'FIFO' && dbItem.stockBatches && dbItem.stockBatches.length > 0) {
-          console.log(`FIFO stock restoration for credit note item: ${noteItem.item}`);
-          
-          // For credit notes, we need to restore stock to the most recent batches
-          // This is a simplified approach - in a real scenario, you might want to track
-          // which specific batches were consumed in the original sale
-          
-          // Create a new batch for the restored stock
-          const restoredBatch = {
-            quantity: quantity,
-            purchasePrice: dbItem.purchasePrice || 0, // Use current purchase price
-            purchaseDate: new Date(),
-            purchaseId: null, // No purchase reference for credit note
-            remainingQuantity: quantity,
-            batchId: `CREDIT_NOTE_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-          };
-          
-          // Add to stock batches
-          if (!dbItem.stockBatches) {
-            dbItem.stockBatches = [];
-          }
-          dbItem.stockBatches.push(restoredBatch);
-          
-          // Update total stock
-          dbItem.stock = (dbItem.stock || 0) + quantity;
-          
-          console.log(`Restored ${quantity} units to ${noteItem.item} via credit note, new stock: ${dbItem.stock}`);
-        } else {
-          // Fallback to simple stock restoration for non-FIFO items
-          dbItem.stock = (dbItem.stock || 0) + quantity;
-          console.log(`Restored ${quantity} units to ${noteItem.item} (non-FIFO method), new stock: ${dbItem.stock}`);
-        }
+        // Simple stock restoration
+        dbItem.stock = (dbItem.stock || 0) + quantity;
         
-        await dbItem.save();
+        console.log(`Restored ${quantity} units to ${noteItem.item} via credit note, new stock: ${dbItem.stock}`);
       }
+      
+      await dbItem.save();
     }
     // Calculate subTotal
     const subTotal = items.reduce((sum, item) => sum + (item.amount || 0), 0);
@@ -112,7 +87,6 @@ export const createCreditNote = async (req, res) => {
     // Update company balance and party balance in DB
     try {
       // First, update company balance (add the credit note amount to company balance)
-      const User = (await import('../models/user.js')).default;
       const userDoc = await User.findById(userId);
       
       if (userDoc) {
@@ -128,8 +102,6 @@ export const createCreditNote = async (req, res) => {
       }
       
       // Then, update party balance (subtract the remaining balance from party)
-      const Party = (await import('../models/parties.js')).default;
-      
       const partyDoc = await Party.findOne({ name: creditNote.partyName, user: userId });
       
       if (partyDoc) {

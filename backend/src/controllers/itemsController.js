@@ -52,7 +52,7 @@ function processBulkImportData(data) {
     minimumWholesaleQuantity: data.minimumWholesaleQuantity,
     discountType: data.discountType,
     saleDiscount: data.saleDiscount,
-    stock: data.openingStockQuantity || data.openingQuantity || 0, // Current stock = opening stock
+    stock: data.openingStockQuantity || data.openingQuantity || 0,
     minStock: data.minimumStockQuantity,
     openingQuantity: data.openingStockQuantity || data.openingQuantity || 0,
     location: data.itemLocation,
@@ -515,6 +515,7 @@ export const updateItem = async (req, res) => {
     // Explicitly set openingQuantity, minStock, and location from req.body if present
     if (data.openingQuantity !== undefined) {
       processedData.openingQuantity = data.openingQuantity;
+      processedData.stock = data.openingQuantity;
     }
     if (data.minStock !== undefined) {
       processedData.minStock = data.minStock;
@@ -550,139 +551,6 @@ export const getItemsPerformanceStats = async (req, res) => {
   }
 };
 
-// FIFO Stock Management Utility Functions
-
-/**
- * Consume stock using FIFO method
- * @param {string} userId - User ID
- * @param {string} itemName - Item name
- * @param {number} quantity - Quantity to consume
- * @returns {Object} - Result with consumed batches and total cost
- */
-export const consumeStockFIFO = async (userId, itemName, quantity) => {
-  try {
-    const item = await Item.findOne({ userId, name: itemName });
-    if (!item) {
-      throw new Error('Item not found');
-    }
-
-    if (!item.stockBatches || item.stockBatches.length === 0) {
-      throw new Error('No stock batches available for FIFO consumption');
-    }
-
-    if (item.stock < quantity) {
-      throw new Error(`Insufficient stock. Available: ${item.stock}, Requested: ${quantity}`);
-    }
-
-    let remainingQuantity = quantity;
-    const consumedBatches = [];
-    let totalCost = 0;
-
-    // Sort batches by purchase date (oldest first for FIFO)
-    const sortedBatches = [...item.stockBatches].sort((a, b) => 
-      new Date(a.purchaseDate) - new Date(b.purchaseDate)
-    );
-
-    for (const batch of sortedBatches) {
-      if (remainingQuantity <= 0) break;
-
-      const availableInBatch = Math.min(batch.remainingQuantity, remainingQuantity);
-      const costForThisBatch = (availableInBatch / batch.quantity) * (batch.quantity * batch.purchasePrice);
-
-      consumedBatches.push({
-        batchId: batch.batchId,
-        quantity: availableInBatch,
-        purchasePrice: batch.purchasePrice,
-        cost: costForThisBatch
-      });
-
-      totalCost += costForThisBatch;
-      remainingQuantity -= availableInBatch;
-
-      // Update batch remaining quantity
-      batch.remainingQuantity -= availableInBatch;
-    }
-
-    // Update item stock
-    item.stock -= (quantity - remainingQuantity);
-
-    // Remove batches with zero remaining quantity
-    item.stockBatches = item.stockBatches.filter(batch => batch.remainingQuantity > 0);
-
-    await item.save();
-
-    return {
-      success: true,
-      consumedBatches,
-      totalCost,
-      remainingQuantity: remainingQuantity,
-      actualConsumed: quantity - remainingQuantity
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-};
-
-/**
- * Get current stock valuation using FIFO method
- * @param {string} userId - User ID
- * @param {string} itemName - Item name
- * @returns {Object} - Stock valuation details
- */
-export const getStockValuationFIFO = async (userId, itemName) => {
-  try {
-    const item = await Item.findOne({ userId, name: itemName });
-    if (!item) {
-      throw new Error('Item not found');
-    }
-
-    if (!item.stockBatches || item.stockBatches.length === 0) {
-      return {
-        success: true,
-        totalStock: item.stock || 0,
-        totalValue: 0,
-        averageCost: 0,
-        batches: []
-      };
-    }
-
-    const totalStock = item.stock || 0;
-    let totalValue = 0;
-    let totalQuantity = 0;
-
-    // Calculate total value and quantity from all batches
-    for (const batch of item.stockBatches) {
-      totalValue += batch.remainingQuantity * batch.purchasePrice;
-      totalQuantity += batch.remainingQuantity;
-    }
-
-    const averageCost = totalQuantity > 0 ? totalValue / totalQuantity : 0;
-
-    return {
-      success: true,
-      totalStock,
-      totalValue,
-      averageCost,
-      batches: item.stockBatches.map(batch => ({
-        batchId: batch.batchId,
-        quantity: batch.quantity,
-        remainingQuantity: batch.remainingQuantity,
-        purchasePrice: batch.purchasePrice,
-        purchaseDate: batch.purchaseDate,
-        value: batch.remainingQuantity * batch.purchasePrice
-      }))
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}; 
-
 export default {
   addItem,
   bulkImportItems,
@@ -691,6 +559,4 @@ export default {
   deleteItem,
   updateItem,
   getItemsPerformanceStats,
-  consumeStockFIFO,
-  getStockValuationFIFO,
 }; 

@@ -411,7 +411,7 @@ export const makeBulkPaymentToParty = async (req, res) => {
     const paymentOutRecords = [];
     let totalDiscountApplied = 0;
 
-    // Distribute payment across purchases (FIFO - First In, First Out)
+    // Distribute payment across purchases (oldest first)
     for (const purchase of purchases) {
       const currentBalance = purchase.balance || 0;
       const currentGrandTotal = purchase.grandTotal || 0;

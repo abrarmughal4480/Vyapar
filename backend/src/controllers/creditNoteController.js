@@ -46,7 +46,8 @@ export const createCreditNote = async (req, res) => {
     // Get paid amount from request body
     const paidAmount = req.body.paid || 0;
     // Calculate balance (grandTotal - paidAmount)
-    const balance = Math.max(0, grandTotal - paidAmount);
+    // For credit notes, balance represents how much the customer still owes
+    const balance = grandTotal - paidAmount;
     
     // Generate credit note number for this user
     let creditNoteNo = 'CN001';
@@ -72,22 +73,46 @@ export const createCreditNote = async (req, res) => {
       paid: paidAmount
     });
     await creditNote.save();
-    console.log(`Credit note created: No=${creditNote.creditNoteNo}, Party=${creditNote.partyName}, User=${userId}, Amount=${creditNote.grandTotal}`);
-    // Update party openingBalance in DB (subtract balance amount - grandTotal - paid)
+    // Update company balance and party balance in DB
     try {
+      // First, update company balance (add the credit note amount to company balance)
+      const User = (await import('../models/user.js')).default;
+      const userDoc = await User.findById(userId);
+      
+      if (userDoc) {
+        // Store company's current balance before transaction
+        const companyCurrentBalance = userDoc.openingBalance || 0;
+        
+        // Add the credit note amount to company balance (since it's money coming back to company)
+        const creditNoteAmount = creditNote.grandTotal || 0;
+        userDoc.openingBalance = companyCurrentBalance + creditNoteAmount;
+        
+        // Save company balance update
+        await userDoc.save();
+      }
+      
+      // Then, update party balance (subtract the remaining balance from party)
       const Party = (await import('../models/parties.js')).default;
-      console.log(`Looking for party: ${creditNote.partyName}, userId: ${userId}`);
       
       const partyDoc = await Party.findOne({ name: creditNote.partyName, user: userId });
-      console.log(`Party found:`, partyDoc ? 'Yes' : 'No');
       
       if (partyDoc) {
         // Store party's current balance before transaction
         const partyCurrentBalance = partyDoc.openingBalance || 0;
         
-        // Subtract only the remaining balance (grandTotal - paid) from party balance
-        const balanceAmount = creditNote.balance || 0;
-        partyDoc.openingBalance = partyCurrentBalance - balanceAmount;
+        // Use the balance we calculated earlier, not the one from the saved document
+        const balanceAmount = balance; // Use the local balance variable, not creditNote.balance
+        
+        // For credit notes, if balance is positive, it means customer owes money
+        // If balance is negative, it means customer has overpaid
+        if (balanceAmount > 0) {
+          // Customer still owes money - subtract from party balance
+          partyDoc.openingBalance = partyCurrentBalance - balanceAmount;
+        } else if (balanceAmount < 0) {
+          // Customer has overpaid - add to party balance (they get money back)
+          partyDoc.openingBalance = partyCurrentBalance + Math.abs(balanceAmount);
+        }
+        // If balance is exactly 0, no change needed
         
         // Calculate and update partyBalanceAfterTransaction
         const partyBalanceAfterTransaction = partyDoc.openingBalance;
@@ -95,18 +120,16 @@ export const createCreditNote = async (req, res) => {
         await creditNote.save();
         
         await partyDoc.save();
-        console.log(`Updated party balance: ${creditNote.partyName}, Previous: ${partyCurrentBalance}, New: ${partyDoc.openingBalance}, Deducted: ${balanceAmount}`);
-        // Clear all cache for this user after party balance update
-        clearAllCacheForUser(userId);
-        console.log(`Cleared cache for user: ${userId}`);
       } else {
-        console.log(`Party not found: ${creditNote.partyName} for user: ${userId}`);
+        // Party not found - this shouldn't happen in normal operation
         // Try to find all parties for this user to debug
         const allParties = await Party.find({ user: userId });
-        console.log(`All parties for user ${userId}:`, allParties.map(p => p.name));
       }
+      
+      // Clear all cache for this user after balance updates
+      clearAllCacheForUser(userId);
     } catch (err) {
-      console.error('Failed to update party openingBalance:', err);
+      console.error('Failed to update balances:', err);
     }
     res.status(201).json({ success: true, creditNote });
   } catch (err) {

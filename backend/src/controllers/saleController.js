@@ -859,37 +859,32 @@ export const updateSale = async (req, res) => {
             // IMPORTANT: First consume from actual batches, then update stock
             console.log(`   Consuming ${newQty} units from actual batches using FIFO method`);
             
-            // Store original batches before consumption
-            const originalBatches = JSON.parse(JSON.stringify(dbItem.batches || []));
-            
-            // Manual FIFO batch consumption for total new quantity
+            // CRITICAL FIX: Capture consumed batches BEFORE calling reduceStock
+            // This ensures we track the exact batches and prices that will be consumed
             const consumedBatches = [];
-            let remainingToConsume = newQty;
             let totalCost = 0;
+            let remainingToConsume = newQty;
             
-            // Process batches in FIFO order
+            // Process batches in FIFO order to capture what will be consumed
             for (let i = 0; i < dbItem.batches.length && remainingToConsume > 0; i++) {
               const batch = dbItem.batches[i];
               const availableInBatch = batch.quantity || 0;
               const consumeFromBatch = Math.min(availableInBatch, remainingToConsume);
               
               if (consumeFromBatch > 0) {
-                // Add to consumed batches
+                // Add to consumed batches with original purchase price
                 consumedBatches.push({
                   quantity: consumeFromBatch,
                   purchasePrice: batch.purchasePrice || dbItem.purchasePrice || 0
                 });
                 
-                // Update batch quantity
-                batch.quantity = availableInBatch - consumeFromBatch;
+                // Calculate cost
+                totalCost += consumeFromBatch * (batch.purchasePrice || dbItem.purchasePrice || 0);
                 
                 // Update remaining to consume
                 remainingToConsume -= consumeFromBatch;
                 
-                // Calculate cost
-                totalCost += consumeFromBatch * (batch.purchasePrice || dbItem.purchasePrice || 0);
-                
-                console.log(`   Consumed ${consumeFromBatch} units from batch at price ${batch.purchasePrice}, remaining in batch: ${batch.quantity}`);
+                console.log(`   Will consume ${consumeFromBatch} units from batch at price ${batch.purchasePrice}`);
               }
             }
             
@@ -904,22 +899,17 @@ export const updateSale = async (req, res) => {
               });
               
               totalCost += remainingToConsume * (dbItem.purchasePrice || 0);
-              console.log(`   Added ${remainingToConsume} units at current purchase price: ${dbItem.purchasePrice || 0}`);
+              console.log(`   Will consume ${remainingToConsume} units at current purchase price: ${dbItem.purchasePrice || 0}`);
             }
             
-            // Keep all batches (even empty ones) for tracking purposes
-            // Only remove completely consumed batches
-            dbItem.batches = dbItem.batches.filter(b => b !== null && b !== undefined);
-            
-            // CRITICAL FIX: Use reduceStock method for proper FIFO-based stock reduction
+            // Now use reduceStock method for proper FIFO-based stock reduction
             await dbItem.reduceStock(newQty);
             
             console.log(`   ✅ Stock reduced using FIFO method: ${newQty} units consumed`);
-            
             console.log(`   Stock after consuming total new quantity: ${dbItem.stock} units`);
             console.log(`   Batches after consumption:`, dbItem.batches);
             
-            // Use consumed batches from actual consumption
+            // Set the consumed batches and total cost
             newItem.consumedBatches = consumedBatches;
             newItem.totalCost = totalCost;
             

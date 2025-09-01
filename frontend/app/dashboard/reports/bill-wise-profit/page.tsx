@@ -293,7 +293,9 @@ const BillWiseProfitPage = () => {
                           <td className="border px-3 py-1.5 text-xs">{item.item}</td>
                           <td className="border px-3 py-1.5 text-center text-xs">{item.qty}</td>
                           <td className="border px-3 py-1.5 text-center text-xs">{formatCurrency(item.originalPrice)}</td>
-                          <td className="border px-3 py-1.5 text-center text-xs text-red-600">-{formatCurrency(item.itemDiscount)}</td>
+                          <td className="border px-3 py-1.5 text-center text-xs text-red-600">
+                            {item.itemDiscount > 0 ? `-${formatCurrency(item.itemDiscount)}` : formatCurrency(0)}
+                          </td>
                           <td className="border px-3 py-1.5 text-center text-xs font-semibold">{formatCurrency(item.salePrice)}</td>
                           <td className="border px-3 py-1.5 text-center text-xs">{formatCurrency(item.purchasePrice)}</td>
                           <td className={`border px-3 py-1.5 text-center text-xs ${item.itemProfit > 0 ? 'text-green-600' : 'text-red-600'}`}>

@@ -6,7 +6,9 @@ const CreditNoteItemSchema = new mongoose.Schema({
   unit: { type: String, required: true },
   price: { type: Number, required: true },
   amount: { type: Number, required: true },
-  customUnit: { type: String }
+  customUnit: { type: String },
+  // Purchase price for stock restoration batch creation
+  purchasePrice: { type: Number, default: 0 }
 }, { _id: false });
 
 const CreditNoteSchema = new mongoose.Schema({

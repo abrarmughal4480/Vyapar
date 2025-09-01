@@ -6,7 +6,12 @@ const SaleOrderItemSchema = new mongoose.Schema({
   unit: { type: String, required: true },
   price: { type: Number, required: true },
   amount: { type: Number, required: true },
-  customUnit: { type: String }
+  customUnit: { type: String },
+  // Batch consumption planning for when order is converted to sale
+  plannedBatches: [{
+    quantity: { type: Number, required: true },
+    purchasePrice: { type: Number, required: true }
+  }]
 }, { _id: false });
 
 const SaleOrderSchema = new mongoose.Schema({
@@ -26,6 +31,18 @@ const SaleOrderSchema = new mongoose.Schema({
   dueDate: { type: Date, default: null },
   invoiceNumber: { type: String, default: null },
   convertedToInvoice: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale', default: null },
+  // Stock check results when order was created
+  stockCheckResults: [{
+    item: { type: String, required: true },
+    available: { type: Boolean, required: true },
+    requestedQty: { type: Number, required: true },
+    availableStock: { type: Number, required: true },
+    plannedBatches: [{
+      quantity: { type: Number, required: true },
+      purchasePrice: { type: Number, required: true }
+    }],
+    message: { type: String }
+  }],
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });

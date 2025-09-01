@@ -40,6 +40,8 @@ function processBulkImportData(data) {
     itemId = `${nameSlug}_${timestamp}`;
   }
 
+  const openingQty = data.openingStockQuantity || data.openingQuantity || 0;
+
   return {
     userId: data.userId,
     itemId: itemId,
@@ -79,7 +81,14 @@ function processBulkImportData(data) {
     imageUrl: data.imageUrl || '',
     // Set atPrice to purchasePrice if undefined
     atPrice: data.atPrice !== undefined ? data.atPrice : data.purchasePrice,
-    asOfDate: data.asOfDate
+    asOfDate: data.asOfDate,
+    // Initialize batches for opening stock
+    batches: openingQty > 0 ? [
+      {
+        quantity: openingQty,
+        purchasePrice: data.purchasePrice || data.atPrice
+      }
+    ] : []
   };
 }
 
@@ -172,6 +181,18 @@ export const addItem = async (req, res) => {
       processedData.location = data.itemLocation;
     }
     
+    // Initialize batches from openingQuantity if provided and > 0
+    const openingQtyForBatch = processedData.openingQuantity || processedData.openingStockQuantity || 0;
+    if (!Array.isArray(processedData.batches)) {
+      processedData.batches = [];
+    }
+    if (openingQtyForBatch > 0 && processedData.batches.length === 0) {
+      processedData.batches.push({
+        quantity: openingQtyForBatch,
+        purchasePrice: processedData.purchasePrice || processedData.atPrice
+      });
+    }
+
     // Generate a unique itemId for this user (could use uuid or Date.now())
     const itemId = processedData.itemId || ('ITM' + Date.now());
     const item = new Item({ ...processedData, itemId });
@@ -295,6 +316,14 @@ export const bulkImportItems = async (req, res) => {
         
         // Add results for inserted items
         newItems.forEach(item => {
+          // Ensure batches exist based on opening quantity
+          const openingQty = item.openingStockQuantity || item.openingQuantity || 0;
+          if (!Array.isArray(item.batches)) {
+            item.batches = [];
+          }
+          if (openingQty > 0 && item.batches.length === 0) {
+            item.batches.push({ quantity: openingQty, purchasePrice: item.purchasePrice || item.atPrice });
+          }
           results.push({
             itemId: item.itemId,
             status: 'created',
@@ -526,6 +555,22 @@ export const updateItem = async (req, res) => {
       processedData.location = data.itemLocation;
     }
 
+    // Reset or adjust batches on update
+    if (!Array.isArray(processedData.batches)) {
+      processedData.batches = undefined; // avoid overwriting unless we intend to
+    }
+
+    // If openingQuantity is provided, reset batches to one opening batch
+    if (data.openingQuantity !== undefined) {
+      const openingQty = Number(data.openingQuantity) || 0;
+      processedData.batches = openingQty > 0 ? [
+        {
+          quantity: openingQty,
+          purchasePrice: processedData.purchasePrice || processedData.atPrice
+        }
+      ] : [];
+    }
+
     const updated = await Item.findOneAndUpdate({ userId, itemId }, processedData, { new: true });
     const updatedObj = updated.toObject();
     
@@ -536,6 +581,7 @@ export const updateItem = async (req, res) => {
     // Log what was actually updated
     console.log('UPDATED openingQuantity:', updatedObj.openingQuantity, 'minStock:', updatedObj.minStock, 'location:', updatedObj.location);
     console.log('UPDATED unit:', updatedObj.unit);
+    console.log('UPDATED batches:', updatedObj.batches);
     res.json({ success: true, data: updatedObj });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });

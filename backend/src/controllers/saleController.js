@@ -78,7 +78,20 @@ export const createSale = async (req, res) => {
       // Use simple stock reduction method
       if (dbItem) {
         try {
-          // Use the simple reduceStock method from the items model
+          // Plan FIFO batches to consume for cost capture
+          const plannedBatches = [];
+          let remainingPlan = Number(stockQuantity) || 0;
+          if (!Array.isArray(dbItem.batches)) dbItem.batches = [];
+          for (let i = 0; i < dbItem.batches.length && remainingPlan > 0; i++) {
+            const batch = dbItem.batches[i];
+            const take = Math.min(batch.quantity || 0, remainingPlan);
+            if (take > 0) {
+              plannedBatches.push({ quantity: take, purchasePrice: batch.purchasePrice || dbItem.purchasePrice || 0 });
+              remainingPlan -= take;
+            }
+          }
+
+          // Use the reduceStock method from the items model
           await dbItem.reduceStock(stockQuantity);
           
           console.log(`Stock reduction for ${saleItem.item}:`, {
@@ -86,21 +99,44 @@ export const createSale = async (req, res) => {
             currentStock: dbItem.stock
           });
           
-          // Calculate average cost for profit calculation
-          const stockDetails = dbItem.getStockDetails();
-          let averageCost = stockDetails.totalStock > 0 ? (dbItem.purchasePrice || 0) : 0;
-          
-          // Add cost details to sale item for profit calculation
-          saleItem.costDetails = {
-            averageCost: averageCost,
-            totalCost: averageCost * stockQuantity
-          };
+          // Persist consumed batches into sale item
+          const consumedBatches = plannedBatches;
+          const totalCost = consumedBatches.reduce((sum, b) => sum + (Number(b.quantity || 0) * Number(b.purchasePrice || 0)), 0);
+          saleItem.consumedBatches = consumedBatches;
+          saleItem.totalCost = totalCost;
           
         } catch (error) {
           console.error(`Stock reduction failed for ${saleItem.item}:`, error.message);
-          // Fallback to simple stock reduction
-          dbItem.stock = Math.max(0, (dbItem.stock || 0) - stockQuantity);
-          await dbItem.save();
+          // Fallback: batch-aware FIFO reduction
+          try {
+            const currentStock = dbItem.stock || 0;
+            const requestQty = Number(stockQuantity) || 0;
+            const toDeduct = Math.min(currentStock, requestQty);
+            if (!Array.isArray(dbItem.batches)) {
+              dbItem.batches = [];
+            }
+            let remaining = toDeduct;
+            const consumed = [];
+            for (let i = 0; i < dbItem.batches.length && remaining > 0; i++) {
+              const batch = dbItem.batches[i];
+              const canDeduct = Math.min(batch.quantity || 0, remaining);
+              batch.quantity = (batch.quantity || 0) - canDeduct;
+              remaining -= canDeduct;
+              if (canDeduct > 0) {
+                consumed.push({ quantity: canDeduct, purchasePrice: batch.purchasePrice || dbItem.purchasePrice || 0 });
+              }
+            }
+            dbItem.batches = dbItem.batches.filter(b => (b.quantity || 0) > 0);
+            dbItem.stock = (dbItem.stock || 0) - toDeduct;
+            await dbItem.save();
+            const totalCost = consumed.reduce((sum, b) => sum + (Number(b.quantity || 0) * Number(b.purchasePrice || 0)), 0);
+            saleItem.consumedBatches = consumed;
+            saleItem.totalCost = totalCost;
+          } catch (fallbackErr) {
+            // Final fallback to safeguard
+            dbItem.stock = Math.max(0, (dbItem.stock || 0) - (Number(stockQuantity) || 0));
+            await dbItem.save();
+          }
         }
       }
     }
@@ -788,6 +824,19 @@ export const updateSale = async (req, res) => {
         // Then, consume new stock
         if (newStockQty > 0) {
           try {
+            // Plan FIFO batches for update consumption capturing costs
+            const plannedBatches = [];
+            let remainingPlan = Number(newStockQty) || 0;
+            if (!Array.isArray(dbItem.batches)) dbItem.batches = [];
+            for (let i = 0; i < dbItem.batches.length && remainingPlan > 0; i++) {
+              const batch = dbItem.batches[i];
+              const take = Math.min(batch.quantity || 0, remainingPlan);
+              if (take > 0) {
+                plannedBatches.push({ quantity: take, purchasePrice: batch.purchasePrice || dbItem.purchasePrice || 0 });
+                remainingPlan -= take;
+              }
+            }
+
             await dbItem.reduceStock(newStockQty);
             
             console.log(`Stock consumption for ${itemName}:`, {
@@ -795,22 +844,45 @@ export const updateSale = async (req, res) => {
               currentStock: dbItem.stock
             });
             
-            // Calculate average cost for profit calculation
-            const stockDetails = dbItem.getStockDetails();
-            let averageCost = stockDetails.totalStock > 0 ? (dbItem.purchasePrice || 0) : 0;
-            
-            // Update the newItem with cost details for the updated sale
+            // Persist consumed batches to updated item
+            const consumedBatches = plannedBatches;
+            const totalCost = consumedBatches.reduce((sum, b) => sum + (Number(b.quantity || 0) * Number(b.purchasePrice || 0)), 0);
             if (newItem) {
-              newItem.costDetails = {
-                averageCost: averageCost,
-                totalCost: averageCost * newStockQty
-              };
+              newItem.consumedBatches = consumedBatches;
+              newItem.totalCost = totalCost;
             }
             
           } catch (error) {
             console.error(`Stock consumption failed for ${itemName}:`, error.message);
-            // Fallback to simple stock reduction
-            dbItem.stock = Math.max(0, (dbItem.stock || 0) - newStockQty);
+            // Fallback: batch-aware FIFO reduction
+            try {
+              const currentStock = dbItem.stock || 0;
+              const requestQty = Number(newStockQty) || 0;
+              const toDeduct = Math.min(currentStock, requestQty);
+              if (!Array.isArray(dbItem.batches)) {
+                dbItem.batches = [];
+              }
+              let remaining = toDeduct;
+              const consumed = [];
+              for (let i = 0; i < dbItem.batches.length && remaining > 0; i++) {
+                const batch = dbItem.batches[i];
+                const canDeduct = Math.min(batch.quantity || 0, remaining);
+                batch.quantity = (batch.quantity || 0) - canDeduct;
+                remaining -= canDeduct;
+                if (canDeduct > 0) {
+                  consumed.push({ quantity: canDeduct, purchasePrice: batch.purchasePrice || dbItem.purchasePrice || 0 });
+                }
+              }
+              dbItem.batches = dbItem.batches.filter(b => (b.quantity || 0) > 0);
+              dbItem.stock = (dbItem.stock || 0) - toDeduct;
+              if (newItem) {
+                const totalCost = consumed.reduce((sum, b) => sum + (Number(b.quantity || 0) * Number(b.purchasePrice || 0)), 0);
+                newItem.consumedBatches = consumed;
+                newItem.totalCost = totalCost;
+              }
+            } catch (fallbackErr) {
+              dbItem.stock = Math.max(0, (dbItem.stock || 0) - (Number(newStockQty) || 0));
+            }
           }
         }
       } else {
@@ -925,23 +997,7 @@ export const getBillWiseProfit = async (req, res) => {
     if (party) saleQuery.partyName = party;
     const sales = await Sale.find(saleQuery).sort({ createdAt: -1 }).lean();
 
-    // Fetch all items for the user
-    const items = await Item.find({ userId }).lean();
-
-    // Helper: for each item, get the latest purchase price from items model
-    function getLatestPurchasePrice(itemName) {
-      const itemDoc = items.find(i => i.name && i.name.trim().toLowerCase() === itemName.trim().toLowerCase());
-      if (itemDoc) {
-        // Use atPrice if it's greater than 0, otherwise fall back to purchasePrice
-        if (itemDoc.atPrice !== undefined && itemDoc.atPrice !== null && itemDoc.atPrice > 0) {
-          return itemDoc.atPrice;
-        } else if (itemDoc.purchasePrice !== undefined && itemDoc.purchasePrice !== null) {
-          return itemDoc.purchasePrice;
-        }
-        return 0;
-      }
-      return 0;
-    }
+    // We now derive purchase cost from sale item batch costs saved in the sale schema
 
     // Prepare bill-wise profit data
     let totalProfit = 0;
@@ -950,31 +1006,57 @@ export const getBillWiseProfit = async (req, res) => {
       let itemDetails = [];
       if (Array.isArray(sale.items)) {
         sale.items.forEach(saleItem => {
-          const purchasePrice = getLatestPurchasePrice(saleItem.item);
-          const originalPrice = saleItem.price || 0;
-          const qty = saleItem.qty || 0;
-          
+          const originalPrice = Number(saleItem.price) || 0;
+          const qty = Number(saleItem.qty) || 0;
+
           // Calculate actual sale price after item-level discount
           let itemDiscount = 0;
           if (saleItem.discountPercentage) {
-            itemDiscount = (originalPrice * parseFloat(saleItem.discountPercentage)) / 100;
+            itemDiscount = Math.max(0, (originalPrice * parseFloat(saleItem.discountPercentage)) / 100);
           } else if (saleItem.discountAmount) {
-            itemDiscount = parseFloat(saleItem.discountAmount);
+            itemDiscount = Math.max(0, parseFloat(saleItem.discountAmount) || 0);
           }
-          
-          const actualSalePrice = originalPrice - itemDiscount;
-          const itemProfit = (actualSalePrice - purchasePrice) * qty;
-          
-          billProfit += itemProfit;
-          itemDetails.push({
-            item: saleItem.item,
-            qty: qty,
-            originalPrice: originalPrice,
-            salePrice: actualSalePrice,
-            purchasePrice: purchasePrice,
-            itemDiscount: itemDiscount,
-            itemProfit: itemProfit
-          });
+
+          const actualSalePrice = Math.max(0, originalPrice - itemDiscount);
+
+          // If consumedBatches exists, split lines per batch with numbering
+          if (Array.isArray(saleItem.consumedBatches) && saleItem.consumedBatches.length > 0) {
+            saleItem.consumedBatches.forEach((batch, index) => {
+              const bQty = Number(batch.quantity || 0);
+              const bCost = Number(batch.purchasePrice || 0);
+              if (bQty > 0) {
+                const lineProfit = (actualSalePrice - bCost) * bQty;
+                billProfit += lineProfit;
+                itemDetails.push({
+                  item: `${saleItem.item} (${index + 1})`,
+                  qty: bQty,
+                  originalPrice: originalPrice,
+                  salePrice: actualSalePrice,
+                  purchasePrice: bCost,
+                  itemDiscount: Math.abs(itemDiscount),
+                  itemProfit: lineProfit
+                });
+              }
+            });
+          } else {
+            // Fallback: single-line using average purchase cost if available
+            let totalCost = 0;
+            if (typeof saleItem.totalCost === 'number') {
+              totalCost = Number(saleItem.totalCost) || 0;
+            }
+            const purchasePriceAvg = qty > 0 ? (totalCost / qty) : 0;
+            const itemProfit = (actualSalePrice - purchasePriceAvg) * qty;
+            billProfit += itemProfit;
+            itemDetails.push({
+              item: saleItem.item,
+              qty: qty,
+              originalPrice: originalPrice,
+              salePrice: actualSalePrice,
+              purchasePrice: purchasePriceAvg,
+              itemDiscount: Math.abs(itemDiscount),
+              itemProfit: itemProfit
+            });
+          }
         });
       }
       totalProfit += billProfit;

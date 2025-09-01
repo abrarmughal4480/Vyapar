@@ -74,20 +74,14 @@ export const createPurchase = async (req, res) => {
           }
         }
         
-        // Update total stock
-        dbItem.stock = (dbItem.stock || 0) + stockQuantity;
-        
-        // Update purchase price
-        dbItem.purchasePrice = Number(purchaseItem.price);
-        
+        // Add stock as a new batch with purchase price
+        const updatedItem = await dbItem.addStock(stockQuantity, Number(purchaseItem.price));
+
         console.log(`Stock adding for item: ${purchaseItem.item}`);
         console.log(`Purchase quantity: ${purchaseItem.qty} ${purchaseItem.unit}`);
         console.log(`Stock quantity to add: ${stockQuantity}`);
         console.log(`Purchase price: ${purchaseItem.price}`);
-        console.log(`Current stock: ${dbItem.stock}`);
-        console.log(`New stock: ${dbItem.stock}`);
-        
-        await dbItem.save();
+        console.log(`New stock after batch add: ${updatedItem.stock}`);
       }
     }
     

@@ -17,20 +17,22 @@ export const createCreditNote = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
     
-    // Increment stock for each item (reverse of sale)
+    // Increment stock for each item (reverse of sale) with batch tracking
     for (const noteItem of items) {
       const dbItem = await Item.findOne({ userId: userId.toString(), name: noteItem.item });
       // Restore stock for the item
       if (dbItem) {
         const quantity = noteItem.qty || 0;
         
-        // Simple stock restoration
-        dbItem.stock = (dbItem.stock || 0) + quantity;
+        // Add stock as a new batch with the original sale price (if available)
+        // For credit notes, we typically restore at the original cost
+        const restorePrice = noteItem.purchasePrice || dbItem.purchasePrice || 0;
         
-        console.log(`Restored ${quantity} units to ${noteItem.item} via credit note, new stock: ${dbItem.stock}`);
+        // Use addStock method to create a new batch
+        await dbItem.addStock(quantity, restorePrice);
+        
+        console.log(`Restored ${quantity} units to ${noteItem.item} via credit note at price ${restorePrice}, new stock: ${dbItem.stock}`);
       }
-      
-      await dbItem.save();
     }
     // Calculate subTotal
     const subTotal = items.reduce((sum, item) => sum + (item.amount || 0), 0);

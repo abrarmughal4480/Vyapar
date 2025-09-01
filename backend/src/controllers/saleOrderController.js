@@ -1,4 +1,5 @@
 import SaleOrder from '../models/saleOrder.js';
+import Item from '../models/items.js';
 import mongoose from 'mongoose';
 
 // Create a new sale order
@@ -29,6 +30,62 @@ export const createSaleOrder = async (req, res) => {
       console.error('Failed to get customer balance:', err);
     }
 
+    // Check stock availability and plan batch consumption for each item
+    const stockCheckResults = [];
+    if (data.items && Array.isArray(data.items)) {
+      for (const orderItem of data.items) {
+        const dbItem = await Item.findOne({ userId: userId.toString(), name: orderItem.item });
+        if (dbItem) {
+          const requestedQty = Number(orderItem.qty) || 0;
+          const availableStock = dbItem.stock || 0;
+          
+          if (availableStock >= requestedQty) {
+            // Plan FIFO batch consumption
+            const plannedBatches = [];
+            let remainingPlan = requestedQty;
+            
+            if (Array.isArray(dbItem.batches)) {
+              for (let i = 0; i < dbItem.batches.length && remainingPlan > 0; i++) {
+                const batch = dbItem.batches[i];
+                const take = Math.min(batch.quantity || 0, remainingPlan);
+                if (take > 0) {
+                  plannedBatches.push({ 
+                    quantity: take, 
+                    purchasePrice: batch.purchasePrice || dbItem.purchasePrice || 0 
+                  });
+                  remainingPlan -= take;
+                }
+              }
+            }
+            
+            stockCheckResults.push({
+              item: orderItem.item,
+              available: true,
+              requestedQty,
+              availableStock,
+              plannedBatches
+            });
+          } else {
+            stockCheckResults.push({
+              item: orderItem.item,
+              available: false,
+              requestedQty,
+              availableStock,
+              message: 'Insufficient stock'
+            });
+          }
+        } else {
+          stockCheckResults.push({
+            item: orderItem.item,
+            available: false,
+            requestedQty: Number(orderItem.qty) || 0,
+            availableStock: 0,
+            message: 'Item not found'
+          });
+        }
+      }
+    }
+
     const saleOrder = new SaleOrder({
       ...data,
       userId,
@@ -38,6 +95,7 @@ export const createSaleOrder = async (req, res) => {
       orderDate: data.orderDate || new Date(),
       dueDate: data.dueDate || null,
       partyBalanceAfterTransaction: customerBalance, // For sale orders, balance remains same
+      stockCheckResults // Store stock check results for reference
     });
     await saleOrder.save();
     res.status(201).json({ success: true, data: saleOrder });

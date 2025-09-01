@@ -41,7 +41,17 @@ const itemSchema = new mongoose.Schema({
   type: { type: String, enum: ['Product', 'Service'], default: 'Product' },
   imageUrl: { type: String },
   atPrice: { type: Number },
-  asOfDate: { type: String }
+  asOfDate: { type: String },
+
+  // Batch-wise inventory tracking
+  batches: [
+    {
+      batchId: { type: String },
+      quantity: { type: Number, required: true },
+      purchasePrice: { type: Number },
+      createdAt: { type: Date, default: Date.now }
+    }
+  ]
 }, { timestamps: true });
 
 itemSchema.index({ userId: 1, itemId: 1 }, { unique: true });
@@ -54,6 +64,12 @@ itemSchema.index({ userId: 1, hsn: 1 });
 itemSchema.methods.addStock = function(quantity, purchasePrice, purchaseId, supplier) {
   this.stock = (this.stock || 0) + quantity;
   this.purchasePrice = purchasePrice;
+
+  if (!Array.isArray(this.batches)) {
+    this.batches = [];
+  }
+
+  this.batches.push({ quantity, purchasePrice, createdAt: new Date() });
   
   return this.save();
 };
@@ -62,7 +78,23 @@ itemSchema.methods.reduceStock = function(quantity) {
   if ((this.stock || 0) < quantity) {
     throw new Error('Insufficient stock available');
   }
-  
+
+  let remainingToDeduct = quantity;
+  if (!Array.isArray(this.batches)) {
+    this.batches = [];
+  }
+
+  // FIFO consumption from batches
+  for (let index = 0; index < this.batches.length && remainingToDeduct > 0; index++) {
+    const batch = this.batches[index];
+    const deduction = Math.min(batch.quantity || 0, remainingToDeduct);
+    batch.quantity = (batch.quantity || 0) - deduction;
+    remainingToDeduct -= deduction;
+  }
+
+  // Remove empty batches
+  this.batches = this.batches.filter(b => (b.quantity || 0) > 0);
+
   this.stock -= quantity;
   return this.save();
 };

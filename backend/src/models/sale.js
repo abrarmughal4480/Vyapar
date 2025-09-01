@@ -8,7 +8,13 @@ const SaleItemSchema = new mongoose.Schema({
   amount: { type: Number, required: true },
   customUnit: { type: String },
   discountPercentage: { type: String, default: '' },
-  discountAmount: { type: String, default: '' }
+  discountAmount: { type: String, default: '' },
+  // Captured purchase cost details based on FIFO batches
+  consumedBatches: [{
+    quantity: { type: Number, required: true },
+    purchasePrice: { type: Number, required: true }
+  }],
+  totalCost: { type: Number, default: 0 }
 }, { _id: false });
 
 const SaleSchema = new mongoose.Schema({

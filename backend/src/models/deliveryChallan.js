@@ -6,7 +6,12 @@ const DeliveryChallanItemSchema = new mongoose.Schema({
   unit: { type: String, required: true },
   price: { type: Number, required: true },
   amount: { type: Number, required: true },
-  customUnit: { type: String }
+  customUnit: { type: String },
+  // Batch consumption planning for when challan is converted to sale
+  plannedBatches: [{
+    quantity: { type: Number, required: true },
+    purchasePrice: { type: Number, required: true }
+  }]
 }, { _id: false });
 
 const DeliveryChallanSchema = new mongoose.Schema({
@@ -31,6 +36,18 @@ const DeliveryChallanSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
   partyBalanceAfterTransaction: { type: Number, default: 0 },
+  // Stock check results when challan was created
+  stockCheckResults: [{
+    item: { type: String, required: true },
+    available: { type: Boolean, required: true },
+    requestedQty: { type: Number, required: true },
+    availableStock: { type: Number, required: true },
+    plannedBatches: [{
+      quantity: { type: Number, required: true },
+      purchasePrice: { type: Number, required: true }
+    }],
+    message: { type: String }
+  }]
 });
 
 // Create compound index for userId + challanNumber to ensure uniqueness per user

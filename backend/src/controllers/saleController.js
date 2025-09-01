@@ -785,9 +785,26 @@ export const updateSale = async (req, res) => {
           }
         }
         
-        // Restore stock
-        dbItem.stock = (dbItem.stock || 0) + stockQuantity;
-        await dbItem.save();
+        // CRITICAL FIX: Restore stock with proper batch structure from old consumed batches
+        if (oldItem.consumedBatches && Array.isArray(oldItem.consumedBatches) && oldItem.consumedBatches.length > 0) {
+          // Restore each consumed batch individually to maintain FIFO structure
+          console.log(`   🔄 Restoring ${oldItem.consumedBatches.length} batches with original purchase prices`);
+          
+          for (const consumedBatch of oldItem.consumedBatches) {
+            const batchQty = consumedBatch.quantity || 0;
+            const batchPrice = consumedBatch.purchasePrice || 0;
+            
+            if (batchQty > 0) {
+              // Add each batch back with its original purchase price
+              await dbItem.addStock(batchQty, batchPrice);
+              console.log(`   ✅ Restored batch: ${batchQty} units at price ${batchPrice}`);
+            }
+          }
+        } else {
+          // Fallback: use addStock with item's current purchase price
+          await dbItem.addStock(stockQuantity, oldItem.purchasePrice || dbItem.purchasePrice || 0);
+          console.log(`   ⚠️ No consumed batches found, using fallback restoration`);
+        }
         
         console.log(`📦 STOCK RESTORATION for ${oldItem.item}:`);
         console.log(`   Before restore: ${stockBeforeRestore} units`);
@@ -894,30 +911,10 @@ export const updateSale = async (req, res) => {
             // Only remove completely consumed batches
             dbItem.batches = dbItem.batches.filter(b => b !== null && b !== undefined);
             
-            // Update stock
-            dbItem.stock = Math.max(0, (dbItem.stock || 0) - newQty);
+            // CRITICAL FIX: Use reduceStock method for proper FIFO-based stock reduction
+            await dbItem.reduceStock(newQty);
             
-            // IMPORTANT: Add remaining stock back to batches
-            const remainingStock = dbItem.stock;
-            if (remainingStock > 0) {
-              // Find the last batch with same price to add remaining stock
-              const lastBatch = dbItem.batches[dbItem.batches.length - 1];
-              if (lastBatch && lastBatch.purchasePrice === dbItem.purchasePrice) {
-                // Add to existing batch
-                lastBatch.quantity += remainingStock;
-                console.log(`   ✅ Added remaining ${remainingStock} units to existing batch, new quantity: ${lastBatch.quantity}`);
-              } else {
-                // Create new batch for remaining stock
-                dbItem.batches.push({
-                  quantity: remainingStock,
-                  purchasePrice: dbItem.purchasePrice || 0,
-                  createdAt: new Date()
-                });
-                console.log(`   ✅ Created new batch for remaining ${remainingStock} units at price ${dbItem.purchasePrice || 0}`);
-              }
-            }
-            
-            await dbItem.save();
+            console.log(`   ✅ Stock reduced using FIFO method: ${newQty} units consumed`);
             
             console.log(`   Stock after consuming total new quantity: ${dbItem.stock} units`);
             console.log(`   Batches after consumption:`, dbItem.batches);
@@ -930,57 +927,60 @@ export const updateSale = async (req, res) => {
             console.log(`   ✅ Total cost: ${totalCost}`);
             
           } else {
-            // Quantity decreased - add stock back
-            const decreaseQty = Math.abs(quantityChange);
-            console.log(`   📉 Quantity decreased: adding ${decreaseQty} units back to stock`);
+            // Quantity decreased - we need to consume the NEW quantity from stock
+            console.log(`   📉 Quantity decreased: consuming NEW quantity (${newQty}) from stock`);
             
-            // Add stock back
-            dbItem.stock = (dbItem.stock || 0) + decreaseQty;
-            await dbItem.save();
+            // IMPORTANT: We restore old stock (+15) but then consume NEW quantity (-13)
+            // So final stock = restored stock - new quantity = 20 - 13 = 7 units
+            const stockToConsume = newQty;
+            console.log(`   🔄 Consuming ${stockToConsume} units (new sale quantity) from restored stock`);
             
-            // Reduce from consumed batches - start from last batch
-            let remainingToReduce = decreaseQty;
-            const newConsumedBatches = [];
+            // CRITICAL FIX: Use reduceStock method for proper FIFO-based stock reduction
+            await dbItem.reduceStock(stockToConsume);
+            console.log(`   📦 Stock after consuming new quantity: ${dbItem.stock} units`);
             
-            for (let i = oldConsumedBatches.length - 1; i >= 0 && remainingToReduce > 0; i--) {
-              const batch = oldConsumedBatches[i];
-              const batchQty = batch.quantity;
-              const reduceFromBatch = Math.min(batchQty, remainingToReduce);
+            // CORRECT APPROACH: New sale quantity is newQty, so consumed batches should total newQty
+            // We need to reduce from old consumed batches to match newQty
+            const targetQuantity = newQty; // This is the new sale quantity
+            const oldTotalQuantity = oldConsumedBatches.reduce((sum, b) => sum + b.quantity, 0);
+            const reductionNeeded = oldTotalQuantity - targetQuantity;
+            
+            console.log(`   📊 Old consumed batches total: ${oldTotalQuantity} units`);
+            console.log(`   🎯 Target quantity (new sale): ${targetQuantity} units`);
+            console.log(`   🔄 Need to reduce: ${reductionNeeded} units`);
+            
+            if (reductionNeeded > 0) {
+              // Start reducing from last batch (LIFO)
+              let remainingToReduce = reductionNeeded;
+              let newConsumedBatches = [...oldConsumedBatches];
               
-              if (reduceFromBatch > 0) {
-                const newBatchQty = batchQty - reduceFromBatch;
-                remainingToReduce -= reduceFromBatch;
+              for (let i = newConsumedBatches.length - 1; i >= 0 && remainingToReduce > 0; i--) {
+                const batch = newConsumedBatches[i];
+                const currentQty = batch.quantity;
+                const reduceFromBatch = Math.min(currentQty, remainingToReduce);
                 
-                if (newBatchQty > 0) {
-                  newConsumedBatches.unshift({
-                    quantity: newBatchQty,
-                    purchasePrice: batch.purchasePrice
-                  });
+                if (reduceFromBatch > 0) {
+                  const oldQty = batch.quantity;
+                  batch.quantity = currentQty - reduceFromBatch;
+                  remainingToReduce -= reduceFromBatch;
+                  console.log(`   Reduced ${reduceFromBatch} units from batch at price ${batch.purchasePrice}: ${oldQty} → ${batch.quantity}`);
                 }
-                // If newBatchQty = 0, skip this batch completely
-              } else {
-                newConsumedBatches.unshift({
-                  quantity: batchQty,
-                  purchasePrice: batch.purchasePrice
-                });
               }
+              
+              // Remove batches with 0 quantity
+              newConsumedBatches = newConsumedBatches.filter(b => b.quantity > 0);
+              
+              console.log(`   📊 New consumed batches:`, newConsumedBatches);
+              newItem.consumedBatches = newConsumedBatches;
+            } else {
+              // No reduction needed, keep old batches
+              console.log(`   No reduction needed, keeping old consumed batches`);
+              newItem.consumedBatches = oldConsumedBatches;
             }
+            // Calculate total cost based on final consumed batches
+            newItem.totalCost = newItem.consumedBatches.reduce((sum, b) => sum + (b.quantity * b.purchasePrice), 0);
             
-            // Add any remaining batches that weren't processed
-            for (let i = 0; i < oldConsumedBatches.length; i++) {
-              const batch = oldConsumedBatches[i];
-              if (!newConsumedBatches.find(nb => nb.purchasePrice === batch.purchasePrice && nb.quantity === batch.quantity)) {
-                newConsumedBatches.push({
-                  quantity: batch.quantity,
-                  purchasePrice: batch.purchasePrice
-                });
-              }
-            }
-            
-            newItem.consumedBatches = newConsumedBatches;
-            newItem.totalCost = newConsumedBatches.reduce((sum, b) => sum + (b.quantity * b.purchasePrice), 0);
-            
-            console.log(`   ✅ Reduced consumed batches, new total: ${newConsumedBatches.reduce((sum, b) => sum + b.quantity, 0)} units`);
+            console.log(`   ✅ Reduced consumed batches, new total: ${newItem.consumedBatches.reduce((sum, b) => sum + b.quantity, 0)} units`);
           }
           
           console.log(`   Final consumed batches:`, newItem.consumedBatches);

@@ -62,14 +62,16 @@ itemSchema.index({ userId: 1, type: 1 });
 itemSchema.index({ userId: 1, hsn: 1 });
 
 itemSchema.methods.addStock = function(quantity, purchasePrice, purchaseId, supplier) {
-  this.stock = (this.stock || 0) + quantity;
-  this.purchasePrice = purchasePrice;
-
+  // CRITICAL FIX: Update stock based on batches for consistency
   if (!Array.isArray(this.batches)) {
     this.batches = [];
   }
 
   this.batches.push({ quantity, purchasePrice, createdAt: new Date() });
+  
+  // Recalculate stock from batches to ensure consistency
+  this.stock = this.batches.reduce((sum, batch) => sum + (batch.quantity || 0), 0);
+  this.purchasePrice = purchasePrice;
   
   return this.save();
 };
@@ -95,7 +97,9 @@ itemSchema.methods.reduceStock = function(quantity) {
   // Remove empty batches
   this.batches = this.batches.filter(b => (b.quantity || 0) > 0);
 
-  this.stock -= quantity;
+  // CRITICAL FIX: Recalculate stock from batches instead of manual update
+  this.stock = this.batches.reduce((sum, batch) => sum + (batch.quantity || 0), 0);
+  
   return this.save();
 };
 

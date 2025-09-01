@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useRef, RefObject } from 'react';
+import React, { useState, useEffect, useRef, RefObject, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Printer, Settings, MoreHorizontal } from 'lucide-react';
 import Toast from '../../../components/Toast';
@@ -509,8 +509,10 @@ function ItemRow({
   );
 }
 
-const AddSalePage = () => {
+// Component that handles search params
+const AddSalePageWithSearchParams = () => {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [newSale, setNewSale] = useState({
     partyName: '',
     phoneNo: '',
@@ -1296,8 +1298,6 @@ const AddSalePage = () => {
     }
   }
   const grandTotal = Math.max(0, subTotal - totalDiscount + taxValue);
-
-  const searchParams = useSearchParams();
   
   // UI
   useEffect(() => {
@@ -1858,6 +1858,22 @@ const AddSalePage = () => {
         </form>
       </div>
     </div>
+  );
+};
+
+// Main component with Suspense boundary
+const AddSalePage = () => {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <AddSalePageWithSearchParams />
+    </Suspense>
   );
 };
 

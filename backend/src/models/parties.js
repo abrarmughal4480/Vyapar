@@ -19,11 +19,10 @@ const partySchema = new mongoose.Schema({
   note: { type: String },
 }, { timestamps: true });
 
-// Add indexes for better performance
-partySchema.index({ user: 1 }); // Index on user field for faster queries
-partySchema.index({ name: 1, user: 1 }); // Compound index for name + user queries
-partySchema.index({ status: 1, user: 1 }); // Index for status filtering
-partySchema.index({ partyType: 1, user: 1 }); // Index for party type filtering
+partySchema.index({ user: 1 }); 
+partySchema.index({ name: 1, user: 1 }); 
+partySchema.index({ status: 1, user: 1 }); 
+partySchema.index({ partyType: 1, user: 1 });
 
 const Party = mongoose.model('Party', partySchema);
 export default Party;

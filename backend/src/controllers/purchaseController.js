@@ -467,9 +467,16 @@ export const deletePurchase = async (req, res) => {
             }
           }
           
-          // Update total stock
-          dbItem.stock = Math.max(0, (dbItem.stock || 0) - stockQuantity);
-          await dbItem.save();
+          // Use reduceStock method to properly handle batch removal
+          try {
+            await dbItem.reduceStock(stockQuantity);
+            console.log(`Reverted stock for ${purchaseItem.item} during delete: -${stockQuantity}, new stock: ${dbItem.stock}`);
+          } catch (error) {
+            // If reduceStock fails due to insufficient stock, do simple reduction
+            console.warn(`Reduce stock failed for ${purchaseItem.item} during delete, doing simple reduction:`, error.message);
+            dbItem.stock = Math.max(0, (dbItem.stock || 0) - stockQuantity);
+            await dbItem.save();
+          }
         }
       }
     }
@@ -559,8 +566,16 @@ export const updatePurchase = async (req, res) => {
           }
         }
         
-        dbItem.stock = Math.max(0, (dbItem.stock || 0) - stockQuantity);
-        await dbItem.save();
+        // Use reduceStock method to properly handle batch removal
+        try {
+          await dbItem.reduceStock(stockQuantity);
+          console.log(`Reverted stock for ${oldItem.item}: -${stockQuantity}, new stock: ${dbItem.stock}`);
+        } catch (error) {
+          // If reduceStock fails due to insufficient stock, do simple reduction
+          console.warn(`Reduce stock failed for ${oldItem.item}, doing simple reduction:`, error.message);
+          dbItem.stock = Math.max(0, (dbItem.stock || 0) - stockQuantity);
+          await dbItem.save();
+        }
       }
     }
     
@@ -594,9 +609,9 @@ export const updatePurchase = async (req, res) => {
           }
         }
         
-        // Update total stock
-        dbItem.stock = (dbItem.stock || 0) + stockQuantity;
-        await dbItem.save();
+        // Use addStock method to properly handle batch creation
+        await dbItem.addStock(stockQuantity, Number(newItem.price));
+        console.log(`Added stock for ${newItem.item}: +${stockQuantity} at price ${newItem.price}, new stock: ${dbItem.stock}`);
       }
     }
     

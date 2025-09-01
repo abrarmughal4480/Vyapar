@@ -735,168 +735,229 @@ export const deleteSale = async (req, res) => {
   }
 };
 
-// Update a sale (full edit)
+
+
+// Update a sale with proper stock and party balance management
 export const updateSale = async (req, res) => {
   try {
     const userId = req.user && req.user._id;
     const { saleId } = req.params;
     const updateData = req.body;
 
-    // 1. Fetch old sale
-    const oldSale = await Sale.findOne({ _id: saleId, userId });
-    if (!oldSale) return res.status(404).json({ success: false, message: 'Sale not found' });
-
-    // 2. Handle stock updates for modified items
-    const oldItems = oldSale.items || [];
-    const newItems = updateData.items || [];
-    
-    // Create maps for easy comparison
-    const oldItemMap = new Map();
-    oldItems.forEach(item => {
-      oldItemMap.set(item.item, {
-        qty: Number(item.qty) || 0,
-        unit: item.unit || 'Piece'
-      });
-    });
-    
-    const newItemMap = new Map();
-    newItems.forEach(item => {
-      newItemMap.set(item.item, {
-        qty: Number(item.qty) || 0,
-        unit: item.unit || 'Piece'
-      });
-    });
-    
-    // Update stock for all items
-    const allItems = new Set([...oldItemMap.keys(), ...newItemMap.keys()]);
-    
-    for (const itemName of allItems) {
-      const dbItem = await Item.findOne({ userId: userId.toString(), name: itemName });
-      if (!dbItem) continue;
-      
-      const oldItem = oldItemMap.get(itemName);
-      const newItem = newItemMap.get(itemName);
-      
-      // Calculate old stock quantity (what was cut before)
-      let oldStockQty = 0;
-      if (oldItem) {
-        oldStockQty = oldItem.qty;
-        // Convert to base unit if needed
-        if (dbItem.unit && typeof dbItem.unit === 'object' && dbItem.unit.base && dbItem.unit.secondary) {
-          if (oldItem.unit === dbItem.unit.secondary && dbItem.unit.conversionFactor) {
-            oldStockQty = oldItem.qty * dbItem.unit.conversionFactor;
-          }
-        } else if (typeof dbItem.unit === 'string' && dbItem.unit.includes(' / ')) {
-          const parts = dbItem.unit.split(' / ');
-          if (oldItem.unit === parts[1]) {
-            oldStockQty = oldItem.qty * 12; // Default conversion
-          }
-        }
-      }
-      
-      // Calculate new stock quantity (what should be cut now)
-      let newStockQty = 0;
-      if (newItem) {
-        newStockQty = newItem.qty;
-        // Convert to base unit if needed
-        if (dbItem.unit && typeof dbItem.unit === 'object' && dbItem.unit.base && dbItem.unit.secondary) {
-          if (newItem.unit === dbItem.unit.secondary && dbItem.unit.conversionFactor) {
-            newStockQty = newItem.qty * dbItem.unit.conversionFactor;
-          }
-        } else if (typeof dbItem.unit === 'string' && dbItem.unit.includes(' / ')) {
-          const parts = dbItem.unit.split(' / ');
-          if (newItem.unit === parts[1]) {
-            newStockQty = newItem.qty * 12; // Default conversion
-          }
-        }
-      }
-      
-      // Handle simple stock adjustment
-      if (dbItem) {
-        console.log(`Stock adjustment for ${itemName}: old=${oldStockQty}, new=${newStockQty}`);
-        
-        // First, restore old stock (add back what was consumed)
-        if (oldStockQty > 0) {
-          dbItem.stock = (dbItem.stock || 0) + oldStockQty;
-          console.log(`Restored ${oldStockQty} units to ${itemName}, new stock: ${dbItem.stock}`);
-        }
-        
-        // Then, consume new stock
-        if (newStockQty > 0) {
-          try {
-            // Plan FIFO batches for update consumption capturing costs
-            const plannedBatches = [];
-            let remainingPlan = Number(newStockQty) || 0;
-            if (!Array.isArray(dbItem.batches)) dbItem.batches = [];
-            for (let i = 0; i < dbItem.batches.length && remainingPlan > 0; i++) {
-              const batch = dbItem.batches[i];
-              const take = Math.min(batch.quantity || 0, remainingPlan);
-              if (take > 0) {
-                plannedBatches.push({ quantity: take, purchasePrice: batch.purchasePrice || dbItem.purchasePrice || 0 });
-                remainingPlan -= take;
-              }
-            }
-
-            await dbItem.reduceStock(newStockQty);
-            
-            console.log(`Stock consumption for ${itemName}:`, {
-              quantity: newStockQty,
-              currentStock: dbItem.stock
-            });
-            
-            // Persist consumed batches to updated item
-            const consumedBatches = plannedBatches;
-            const totalCost = consumedBatches.reduce((sum, b) => sum + (Number(b.quantity || 0) * Number(b.purchasePrice || 0)), 0);
-            if (newItem) {
-              newItem.consumedBatches = consumedBatches;
-              newItem.totalCost = totalCost;
-            }
-            
-          } catch (error) {
-            console.error(`Stock consumption failed for ${itemName}:`, error.message);
-            // Fallback: batch-aware FIFO reduction
-            try {
-              const currentStock = dbItem.stock || 0;
-              const requestQty = Number(newStockQty) || 0;
-              const toDeduct = Math.min(currentStock, requestQty);
-              if (!Array.isArray(dbItem.batches)) {
-                dbItem.batches = [];
-              }
-              let remaining = toDeduct;
-              const consumed = [];
-              for (let i = 0; i < dbItem.batches.length && remaining > 0; i++) {
-                const batch = dbItem.batches[i];
-                const canDeduct = Math.min(batch.quantity || 0, remaining);
-                batch.quantity = (batch.quantity || 0) - canDeduct;
-                remaining -= canDeduct;
-                if (canDeduct > 0) {
-                  consumed.push({ quantity: canDeduct, purchasePrice: batch.purchasePrice || dbItem.purchasePrice || 0 });
-                }
-              }
-              dbItem.batches = dbItem.batches.filter(b => (b.quantity || 0) > 0);
-              dbItem.stock = (dbItem.stock || 0) - toDeduct;
-              if (newItem) {
-                const totalCost = consumed.reduce((sum, b) => sum + (Number(b.quantity || 0) * Number(b.purchasePrice || 0)), 0);
-                newItem.consumedBatches = consumed;
-                newItem.totalCost = totalCost;
-              }
-            } catch (fallbackErr) {
-              dbItem.stock = Math.max(0, (dbItem.stock || 0) - (Number(newStockQty) || 0));
-            }
-          }
-        }
-      } else {
-        // Simple stock adjustment
-        const stockAdjustment = oldStockQty - newStockQty;
-        dbItem.stock = (dbItem.stock || 0) + stockAdjustment;
-        
-        console.log(`Simple stock adjustment for ${itemName}: old=${oldStockQty}, new=${newStockQty}, adjustment=${stockAdjustment}, final=${dbItem.stock}`);
-      }
-
-      await dbItem.save();
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
 
-    // 3. Calculate new grandTotal
+    // 1. Fetch old sale
+    const oldSale = await Sale.findOne({ _id: saleId, userId });
+    if (!oldSale) {
+      return res.status(404).json({ success: false, message: 'Sale not found' });
+    }
+
+    console.log('Updating sale:', saleId, 'for user:', userId);
+
+    // 2. First restore stock from old sale items
+    const oldItems = oldSale.items || [];
+    for (const oldItem of oldItems) {
+      const dbItem = await Item.findOne({ userId: userId.toString(), name: oldItem.item });
+      if (dbItem) {
+        // Convert quantity to base unit for stock restoration
+        let stockQuantity = Number(oldItem.qty);
+        
+        // Handle unit conversion for restoration
+        if (dbItem.unit) {
+          const itemUnit = dbItem.unit;
+          const saleUnit = oldItem.unit;
+          
+          if (typeof itemUnit === 'object' && itemUnit.base && itemUnit.secondary) {
+            if (saleUnit === itemUnit.secondary && itemUnit.conversionFactor) {
+              stockQuantity = Number(oldItem.qty) * itemUnit.conversionFactor;
+            }
+          } else if (typeof itemUnit === 'string' && itemUnit.includes(' / ')) {
+            const parts = itemUnit.split(' / ');
+            const secondaryUnit = parts[1];
+            if (saleUnit === secondaryUnit) {
+              stockQuantity = Number(oldItem.qty) * 12; // Default conversion factor
+            }
+          }
+        }
+        
+        // Restore stock
+        dbItem.stock = (dbItem.stock || 0) + stockQuantity;
+        await dbItem.save();
+        
+        console.log(`Restored stock for ${oldItem.item}: +${stockQuantity}, new stock: ${dbItem.stock}`);
+      }
+    }
+
+    // 3. Revert old party balance
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      const oldParty = await Party.findOne({ name: oldSale.partyName, user: userId });
+      if (oldParty) {
+        // Revert old credit balance
+        if (oldSale.paymentType === 'Credit' && oldSale.balance > 0) {
+          oldParty.openingBalance = (oldParty.openingBalance || 0) - oldSale.balance;
+          await oldParty.save();
+          console.log(`Reverted party balance for ${oldSale.partyName}: -${oldSale.balance}`);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to revert old party balance:', err);
+    }
+
+    // 4. Process new sale items and reduce stock
+    const newItems = updateData.items || [];
+    for (const newItem of newItems) {
+      const dbItem = await Item.findOne({ userId: userId.toString(), name: newItem.item });
+      if (dbItem) {
+        // Find old sale item to compare quantities
+        const oldSaleItem = oldItems.find(oldItem => oldItem.item === newItem.item);
+        const oldQty = oldSaleItem ? Number(oldSaleItem.qty) : 0;
+        const newQty = Number(newItem.qty);
+        
+        // Calculate additional quantity needed (only consume the difference)
+        const additionalQty = Math.max(0, newQty - oldQty);
+        
+        console.log(`Item: ${newItem.item}, Old qty: ${oldQty}, New qty: ${newQty}, Additional needed: ${additionalQty}`);
+        
+        if (additionalQty > 0) {
+          // Convert additional quantity to base unit for stock calculation
+          let stockQuantity = additionalQty;
+          
+          // Handle unit conversion
+          if (dbItem.unit) {
+            const itemUnit = dbItem.unit;
+            const saleUnit = newItem.unit;
+            
+            if (typeof itemUnit === 'object' && itemUnit.base && itemUnit.secondary) {
+              if (saleUnit === itemUnit.secondary && itemUnit.conversionFactor) {
+                stockQuantity = additionalQty * itemUnit.conversionFactor;
+              }
+            } else if (typeof itemUnit === 'string' && itemUnit.includes(' / ')) {
+              const parts = itemUnit.split(' / ');
+              const secondaryUnit = parts[1];
+              if (saleUnit === secondaryUnit) {
+                stockQuantity = additionalQty * 12; // Default conversion factor
+              }
+            }
+          }
+          
+          // Reduce stock using FIFO method for additional quantity only
+          try {
+            // Store original batches before consumption for comparison
+            const originalBatches = JSON.parse(JSON.stringify(dbItem.batches || []));
+            
+            // Manual FIFO batch consumption for additional quantity
+            const additionalConsumedBatches = [];
+            let remainingToConsume = stockQuantity;
+            let additionalCost = 0;
+            
+            // Process batches in FIFO order
+            for (let i = 0; i < dbItem.batches.length && remainingToConsume > 0; i++) {
+              const batch = dbItem.batches[i];
+              const availableInBatch = batch.quantity || 0;
+              const consumeFromBatch = Math.min(availableInBatch, remainingToConsume);
+              
+              if (consumeFromBatch > 0) {
+                // Add to additional consumed batches
+                additionalConsumedBatches.push({
+                  quantity: consumeFromBatch,
+                  purchasePrice: batch.purchasePrice || dbItem.purchasePrice || 0
+                });
+                
+                // Update batch quantity
+                batch.quantity = availableInBatch - consumeFromBatch;
+                
+                // Update remaining to consume
+                remainingToConsume -= consumeFromBatch;
+                
+                // Calculate additional cost
+                additionalCost += consumeFromBatch * (batch.purchasePrice || dbItem.purchasePrice || 0);
+                
+                console.log(`Consumed additional ${consumeFromBatch} units from batch at price ${batch.purchasePrice}, remaining in batch: ${batch.quantity}`);
+              }
+            }
+            
+            // Remove empty batches
+            dbItem.batches = dbItem.batches.filter(b => (b.quantity || 0) > 0);
+            
+            // Update total stock
+            dbItem.stock = Math.max(0, (dbItem.stock || 0) - stockQuantity);
+            
+            // Save the item
+            await dbItem.save();
+            
+            console.log(`Additional stock reduced for ${newItem.item}: -${stockQuantity}, new stock: ${dbItem.stock}`);
+            console.log(`Additional consumed batches:`, additionalConsumedBatches);
+            console.log(`Additional cost: ${additionalCost}`);
+            
+            // Combine old consumed batches with new additional consumed batches
+            const oldConsumedBatches = oldSaleItem ? (oldSaleItem.consumedBatches || []) : [];
+            
+            // Optimize: Merge batches with same purchase price
+            const finalConsumedBatches = [];
+            const batchMap = new Map(); // price -> total quantity
+            
+            // First, add old batches to map
+            oldConsumedBatches.forEach(batch => {
+              const price = batch.purchasePrice;
+              const existingQty = batchMap.get(price) || 0;
+              batchMap.set(price, existingQty + batch.quantity);
+            });
+            
+            // Then, add additional batches to map
+            additionalConsumedBatches.forEach(batch => {
+              const price = batch.purchasePrice;
+              const existingQty = batchMap.get(price) || 0;
+              batchMap.set(price, existingQty + batch.quantity);
+            });
+            
+            // Convert map back to array format
+            batchMap.forEach((totalQty, price) => {
+              finalConsumedBatches.push({
+                quantity: totalQty,
+                purchasePrice: price
+              });
+            });
+            
+            // Sort by purchase price for consistency
+            finalConsumedBatches.sort((a, b) => a.purchasePrice - b.purchasePrice);
+            
+            // Calculate total cost
+            const totalCost = finalConsumedBatches.reduce((sum, batch) => 
+              sum + (batch.quantity * batch.purchasePrice), 0
+            );
+            
+            console.log(`Optimized final consumed batches:`, finalConsumedBatches);
+            console.log(`Total cost: ${totalCost}`);
+            
+            // Store consumed batches info in sale item
+            newItem.consumedBatches = finalConsumedBatches;
+            newItem.totalCost = totalCost;
+            
+          } catch (error) {
+            console.error(`Additional stock reduction failed for ${newItem.item}:`, error.message);
+            // Fallback: simple stock reduction
+            const currentStock = dbItem.stock || 0;
+            const toDeduct = Math.min(currentStock, stockQuantity);
+            dbItem.stock = Math.max(0, currentStock - toDeduct);
+            await dbItem.save();
+            
+            // Keep old consumed batches
+            newItem.consumedBatches = oldSaleItem ? (oldSaleItem.consumedBatches || []) : [];
+            newItem.totalCost = oldSaleItem ? (oldSaleItem.totalCost || 0) : 0;
+          }
+        } else {
+          // No additional quantity needed, keep old consumed batches
+          console.log(`No additional stock needed for ${newItem.item}`);
+          newItem.consumedBatches = oldSaleItem ? (oldSaleItem.consumedBatches || []) : [];
+          newItem.totalCost = oldSaleItem ? (oldSaleItem.totalCost || 0) : 0;
+        }
+      }
+    }
+
+    // 5. Calculate new totals
     const originalSubTotal = newItems.reduce((sum, item) => {
       const qty = Number(item.qty) || 0;
       const price = Number(item.price) || 0;
@@ -916,6 +977,7 @@ export const updateSale = async (req, res) => {
       return total + itemDiscount;
     }, 0);
     
+    // Calculate global discount
     let discountValue = 0;
     if (updateData.discount && !isNaN(Number(updateData.discount))) {
       if (updateData.discountType === '%') {
@@ -928,6 +990,7 @@ export const updateSale = async (req, res) => {
     // Total discount is item discounts + global discount
     const totalDiscount = totalItemDiscount + discountValue;
     
+    // Calculate tax
     let taxType = updateData.taxType || '%';
     let tax = updateData.tax || 0;
     let taxValue = 0;
@@ -936,51 +999,76 @@ export const updateSale = async (req, res) => {
     } else if (taxType === 'PKR') {
       taxValue = Number(tax);
     }
+    
     const grandTotal = Math.max(0, originalSubTotal - totalDiscount + taxValue);
+    
+    // Calculate balance
+    let received = Number(updateData.received) || 0;
+    const balance = grandTotal - received;
 
-    // 3. Update party balances based on payment type
-    const Party = (await import('../models/parties.js')).default;
-    
-    // Calculate old and new credit amounts
-    const oldCreditAmount = oldSale.paymentType === 'Credit' ? (oldSale.balance || 0) : 0;
-    const newCreditAmount = updateData.paymentType === 'Credit' ? (grandTotal - (updateData.received || 0)) : 0;
-    
-    if (oldSale.partyName !== updateData.partyName) {
-      // Old party: minus old credit amount
-      const oldParty = await Party.findOne({ name: oldSale.partyName, user: userId });
-      if (oldParty) {
-        oldParty.openingBalance = (oldParty.openingBalance || 0) - oldCreditAmount;
-        await oldParty.save();
-      }
-      // New party: plus new credit amount
+    // 6. Update party balance for new sale
+    try {
+      const Party = (await import('../models/parties.js')).default;
       const newParty = await Party.findOne({ name: updateData.partyName, user: userId });
       if (newParty) {
-        newParty.openingBalance = (newParty.openingBalance || 0) + newCreditAmount;
+        if (updateData.paymentType === 'Credit') {
+          // Add new credit balance
+          newParty.openingBalance = (newParty.openingBalance || 0) + balance;
+        } else if (updateData.paymentType === 'Cash' && balance > 0) {
+          // Add remaining balance if any unpaid amount
+          newParty.openingBalance = (newParty.openingBalance || 0) + balance;
+        }
+        
+        // Calculate and store party balance after this transaction
+        const partyBalanceAfterTransaction = newParty.openingBalance;
+        
         await newParty.save();
+        console.log(`Updated party balance for ${updateData.partyName}: +${balance}, new balance: ${partyBalanceAfterTransaction}`);
+        
+        // Store the party balance after transaction for this sale
+        updateData.partyBalanceAfterTransaction = partyBalanceAfterTransaction;
       }
-    } else {
-      // Same party: adjust by credit amount difference
-      const party = await Party.findOne({ name: updateData.partyName, user: userId });
-      if (party) {
-        party.openingBalance = (party.openingBalance || 0) - oldCreditAmount + newCreditAmount;
-        await party.save();
-      }
+    } catch (err) {
+      console.error('Failed to update new party balance:', err);
     }
 
-    // 4. Update sale
-    // Calculate new balance
-    let received = typeof updateData.received === 'number' ? updateData.received : (oldSale.received || 0);
-    const balance = grandTotal - received;
-    const sale = await Sale.findOneAndUpdate(
+    // 7. Update the sale record
+    const updatedSale = await Sale.findOneAndUpdate(
       { _id: saleId, userId },
-      { ...updateData, grandTotal, balance, discountValue: totalDiscount, updatedAt: new Date() },
+      {
+        ...updateData,
+        discountValue: totalDiscount,
+        taxType,
+        tax,
+        taxValue,
+        grandTotal,
+        balance,
+        received,
+        updatedAt: new Date()
+      },
       { new: true }
     );
-    if (!sale) return res.status(404).json({ success: false, message: 'Sale not found' });
+
+    if (!updatedSale) {
+      return res.status(404).json({ success: false, message: 'Sale not found after update' });
+    }
+
+    // Map unit fields for frontend
+    const saleObj = updatedSale.toObject();
+    if (Array.isArray(saleObj.items)) {
+      saleObj.items = saleObj.items.map(item => ({
+        ...item,
+        unit: typeof item.unit === 'object' ? getUnitDisplay(item.unit) : item.unit
+      }));
+    }
+
+    console.log(`Successfully updated sale ${saleId} for user: ${userId}`);
     clearAllCacheForUser(userId); // Invalidate all related caches
-    res.json({ success: true, data: sale });
+    
+    res.json({ success: true, sale: saleObj });
   } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
+    console.error('Sale update error:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -1146,6 +1234,7 @@ export default {
   createSale,
   getSalesByUser,
   receivePayment,
+  receivePartyPayment,
   getSalesStatsByUser,
   deleteSale,
   updateSale,

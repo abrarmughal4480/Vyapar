@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef, RefObject } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Printer, Settings, MoreHorizontal } from 'lucide-react';
 import Toast from '../../../components/Toast';
 import { CustomDropdown, type DropdownOption } from '../../../components/CustomDropdown';
@@ -25,6 +25,12 @@ interface SaleItem {
   customUnit: string;
   discountPercentage: string;
   discountAmount: string;
+  // Batch information for profit calculation
+  consumedBatches?: Array<{
+    quantity: number;
+    purchasePrice: number;
+  }>;
+  totalCost?: number;
 }
 
 
@@ -891,7 +897,12 @@ const AddSalePage = () => {
 
       const saleData = {
         ...newSale,
-        items: filteredItems,
+        items: filteredItems.map((item: any) => ({
+          ...item,
+          // Ensure batch information is preserved for profit calculation
+          consumedBatches: item.consumedBatches || [],
+          totalCost: item.totalCost || 0
+        })),
         description,
         imageUrl: uploadedImage,
         tax: newSale.tax === 'NONE' || newSale.tax === '' ? 0 : newSale.tax,
@@ -900,9 +911,19 @@ const AddSalePage = () => {
         sourceOrderNumber // Include the original order number
       };
       let result;
+      console.log('Saving sale with editingId:', newSale.editingId);
+      console.log('Sale data:', saleData);
+      console.log('Items with batch info:', saleData.items.map(item => ({
+        item: item.item,
+        consumedBatches: item.consumedBatches,
+        totalCost: item.totalCost
+      })));
+      
       if (newSale.editingId) {
+        console.log('Updating existing sale with ID:', newSale.editingId);
         result = await updateSale(newSale.editingId, saleData, token);
       } else {
+        console.log('Creating new sale');
         result = await createSale(saleData, token);
       }
       if (result.success && result.sale && result.sale._id) {
@@ -992,13 +1013,25 @@ const AddSalePage = () => {
           setToast({ message: `Sale saved! Invoice No: ${result.sale.invoiceNo || ''}`, type: 'success' });
         }
         
-        setTimeout(() => router.push(`/dashboard/invoices?saleId=${result.sale._id}&invoiceNo=${result.sale.invoiceNo}`), 1500);
+        // Redirect based on whether we're editing or creating
+        if (newSale.editingId) {
+          // If editing, redirect back to sales page
+          setTimeout(() => router.push('/dashboard/sale'), 1500);
+        } else {
+          // If creating new, redirect to invoices page
+          setTimeout(() => router.push(`/dashboard/invoices?saleId=${result.sale._id}&invoiceNo=${result.sale.invoiceNo}`), 1500);
+        }
         return;
       }
       if (result.success) {
         setToast({ message: 'Sale saved successfully!', type: 'success' });
         setLoading(false);
-        setTimeout(() => router.push('/dashboard/invoices'), 1200);
+        // Redirect based on whether we're editing or creating
+        if (newSale.editingId) {
+          setTimeout(() => router.push('/dashboard/sale'), 1200);
+        } else {
+          setTimeout(() => router.push('/dashboard/invoices'), 1200);
+        }
       } else {
         setToast({ message: result.message || 'Failed to save sale', type: 'error' });
         setLoading(false);
@@ -1064,7 +1097,12 @@ const AddSalePage = () => {
 
       const saleData = {
         ...newSale,
-        items: filteredItems,
+        items: filteredItems.map((item: any) => ({
+          ...item,
+          // Ensure batch information is preserved for profit calculation
+          consumedBatches: item.consumedBatches || [],
+          totalCost: item.totalCost || 0
+        })),
         description,
         imageUrl: uploadedImage,
         tax: newSale.tax === 'NONE' || newSale.tax === '' ? 0 : newSale.tax,
@@ -1074,6 +1112,12 @@ const AddSalePage = () => {
       };
       
       let result;
+      console.log('AddSale - Items with batch info:', saleData.items.map(item => ({
+        item: item.item,
+        consumedBatches: item.consumedBatches,
+        totalCost: item.totalCost
+      })));
+      
       if (newSale.editingId) {
         result = await updateSale(newSale.editingId, saleData, token);
       } else {
@@ -1081,8 +1125,12 @@ const AddSalePage = () => {
       }
       
       if (result.success && result.sale && result.sale._id) {
-        setToast({ message: `Sale saved successfully! Invoice No: ${result.sale.invoiceNo || ''}`, type: 'success' });
-        // Redirect to sale page instead of invoices
+        if (newSale.editingId) {
+          setToast({ message: `Sale updated successfully! Invoice No: ${result.sale.invoiceNo || ''}`, type: 'success' });
+        } else {
+          setToast({ message: `Sale saved successfully! Invoice No: ${result.sale.invoiceNo || ''}`, type: 'success' });
+        }
+        // Redirect to sale page
         setTimeout(() => router.push('/dashboard/sale'), 1500);
       } else {
         setToast({ message: result.message || 'Failed to save sale', type: 'error' });
@@ -1249,44 +1297,60 @@ const AddSalePage = () => {
   }
   const grandTotal = Math.max(0, subTotal - totalDiscount + taxValue);
 
+  const searchParams = useSearchParams();
+  
   // UI
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const editId = urlParams.get('editId');
-      if (editId) {
-        const token = localStorage.getItem('token') || '';
-        getSaleById(editId, token).then(result => {
-          if (result && result.success && result.sale) {
-            const saleData = result.sale;
-            setNewSale({
-              partyName: saleData.partyName || '',
-              phoneNo: saleData.phoneNo || '',
-              items: Array.isArray(saleData.items) ? saleData.items.map((item: any, idx: number) => ({
-                id: idx + 1,
-                item: item.item || '',
-                qty: item.qty || '',
-                unit: item.unit || 'NONE',
-                customUnit: item.customUnit || '',
-                price: item.price || '',
-                amount: item.amount || 0
-              })) : [],
-              discount: saleData.discount || '',
-              discountType: saleData.discountType || '%',
-              tax: saleData.tax || '',
-              taxType: saleData.taxType || '%',
-              paymentType: saleData.paymentType || 'Credit',
-              receivedAmount: saleData.receivedAmount || '', // Add this line
-              editingId: saleData._id || saleData.id || null
-            });
-            setDescription(saleData.description || '');
-            setUploadedImage(saleData.imageUrl || null);
-            setSaleStatus(saleData.status || 'Draft');
-          }
-        });
-      }
+    const editId = searchParams?.get('editId');
+    console.log('Edit ID from search params:', editId);
+    
+    if (editId) {
+      const token = localStorage.getItem('token') || '';
+      console.log('Fetching sale data for edit ID:', editId);
+      
+      getSaleById(editId, token).then(result => {
+        console.log('Sale data fetch result:', result);
+        
+        if (result && result.success && result.sale) {
+          const saleData = result.sale;
+          console.log('Setting sale data for editing:', saleData);
+          
+          setNewSale({
+            partyName: saleData.partyName || '',
+            phoneNo: saleData.phoneNo || '',
+            items: Array.isArray(saleData.items) ? saleData.items.map((item: any, idx: number) => ({
+              id: idx + 1,
+              item: item.item || '',
+              qty: item.qty || '',
+              unit: item.unit || 'NONE',
+              customUnit: item.customUnit || '',
+              price: item.price || '',
+              amount: item.amount || 0,
+              // Preserve batch information for profit calculation
+              consumedBatches: item.consumedBatches || [],
+              totalCost: item.totalCost || 0
+            })) : [],
+            discount: saleData.discount || '',
+            discountType: saleData.discountType || '%',
+            tax: saleData.tax || '',
+            taxType: saleData.taxType || '%',
+            paymentType: saleData.paymentType || 'Credit',
+            receivedAmount: saleData.receivedAmount || '', // Add this line
+            editingId: saleData._id || saleData.id || null
+          });
+          
+          console.log('Set editingId to:', saleData._id || saleData.id || null);
+          setDescription(saleData.description || '');
+          setUploadedImage(saleData.imageUrl || null);
+          setSaleStatus(saleData.status || 'Draft');
+        } else {
+          console.error('Failed to fetch sale data:', result);
+        }
+      }).catch(error => {
+        console.error('Error fetching sale data:', error);
+      });
     }
-  }, []);
+  }, [searchParams]);
 
   // Fetch all customers once on mount
   useEffect(() => {
@@ -1316,7 +1380,9 @@ const AddSalePage = () => {
       <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-6">
         {/* Sticky Header */}
         <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 flex justify-between items-center px-6 py-4">
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Add Sale</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">
+            {newSale.editingId ? 'Edit Sale' : 'Add Sale'}
+          </h1>
           <button
             type="button"
             onClick={() => router.push('/dashboard/sale')}
@@ -1760,7 +1826,7 @@ const AddSalePage = () => {
                 </>
               ) : (
                 <>
-                  <span>Add Sale & Print</span>
+                  <span>{newSale.editingId ? 'Update Sale & Print' : 'Add Sale & Print'}</span>
                 </>
               )}
             </button>
@@ -1784,7 +1850,7 @@ const AddSalePage = () => {
                 </>
               ) : (
                 <>
-                  <span>Add Sale</span>
+                  <span>{newSale.editingId ? 'Update Sale' : 'Add Sale'}</span>
                 </>
               )}
             </button>

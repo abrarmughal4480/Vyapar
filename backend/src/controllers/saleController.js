@@ -761,6 +761,9 @@ export const updateSale = async (req, res) => {
     for (const oldItem of oldItems) {
       const dbItem = await Item.findOne({ userId: userId.toString(), name: oldItem.item });
       if (dbItem) {
+        // Log stock before restoration
+        const stockBeforeRestore = dbItem.stock || 0;
+        
         // Convert quantity to base unit for stock restoration
         let stockQuantity = Number(oldItem.qty);
         
@@ -786,7 +789,10 @@ export const updateSale = async (req, res) => {
         dbItem.stock = (dbItem.stock || 0) + stockQuantity;
         await dbItem.save();
         
-        console.log(`Restored stock for ${oldItem.item}: +${stockQuantity}, new stock: ${dbItem.stock}`);
+        console.log(`📦 STOCK RESTORATION for ${oldItem.item}:`);
+        console.log(`   Before restore: ${stockBeforeRestore} units`);
+        console.log(`   Restored: +${stockQuantity} units (old sale quantity)`);
+        console.log(`   After restore: ${dbItem.stock} units`);
       }
     }
 
@@ -822,8 +828,11 @@ export const updateSale = async (req, res) => {
         console.log(`Item: ${newItem.item}, Old qty: ${oldQty}, New qty: ${newQty}, Additional needed: ${additionalQty}`);
         
         if (additionalQty > 0) {
-          // Convert additional quantity to base unit for stock calculation
-          let stockQuantity = additionalQty;
+          // Log stock before total consumption
+          const stockBeforeTotal = dbItem.stock || 0;
+          
+          // Convert TOTAL NEW quantity to base unit for stock calculation (not just additional)
+          let stockQuantity = newQty; // Use total new quantity, not additional
           
           // Handle unit conversion
           if (dbItem.unit) {
@@ -832,16 +841,22 @@ export const updateSale = async (req, res) => {
             
             if (typeof itemUnit === 'object' && itemUnit.base && itemUnit.secondary) {
               if (saleUnit === itemUnit.secondary && itemUnit.conversionFactor) {
-                stockQuantity = additionalQty * itemUnit.conversionFactor;
+                stockQuantity = newQty * itemUnit.conversionFactor;
               }
             } else if (typeof itemUnit === 'string' && itemUnit.includes(' / ')) {
               const parts = itemUnit.split(' / ');
               const secondaryUnit = parts[1];
               if (saleUnit === secondaryUnit) {
-                stockQuantity = additionalQty * 12; // Default conversion factor
+                stockQuantity = newQty * 12; // Default conversion factor
               }
             }
           }
+          
+          console.log(`🔄 TOTAL STOCK CONSUMPTION for ${newItem.item}:`);
+          console.log(`   Stock before total consumption: ${stockBeforeTotal} units`);
+          console.log(`   Total new quantity needed: ${newQty} units`);
+          console.log(`   Stock quantity to consume: ${stockQuantity} units (after unit conversion)`);
+          console.log(`   Note: We restore old quantity (+${oldQty}) then consume total new quantity (-${newQty})`);
           
           // Reduce stock using FIFO method for additional quantity only
           try {
@@ -873,24 +888,27 @@ export const updateSale = async (req, res) => {
                 remainingToConsume -= consumeFromBatch;
                 
                 // Calculate additional cost
-                additionalCost += consumeFromBatch * (batch.purchasePrice || dbItem.purchasePrice || 0);
+                additionalCost += consumeFromBatch * (batch.purchasePrice || batch.purchasePrice || 0);
                 
-                console.log(`Consumed additional ${consumeFromBatch} units from batch at price ${batch.purchasePrice}, remaining in batch: ${batch.quantity}`);
+                console.log(`   Consumed ${consumeFromBatch} units from batch at price ${batch.purchasePrice}, remaining in batch: ${batch.quantity}`);
               }
             }
             
             // Remove empty batches
             dbItem.batches = dbItem.batches.filter(b => (b.quantity || 0) > 0);
             
-            // Update total stock
-            dbItem.stock = Math.max(0, (dbItem.stock || 0) - stockQuantity);
+            // Update total stock - IMPORTANT: Reduce by TOTAL NEW quantity, not just additional
+            // Because we already restored the old quantity above, so net effect should be: +oldQty - newQty
+            const stockAfterConsumption = Math.max(0, (dbItem.stock || 0) - stockQuantity);
+            dbItem.stock = stockAfterConsumption;
             
             // Save the item
             await dbItem.save();
             
-            console.log(`Additional stock reduced for ${newItem.item}: -${stockQuantity}, new stock: ${dbItem.stock}`);
-            console.log(`Additional consumed batches:`, additionalConsumedBatches);
-            console.log(`Additional cost: ${additionalCost}`);
+            console.log(`   Stock after total consumption: ${stockAfterConsumption} units`);
+            console.log(`   Net stock change: ${stockBeforeTotal} → ${stockAfterConsumption} (${stockAfterConsumption - stockBeforeTotal > 0 ? '+' : ''}${stockAfterConsumption - stockBeforeTotal})`);
+            console.log(`   Total consumed batches:`, additionalConsumedBatches);
+            console.log(`   Total cost: ${additionalCost}`);
             
             // Combine old consumed batches with new additional consumed batches
             const oldConsumedBatches = oldSaleItem ? (oldSaleItem.consumedBatches || []) : [];

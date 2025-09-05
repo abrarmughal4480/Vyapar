@@ -22,7 +22,4 @@ router.post('/bulk-import', authMiddleware, partiesController.bulkImport);
 // GET /parties/:partyId/balance - Get party balance
 router.get('/:partyId/balance', authMiddleware, partiesController.getPartyBalance);
 
-// GET /parties/stats/performance - Get performance statistics (for debugging)
-router.get('/stats/performance', authMiddleware, partiesController.getPerformanceStats);
-
 export default router; 

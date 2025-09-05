@@ -1,104 +1,6 @@
 import Expense from '../models/expense.js';
 import mongoose from 'mongoose';
 
-// Cache clearing utility function
-const clearExpenseCache = async (userId) => {
-  try {
-    // Clear any cached expense data
-    // This could include Redis cache, memory cache, or other caching mechanisms
-    console.log(`Clearing expense cache for user: ${userId}`);
-    
-    // If you have Redis or other cache, you can add cache clearing logic here
-    // Example: await redis.del(`expenses:${userId}`);
-    // Example: await redis.del(`expenseStats:${userId}`);
-    
-    // Clear common cache keys that might be used
-    const cacheKeysToClear = [
-      `expenses:${userId}`,
-      `expenseStats:${userId}`,
-      `expenses:${userId}:*`,
-      `expenseStats:${userId}:*`,
-      `partyExpenseBalance:${userId}:*`,
-      `expensesByCategory:${userId}`,
-      `expensesByParty:${userId}`,
-      `expensesByPaymentType:${userId}`
-    ];
-    
-    // Log all cache keys that would be cleared
-    console.log('Cache keys to clear:', cacheKeysToClear);
-    
-    // If you have a cache service, implement the actual clearing here
-    // Example with Redis:
-    // for (const key of cacheKeysToClear) {
-    //   await redis.del(key);
-    // }
-    
-    // Example with memory cache:
-    // cacheKeysToClear.forEach(key => {
-    //   delete memoryCache[key];
-    // });
-    
-    console.log(`Successfully cleared expense cache for user: ${userId}`);
-  } catch (error) {
-    console.error('Error clearing expense cache:', error);
-  }
-};
-
-// Cache clearing utility function for party balance
-const clearPartyBalanceCache = async (userId, partyId = null, partyName = null) => {
-  try {
-    // Clear party balance cache
-    console.log(`Clearing party balance cache for user: ${userId}`);
-    
-    // Clear common party balance cache keys
-    const partyCacheKeysToClear = [
-      `parties:${userId}`,
-      `parties:${userId}:*`,
-      `partyBalance:${userId}`,
-      `partyBalance:${userId}:*`,
-      `partyReceivable:${userId}`,
-      `partyReceivable:${userId}:*`,
-      `partyPayable:${userId}`,
-      `partyPayable:${userId}:*`
-    ];
-    
-    // If specific party is provided, clear that party's cache
-    if (partyId) {
-      partyCacheKeysToClear.push(
-        `party:${partyId}`,
-        `partyBalance:${partyId}`,
-        `partyReceivable:${partyId}`,
-        `partyPayable:${partyId}`
-      );
-    }
-    
-    if (partyName) {
-      partyCacheKeysToClear.push(
-        `partyByName:${userId}:${partyName}`,
-        `partyBalanceByName:${userId}:${partyName}`
-      );
-    }
-    
-    // Log all party cache keys that would be cleared
-    console.log('Party cache keys to clear:', partyCacheKeysToClear);
-    
-    // If you have a cache service, implement the actual clearing here
-    // Example with Redis:
-    // for (const key of partyCacheKeysToClear) {
-    //   await redis.del(key);
-    // }
-    
-    // Example with memory cache:
-    // partyCacheKeysToClear.forEach(key => {
-    //   delete memoryCache[key];
-    // });
-    
-    console.log(`Successfully cleared party balance cache for user: ${userId}`);
-  } catch (error) {
-    console.error('Error clearing party balance cache:', error);
-  }
-};
-
 // Create new expense
 export const createExpense = async (req, res) => {
   try {
@@ -148,31 +50,41 @@ export const createExpense = async (req, res) => {
         // Find party by ID
         const partyDoc = await Party.findById(partyId);
         if (partyDoc) {
-          // Update party's receivable balance
-          const currentReceivable = partyDoc.openingBalance || 0;
-          const newReceivable = currentReceivable + creditAmount;
-          
-          console.log('Updating party balance on expense creation:', {
-            partyId,
-            partyName: partyDoc.name,
-            currentReceivable,
-            creditAmount,
-            newReceivable,
-            paymentType,
-            totalAmount,
-            receivedAmount: finalReceivedAmount
-          });
-          
-                                 // Update party's receivable balance
+          // Only update party balance for Credit payments
+          if (paymentType === 'Credit' && creditAmount > 0) {
+            // Update party's receivable balance
+            const currentReceivable = partyDoc.openingBalance || 0;
+            const newReceivable = currentReceivable + creditAmount;
+            
+            console.log('Updating party balance on expense creation:', {
+              partyId,
+              partyName: partyDoc.name,
+              currentReceivable,
+              creditAmount,
+              newReceivable,
+              paymentType,
+              totalAmount,
+              receivedAmount: finalReceivedAmount
+            });
+            
+            // Update party's receivable balance
             await Party.findByIdAndUpdate(partyId, {
               openingBalance: newReceivable
             });
             
             partyBalanceAfterTransaction = newReceivable;
-            
-            // Clear party-related caches as well
-            await clearExpenseCache(userId);
-            await clearPartyBalanceCache(userId, partyId, partyDoc.name);
+          } else {
+            // For Cash payments, no balance change needed
+            partyBalanceAfterTransaction = partyDoc.openingBalance || 0;
+            console.log('No party balance update needed for Cash payment:', {
+              partyId,
+              partyName: partyDoc.name,
+              paymentType,
+              totalAmount,
+              receivedAmount: finalReceivedAmount
+            });
+          }
+          
         } else {
           console.log('Party not found with ID:', partyId);
         }
@@ -180,29 +92,39 @@ export const createExpense = async (req, res) => {
         // Fallback: find party by name
         const partyDoc = await Party.findOne({ name: party, user: userId });
         if (partyDoc) {
-          const currentReceivable = partyDoc.openingBalance || 0;
-          const newReceivable = currentReceivable + creditAmount;
+          // Only update party balance for Credit payments
+          if (paymentType === 'Credit' && creditAmount > 0) {
+            const currentReceivable = partyDoc.openingBalance || 0;
+            const newReceivable = currentReceivable + creditAmount;
+            
+            console.log('Updating party balance by name on expense creation:', {
+              partyName: party,
+              partyId: partyDoc._id,
+              currentReceivable,
+              creditAmount,
+              newReceivable,
+              paymentType,
+              totalAmount,
+              receivedAmount: finalReceivedAmount
+            });
+            
+            await Party.findByIdAndUpdate(partyDoc._id, {
+              openingBalance: newReceivable
+            });
+            
+            partyBalanceAfterTransaction = newReceivable;
+          } else {
+            // For Cash payments, no balance change needed
+            partyBalanceAfterTransaction = partyDoc.openingBalance || 0;
+            console.log('No party balance update needed for Cash payment (by name):', {
+              partyName: party,
+              partyId: partyDoc._id,
+              paymentType,
+              totalAmount,
+              receivedAmount: finalReceivedAmount
+            });
+          }
           
-          console.log('Updating party balance by name on expense creation:', {
-            partyName: party,
-            partyId: partyDoc._id,
-            currentReceivable,
-            creditAmount,
-            newReceivable,
-            paymentType,
-            totalAmount,
-            receivedAmount: finalReceivedAmount
-          });
-          
-                     await Party.findByIdAndUpdate(partyDoc._id, {
-             openingBalance: newReceivable
-           });
-           
-           partyBalanceAfterTransaction = newReceivable;
-           
-           // Clear party-related caches
-           await clearExpenseCache(userId);
-           await clearPartyBalanceCache(userId, partyDoc._id, party);
         } else {
           console.log('Party not found with name:', party);
         }
@@ -228,9 +150,6 @@ export const createExpense = async (req, res) => {
     });
 
     await newExpense.save();
-
-    // Clear expense cache after creating new expense
-    await clearExpenseCache(userId);
 
     res.status(201).json({
       success: true,
@@ -377,8 +296,6 @@ export const updateExpense = async (req, res) => {
             openingBalance: newReceivable
           });
           
-          // Clear party-related caches after balance recovery
-          await clearExpenseCache(userId);
         }
       } else if (expense.party) {
         // Fallback: find party by name
@@ -391,8 +308,6 @@ export const updateExpense = async (req, res) => {
             openingBalance: newReceivable
           });
           
-          // Clear party-related caches after balance recovery
-          await clearExpenseCache(userId);
         }
       }
     } catch (err) {
@@ -414,17 +329,17 @@ export const updateExpense = async (req, res) => {
           if (paymentType === 'Credit') {
             const creditAmount = totalAmount - (receivedAmount || 0);
             newReceivable = currentReceivable + creditAmount;
+            
+            await Party.findByIdAndUpdate(partyId, {
+              openingBalance: newReceivable
+            });
+          } else {
+            // For Cash payments, no balance change needed
+            newReceivable = currentReceivable;
           }
           
-                     await Party.findByIdAndUpdate(partyId, {
-             openingBalance: newReceivable
-           });
+          newPartyBalanceAfterTransaction = newReceivable;
            
-           newPartyBalanceAfterTransaction = newReceivable;
-           
-           // Clear party-related caches
-           await clearExpenseCache(userId);
-           await clearPartyBalanceCache(userId, partyId, party);
         }
       } else if (party) {
         const partyDoc = await Party.findOne({ name: party, user: userId });
@@ -435,17 +350,16 @@ export const updateExpense = async (req, res) => {
           if (paymentType === 'Credit') {
             const creditAmount = totalAmount - (receivedAmount || 0);
             newReceivable = currentReceivable + creditAmount;
+            
+            await Party.findByIdAndUpdate(partyDoc._id, {
+              openingBalance: newReceivable
+            });
+          } else {
+            // For Cash payments, no balance change needed
+            newReceivable = currentReceivable;
           }
           
-                     await Party.findByIdAndUpdate(partyDoc._id, {
-             openingBalance: newReceivable
-           });
-           
-           newPartyBalanceAfterTransaction = newReceivable;
-           
-           // Clear party-related caches
-           await clearExpenseCache(userId);
-           await clearPartyBalanceCache(userId, partyDoc._id, party);
+          newPartyBalanceAfterTransaction = newReceivable;
         }
       }
     } catch (err) {
@@ -462,8 +376,6 @@ export const updateExpense = async (req, res) => {
       { new: true, runValidators: true }
     );
 
-    // Clear expense cache after updating expense
-    await clearExpenseCache(userId);
 
     res.status(200).json({
       success: true,
@@ -503,16 +415,25 @@ export const deleteExpense = async (req, res) => {
       
       if (expense.partyId) {
         const partyDoc = await Party.findById(expense.partyId);
-        if (partyDoc && expense.creditAmount > 0) {
-          // Recover the credit amount from party's receivable balance
+        if (partyDoc) {
+          // Restore party balance for both Cash and Credit payments
           const currentReceivable = partyDoc.openingBalance || 0;
-          const newReceivable = Math.max(0, currentReceivable - expense.creditAmount);
+          let newReceivable = currentReceivable;
           
-          console.log('Recovering party balance on delete:', {
+          if (expense.paymentType === 'Credit' && expense.creditAmount > 0) {
+            // For credit payments, subtract the credit amount
+            newReceivable = Math.max(0, currentReceivable - expense.creditAmount);
+          } else if (expense.paymentType === 'Cash') {
+            // For cash payments, no balance change needed (already paid)
+            newReceivable = currentReceivable;
+          }
+          
+          console.log('Restoring party balance on delete:', {
             partyId: expense.partyId,
             partyName: partyDoc.name,
             currentReceivable,
             creditAmount: expense.creditAmount,
+            paymentType: expense.paymentType,
             newReceivable
           });
           
@@ -520,32 +441,43 @@ export const deleteExpense = async (req, res) => {
             openingBalance: newReceivable
           });
           
-          // Clear party-related caches after balance recovery
-          await clearExpenseCache(userId);
         }
       } else if (expense.party) {
         // Fallback: find party by name
         const partyDoc = await Party.findOne({ name: expense.party, user: userId });
-        if (partyDoc && expense.creditAmount > 0) {
+        if (partyDoc) {
           const currentReceivable = partyDoc.openingBalance || 0;
-          const newReceivable = Math.max(0, currentReceivable - expense.creditAmount);
+          let newReceivable = currentReceivable;
+          
+          if (expense.paymentType === 'Credit' && expense.creditAmount > 0) {
+            // For credit payments, subtract the credit amount
+            newReceivable = Math.max(0, currentReceivable - expense.creditAmount);
+          } else if (expense.paymentType === 'Cash') {
+            // For cash payments, no balance change needed (already paid)
+            newReceivable = currentReceivable;
+          }
+          
+          console.log('Restoring party balance on delete (by name):', {
+            partyName: expense.party,
+            partyId: partyDoc._id,
+            currentReceivable,
+            creditAmount: expense.creditAmount,
+            paymentType: expense.paymentType,
+            newReceivable
+          });
           
           await Party.findByIdAndUpdate(partyDoc._id, {
             openingBalance: newReceivable
           });
           
-          // Clear party-related caches after balance recovery
-          await clearExpenseCache(userId);
         }
       }
     } catch (err) {
-      console.error('Failed to recover party balance on delete:', err);
+      console.error('Failed to restore party balance on delete:', err);
     }
 
     await Expense.findByIdAndDelete(id);
 
-    // Clear expense cache after deleting expense
-    await clearExpenseCache(userId);
 
     res.status(200).json({
       success: true,

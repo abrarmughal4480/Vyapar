@@ -454,10 +454,12 @@ export default function ExpensesPage() {
                         PKR {expense.totalAmount.toLocaleString()}
                       </td>
                       <td className="px-4 py-3 text-sm text-right font-medium text-orange-600">
-                        {expense.paymentType === 'Credit' && expense.creditAmount ? 
-                          `PKR ${expense.creditAmount.toLocaleString()}` : 
-                          'PKR 0'
-                        }
+                        {(() => {
+                          const totalAmount = expense.totalAmount || 0;
+                          const receivedAmount = expense.receivedAmount || 0;
+                          const balance = totalAmount - receivedAmount;
+                          return `PKR ${balance.toLocaleString()}`;
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-sm text-center">
                         <TableActionMenu

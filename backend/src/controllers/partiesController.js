@@ -1,25 +1,8 @@
 import Party from '../models/parties.js';
 import Sale from '../models/sale.js';
 import mongoose from 'mongoose';
-import { invalidateDashboardCache } from './dashboardController.js';
-
-// Simple in-memory cache for parties (global scope for logout access)
-if (!global.partiesCache) {
-  global.partiesCache = new Map();
-}
-const partiesCache = global.partiesCache;
-// No TTL - cache persists until logout
 
 const partiesController = {
-  // Cache management functions
-  _clearUserCache: (userId) => {
-    const cacheKeys = Array.from(partiesCache.keys()).filter(key => key.startsWith(`user_${userId}`));
-    cacheKeys.forEach(key => partiesCache.delete(key));
-  },
-  
-  _getCacheKey: (userId, page, limit, search, status, partyType) => {
-    return `user_${userId}_page_${page}_limit_${limit}_search_${search || ''}_status_${status || ''}_type_${partyType || ''}`;
-  },
   createParty: async (req, res) => {
     try {
       const {
@@ -67,10 +50,6 @@ const partiesController = {
       
       console.log(`Party created successfully: ${party.name} (ID: ${party._id}) by user ${req.user.id} with first opening balance: ${openingBalance || 0}`);
       
-      // Clear cache for this user
-      partiesController._clearUserCache(req.user.id);
-      invalidateDashboardCache(req.user.id); // Invalidate dashboard cache
-      
       return res.status(201).json({ 
         success: true, 
         data: party,
@@ -83,15 +62,6 @@ const partiesController = {
   getPartiesByUser: async (req, res) => {
     try {
       const { search, status, partyType } = req.query;
-      
-      // Check cache first
-      const cacheKey = partiesController._getCacheKey(req.user.id, 'all', 'all', search, status, partyType);
-      const cachedResult = partiesCache.get(cacheKey);
-      
-      if (cachedResult) {
-        console.log('Returning cached parties for user:', req.user.id);
-        return res.json(cachedResult.data);
-      }
       
       // Build query more efficiently
       const query = { user: req.user.id };
@@ -126,11 +96,6 @@ const partiesController = {
         success: true, 
         data: parties
       };
-      
-      // Cache the result
-      partiesCache.set(cacheKey, {
-        data: result
-      });
       
       return res.json(result);
     } catch (err) {
@@ -180,10 +145,6 @@ const partiesController = {
       
       console.log(`Party updated successfully: ${party.name} (ID: ${party._id}) by user ${req.user.id}. Opening balance changed to: ${req.body.openingBalance}, First opening balance remains: ${party.firstOpeningBalance}`);
       
-      // Clear cache for this user
-      partiesController._clearUserCache(req.user.id);
-      invalidateDashboardCache(req.user.id); // Invalidate dashboard cache
-      
       return res.json({ 
         success: true, 
         data: party,
@@ -201,10 +162,6 @@ const partiesController = {
         return res.status(404).json({ success: false, message: 'Party not found or not authorized' });
       }
       console.log(`Party deleted successfully: ${party.name} (ID: ${party._id}) by user ${req.user.id}`);
-      
-      // Clear cache for this user
-      partiesController._clearUserCache(req.user.id);
-      invalidateDashboardCache(req.user.id); // Invalidate dashboard cache
       
       return res.json({ success: true, message: 'Party deleted successfully' });
     } catch (err) {
@@ -239,10 +196,6 @@ const partiesController = {
         return res.status(400).json({ success: false, message: 'No valid parties with name to import' });
       }
       await Party.insertMany(docs);
-      
-      // Clear cache for this user after bulk import
-      partiesController._clearUserCache(userId);
-      invalidateDashboardCache(userId); // Invalidate dashboard cache
       
       return res.status(201).json({ success: true, message: `${docs.length} parties imported successfully` });
     } catch (err) {
@@ -342,22 +295,7 @@ const partiesController = {
     } catch (err) {
       return res.status(500).json({ success: false, message: 'Failed to get opening balance history', error: err.message });
     }
-  },
-  // Performance monitoring function
-  getPerformanceStats: async (req, res) => {
-    try {
-      const stats = {
-        cacheSize: partiesCache.size,
-        cacheKeys: Array.from(partiesCache.keys()),
-        cacheHitRate: 0, // This would need to be calculated over time
-        timestamp: new Date().toISOString()
-      };
-      
-      return res.json({ success: true, data: stats });
-    } catch (err) {
-      return res.status(500).json({ success: false, message: 'Failed to get performance stats', error: err.message });
-    }
-  },
+  }
   // You can add more party-related methods here (list, update, delete, etc.)
 };
 

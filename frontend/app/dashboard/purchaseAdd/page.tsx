@@ -594,6 +594,9 @@ export default function AddPurchasePage() {
               setNewPurchase(prev => ({
                 ...prev,
                 partyName: expense.party || '',
+                partyId: expense.partyId || '', // Set party ID for tax calculation
+                taxPartyName: expense.party || '', // Set tax party name for tax calculation
+                taxPartyId: expense.partyId || '', // Set tax party ID for tax calculation
                 phoneNo: expense.phoneNo || '',
                 billDate: expense.expenseDate ? new Date(expense.expenseDate).toISOString().split('T')[0] : '',
                 invoiceDate: expense.expenseDate ? new Date(expense.expenseDate).toISOString().split('T')[0] : '',
@@ -621,6 +624,11 @@ export default function AddPurchasePage() {
                 description: expense.description || '',
                 editingId: editId
               }));
+              
+              // Auto-enable tax if party is defined (but not for "Unknown")
+              if (expense.party && expense.party.trim() !== '' && expense.party !== 'Unknown') {
+                setTacEnabled(true);
+              }
               // Expenses don't have images in the current model
             }
           } catch (err) {
@@ -704,6 +712,54 @@ export default function AddPurchasePage() {
       }
     }
   }, [newPurchase.partyName, newPurchase.partyId, parties, isFromExpenses]);
+
+  // Handle tax party changes for tax calculation
+  useEffect(() => {
+    if (!newPurchase.taxPartyName || !tacEnabled) {
+      return;
+    }
+    
+    // Find the selected party
+    let selectedParty = null;
+    if (newPurchase.taxPartyId) {
+      selectedParty = parties.find(p => p._id === newPurchase.taxPartyId);
+    } else {
+      selectedParty = parties.find(p => p.name === newPurchase.taxPartyName);
+    }
+    
+    if (selectedParty) {
+      // Fetch party balance
+      if (isFromExpenses) {
+        fetchPartyReceivableBalance(selectedParty._id);
+      } else {
+        fetchPartyBalance(selectedParty._id);
+      }
+      
+      // Auto-set tax based on party's GST status
+      if (selectedParty.gstNumber && selectedParty.gstNumber.trim() !== '') {
+        // If party has GST number, set tax to 18% (standard GST rate)
+        setNewPurchase(prev => ({
+          ...prev,
+          tax: '18',
+          taxType: '%'
+        }));
+      } else {
+        // If party doesn't have GST number, set tax to 0%
+        setNewPurchase(prev => ({
+          ...prev,
+          tax: '0',
+          taxType: '%'
+        }));
+      }
+    }
+  }, [newPurchase.taxPartyName, newPurchase.taxPartyId, parties, isFromExpenses, tacEnabled]);
+
+  // Auto-enable tax when party is selected for expenses (but not for "Unknown")
+  useEffect(() => {
+    if (isFromExpenses && newPurchase.partyName && newPurchase.partyName !== 'Unknown' && !tacEnabled) {
+      setTacEnabled(true);
+    }
+  }, [isFromExpenses, newPurchase.partyName, tacEnabled]);
 
   useEffect(() => {
     if (!newPurchase.partyName || !parties.length) return;
@@ -1174,7 +1230,7 @@ export default function AddPurchasePage() {
         const expenseData = {
           expenseCategory: expenseCategory,
           party: tacEnabled && newPurchase.taxPartyName ? newPurchase.taxPartyName : (newPurchase.partyName || 'Unknown'),
-          partyId: tacEnabled && newPurchase.taxPartyId ? newPurchase.taxPartyId : null, // Send party ID if tax is enabled
+          partyId: newPurchase.partyId || null, // Always send partyId when available
           items: newPurchase.items
             .filter(item => 
               item.item &&
@@ -1550,7 +1606,7 @@ export default function AddPurchasePage() {
                                 } else if (e.key === 'Enter') {
                                   if (taxPartyDropdownIndex >= 0 && taxPartyDropdownIndex < parties.length) {
                                     const party = parties[taxPartyDropdownIndex];
-                                    setNewPurchase(prev => ({ ...prev, taxPartyName: party.name, taxPartyId: party._id }));
+                                    setNewPurchase(prev => ({ ...prev, taxPartyName: party.name, taxPartyId: party._id, partyId: party._id }));
                                     setShowTaxPartySuggestions(false);
                                     // Fetch party's receivable balance for expenses
                                     if (isFromExpenses) {
@@ -1579,7 +1635,7 @@ export default function AddPurchasePage() {
                                         onMouseDown={e => {
                                           e.preventDefault();
                                           e.stopPropagation();
-                                          setNewPurchase(prev => ({ ...prev, taxPartyName: party.name, taxPartyId: party._id }));
+                                          setNewPurchase(prev => ({ ...prev, taxPartyName: party.name, taxPartyId: party._id, partyId: party._id }));
                                           setShowTaxPartySuggestions(false);
                                           // Clean up dropdown style
                                           setTaxPartyDropdownStyle({});

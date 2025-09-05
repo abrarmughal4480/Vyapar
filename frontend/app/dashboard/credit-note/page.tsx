@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, BarChart3, Printer, Settings, ChevronDown, Eye, Edit, MoreHorizontal, Trash2 } from 'lucide-react'
+import { Search, BarChart3, Printer, ChevronDown, Eye, Edit, Trash2 } from 'lucide-react'
 import { getCreditNotesByUser } from '../../../http/credit-notes';
 import { getToken, getUserIdFromToken } from '../../lib/auth';
 import { getCurrentUserInfo, canAddData, canEditData, canDeleteData, canEditSalesData, canDeleteSalesData } from '../../../lib/roleAccessControl';
@@ -262,9 +262,6 @@ export default function CreditNotePage() {
                   + Create Credit Note (Restricted)
                 </div>
               )}
-              <button className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
-                <span className="text-gray-600">⚙️</span>
-              </button>
             </div>
           </div>
         </div>

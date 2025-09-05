@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, MoreVertical, Search, Filter, Download, X, ChevronDown, Calendar, Share2, Save, Info, Camera, Settings } from 'lucide-react';
+import { Plus, Search, Filter, Download, X, ChevronDown, Calendar, Share2, Save, Info, Camera } from 'lucide-react';
 import { getToken } from '../../lib/auth';
 import { getUserPurchaseOrders, updatePurchaseOrder, fixCompletedPurchaseOrders, deletePurchaseOrderById, getPurchaseOrderById } from '../../../http/purchaseOrders';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -1476,9 +1476,6 @@ export default function PurchaseOrderPage() {
                 + Add Purchase Order (Restricted)
               </div>
             )}
-            <button className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
-              <Settings className="w-5 h-5 text-gray-600" />
-            </button>
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, BarChart3, Printer, Settings, ChevronDown, Eye, Edit, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Search, BarChart3, Printer, ChevronDown, Eye, Edit, Trash2 } from 'lucide-react';
 import { getSalesByUser, getSalesStatsByUser, getSaleById, deleteSale, createSale, updateSale } from '@/http/sales';
 import { jwtDecode } from 'jwt-decode';
 import PaymentInModal from '../../../components/PaymentInModal';
@@ -902,9 +902,6 @@ Your Business Name`;
                   + Add Sale (Restricted)
                 </div>
               )}
-              <button className="p-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                <Settings className="w-3 h-3 text-gray-600" />
-              </button>
             </div>
           </div>
         </div>

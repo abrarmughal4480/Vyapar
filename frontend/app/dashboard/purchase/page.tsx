@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, MoreVertical, Search, Filter, Download, X, ChevronDown, Calendar, Share2, Save, Info, Camera, Image, Settings } from 'lucide-react';
+import { Plus, Search, Filter, Download, X, ChevronDown, Calendar, Share2, Save, Info, Camera, Image } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getToken, getUserIdFromToken } from '../../lib/auth';
 import { getPurchasesByUser, getPurchaseStatsByUser, deletePurchase, getPurchaseById } from '../../../http/purchases';
@@ -218,9 +218,6 @@ function PurchaseSaleFormPage({ onClose, onSave, type = 'purchase' }: PurchaseSa
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
             >
               + Add Purchase
-            </button>
-            <button className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
-              <Settings className="w-5 h-5 text-gray-600" />
             </button>
           </div>
         </div>
@@ -857,9 +854,6 @@ export default function PurchaseBillsPage() {
                   + Add Purchase (Restricted)
                 </div>
               )}
-              <button className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
-                <Settings className="w-5 h-5 text-gray-600" />
-              </button>
             </div>
           </div>
         </div>

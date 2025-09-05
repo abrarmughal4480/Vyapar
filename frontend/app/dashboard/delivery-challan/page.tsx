@@ -135,50 +135,6 @@ export default function DeliveryChallanPage() {
   }
 
   // Handle convert to sale
-  // Test function to verify delivery challan status update
-  const testDeliveryChallanStatusUpdate = async () => {
-    if (deliveryChallans.length === 0) {
-      setErrorMessage('No delivery challans available for testing');
-      return;
-    }
-
-    const testChallan = deliveryChallans[0];
-    const challanId = testChallan.id;
-    
-    console.log('=== TESTING DELIVERY CHALLAN STATUS UPDATE ===');
-    console.log('Test challan:', testChallan);
-    console.log('Test challan ID:', challanId);
-    console.log('Test challan id:', testChallan.id);
-    console.log('Test challan id:', testChallan.id);
-    
-    try {
-      const token = getToken();
-      if (!token) {
-        setErrorMessage('No authentication token found');
-        return;
-      }
-
-      console.log('Testing with token:', token ? 'Present' : 'Missing');
-      console.log('Testing with challanId:', challanId);
-      console.log('Testing with status: Completed');
-      console.log('Testing with invoiceNumber: TEST-INV-001');
-
-      const result = await updateDeliveryChallanStatus(challanId, 'Completed', token, 'TEST-INV-001');
-      console.log('Test result:', result);
-      
-      if (result.success) {
-        setErrorMessage('Test successful! Status updated to Completed');
-        // Refresh data after 2 seconds
-        setTimeout(() => fetchDeliveryChallans(), 2000);
-      } else {
-        setErrorMessage('Test failed: ' + (result.message || 'Unknown error'));
-      }
-    } catch (error: any) {
-      console.error('Test error:', error);
-      console.error('Test error response:', error.response?.data);
-      setErrorMessage('Test failed: ' + (error.message || 'Unknown error'));
-    }
-  };
 
   const handleConvertToSale = (challanId: string) => {
     const challan = deliveryChallans.find(c => c.id === challanId);
@@ -421,22 +377,6 @@ export default function DeliveryChallanPage() {
                 + New Delivery Challan (Restricted)
               </div>
             )}
-            <button 
-              onClick={() => fetchDeliveryChallans()}
-              className="p-3 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
-              title="Refresh"
-            >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button>
-            <button 
-              onClick={() => testDeliveryChallanStatusUpdate()}
-              className="p-3 border border-red-300 rounded-xl hover:bg-red-50 transition-colors"
-              title="Test Status Update"
-            >
-              🧪
-            </button>
           </div>
         </div>
       </div>

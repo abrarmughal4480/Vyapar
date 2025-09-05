@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Copy, CheckCircle, RefreshCw, ChevronDown, Settings, Key, Users, Calendar, Trash2 } from 'lucide-react';
+import { Copy, CheckCircle, ChevronDown, Key, Users, Calendar, Trash2 } from 'lucide-react';
 import { generateLicenseKey, getAllLicenseKeys, deleteLicenseKey, LicenseKey } from '@/http/license-keys';
 import Toast from '@/components/Toast';
 
@@ -156,7 +156,6 @@ export default function LicenseGenerator() {
               {/* License Configuration */}
               <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-6 border border-blue-200">
                 <div className="flex items-center space-x-2 mb-6">
-                  <Settings className="w-5 h-5 text-blue-600" />
                   <h2 className="text-xl font-bold text-gray-900">License Configuration</h2>
                 </div>
                 
@@ -250,7 +249,7 @@ export default function LicenseGenerator() {
                   className="w-full flex items-center justify-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 transition-all duration-200 shadow-lg hover:shadow-xl font-semibold"
                 >
                   {isGenerating ? (
-                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    <span className="text-xl">⏳</span>
                   ) : (
                     <span className="text-xl">🔑</span>
                   )}

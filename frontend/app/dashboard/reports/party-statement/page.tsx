@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Search, BarChart3, Printer, Settings, ChevronDown, Eye, Edit, MoreHorizontal, Trash2, Download, Filter, Calendar, Share2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Search, BarChart3, Printer, ChevronDown, Eye, Edit, Trash2, Download, Filter, Calendar, Share2, AlertCircle } from 'lucide-react';
 import { jwtDecode } from 'jwt-decode';
 import { fetchPartiesByUserId } from '@/http/parties';
 import { getSalesByUser } from '@/http/sales';
@@ -56,7 +56,6 @@ const PartyStatementPage = () => {
     transactions: false
   });
   const [error, setError] = useState<string | null>(null);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [isClient, setIsClient] = useState(false);
 
@@ -644,13 +643,6 @@ const PartyStatementPage = () => {
     setDateTo(toDate);
   };
 
-  const handleRefresh = useCallback(async () => {
-    if (selectedParty && !loadingStates.transactions && isClient) {
-      await loadTransactions();
-      setLastRefresh(new Date());
-      setToast({ message: 'Data refreshed successfully', type: 'success' });
-    }
-  }, [selectedParty, loadingStates.transactions, isClient]);
 
   const handlePrintStatement = () => {
     if (!selectedParty) {
@@ -723,21 +715,8 @@ const PartyStatementPage = () => {
           <div className="text-center md:text-left">
             <h1 className="text-lg md:text-xl font-bold text-gray-900">Party Statement</h1>
             <p className="text-xs text-gray-500 mt-1">View detailed transaction history for any party</p>
-            {lastRefresh && isClient && (
-              <p className="text-xs text-gray-400 mt-1">
-                Last updated: {lastRefresh.toLocaleTimeString()}
-              </p>
-            )}
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleRefresh}
-              disabled={loadingStates.transactions || !selectedParty}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <RefreshCw size={12} className={loadingStates.transactions ? 'animate-spin' : ''} />
-              Refresh
-            </button>
             <button
               onClick={handlePrintStatement}
               className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"

@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef, RefObject } from 'react';
 import { useRouter } from 'next/navigation';
-import { Printer, Settings, MoreHorizontal } from 'lucide-react';
+import { Printer } from 'lucide-react';
 import Toast from '../../../components/Toast';
 import ReactDOM from 'react-dom';
 import { getCustomerParties, getPartyBalance } from '../../../../http/parties';

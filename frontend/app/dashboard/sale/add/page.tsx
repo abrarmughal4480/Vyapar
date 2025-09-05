@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef, RefObject, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Printer, Settings, MoreHorizontal } from 'lucide-react';
+import { Printer } from 'lucide-react';
 import Toast from '../../../components/Toast';
 import { CustomDropdown, type DropdownOption } from '../../../components/CustomDropdown';
 import { ItemsDropdown, type Item } from '../../../components/ItemsDropdown';

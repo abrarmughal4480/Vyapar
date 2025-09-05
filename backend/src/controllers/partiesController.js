@@ -48,7 +48,6 @@ const partiesController = {
       
       await party.save();
       
-      console.log(`Party created successfully: ${party.name} (ID: ${party._id}) by user ${req.user.id} with first opening balance: ${openingBalance || 0}`);
       
       return res.status(201).json({ 
         success: true, 
@@ -143,7 +142,6 @@ const partiesController = {
         return res.status(404).json({ success: false, message: 'Party not found or not authorized' });
       }
       
-      console.log(`Party updated successfully: ${party.name} (ID: ${party._id}) by user ${req.user.id}. Opening balance changed to: ${req.body.openingBalance}, First opening balance remains: ${party.firstOpeningBalance}`);
       
       return res.json({ 
         success: true, 
@@ -161,7 +159,6 @@ const partiesController = {
       if (!party) {
         return res.status(404).json({ success: false, message: 'Party not found or not authorized' });
       }
-      console.log(`Party deleted successfully: ${party.name} (ID: ${party._id}) by user ${req.user.id}`);
       
       return res.json({ success: true, message: 'Party deleted successfully' });
     } catch (err) {

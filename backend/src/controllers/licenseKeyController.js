@@ -245,21 +245,11 @@ export const checkLicenseStatus = async (req, res) => {
   try {
     const userEmail = req.user.email || req.user.userEmail;
     const originalUserId = req.user.originalUserId;
-    console.log('🔍 Backend License Check - Full req.user:', req.user);
-    console.log('📧 Backend License Check - User email:', userEmail);
-    console.log('🆔 Backend License Check - User ID:', req.user.id);
-    console.log('🆔 Backend License Check - Original User ID:', originalUserId);
-    console.log('🏢 Backend License Check - Context:', req.user.context);
 
     // Step 1: Find user by email
     let user = await User.findOne({ email: userEmail });
-    console.log('Current user found by email:', user ? 'Yes' : 'No');
     if (user) {
-      console.log('Current user email:', user.email);
-      console.log('Current user ID:', user._id);
-      console.log('Token user ID:', req.user.id);
-      console.log('IDs match:', user._id.toString() === req.user.id);
-      console.log('Current user has license:', user.activatedLicenseKey ? 'Yes' : 'No');
+      // User found
     }
     
     // For license checking, we should check if the CURRENT user has a license
@@ -268,16 +258,11 @@ export const checkLicenseStatus = async (req, res) => {
     
     // Only check original user if current user doesn't exist
     if (!user && originalUserId) {
-      console.log('Current user not found, checking original user...');
       const originalUser = await User.findById(originalUserId);
       if (originalUser) {
-        console.log('Found original user:', originalUser.email);
         userForLicenseCheck = originalUser;
       }
     }
-    
-    console.log('Final user for license check:', userForLicenseCheck ? userForLicenseCheck.email : 'None');
-    console.log('This user needs to buy license:', userForLicenseCheck ? (userForLicenseCheck.activatedLicenseKey ? 'No' : 'Yes') : 'Unknown');
     
     if (!userForLicenseCheck) {
       return res.json({
@@ -291,7 +276,6 @@ export const checkLicenseStatus = async (req, res) => {
 
     // Check if user has activatedLicenseKey
     if (!userForLicenseCheck.activatedLicenseKey) {
-      console.log('No activatedLicenseKey found in user document');
       return res.json({
         success: true,
         data: {
@@ -301,14 +285,10 @@ export const checkLicenseStatus = async (req, res) => {
       });
     }
 
-    console.log('User has activatedLicenseKey ID:', userForLicenseCheck.activatedLicenseKey);
-
     // Step 2: Find the license key in LicenseKey collection
     const licenseKey = await LicenseKey.findById(userForLicenseCheck.activatedLicenseKey);
-    console.log('License key found:', licenseKey ? 'Yes' : 'No');
     
     if (!licenseKey) {
-      console.log('License key not found in LicenseKey collection');
       return res.json({
         success: true,
         data: {
@@ -322,11 +302,8 @@ export const checkLicenseStatus = async (req, res) => {
     const userDeviceUsage = licenseKey.usedDevices.find(
       device => device.userEmail === userForLicenseCheck.email
     );
-    console.log('User device usage found:', userDeviceUsage ? 'Yes' : 'No');
-    console.log('Checking for email in license:', userForLicenseCheck.email);
 
     if (!userDeviceUsage) {
-      console.log('User not found in license key usedDevices array');
       return res.json({
         success: true,
         data: {
@@ -341,15 +318,8 @@ export const checkLicenseStatus = async (req, res) => {
     const isExpired = licenseKey.expiresAt < currentTime;
     const isActive = licenseKey.isActive;
     
-    console.log('License expiry check:', {
-      expiresAt: licenseKey.expiresAt,
-      currentTime: currentTime,
-      isExpired: isExpired,
-      isActive: isActive
-    });
 
     if (!isActive || isExpired) {
-      console.log('License is inactive or expired');
       return res.json({
         success: true,
         data: {
@@ -360,7 +330,6 @@ export const checkLicenseStatus = async (req, res) => {
     }
 
     // License is valid
-    console.log('License is valid');
     res.json({
       success: true,
       data: {
@@ -391,15 +360,12 @@ export const checkLicenseStatus = async (req, res) => {
 // Clear current user's license (user can clear their own license)
 export const clearUserLicense = async (req, res) => {
   try {
-    console.log('🔍 Clear User License - Request received');
-    console.log('🔍 User ID:', req.user.id);
     
     const userId = req.user.id;
 
     // Find the current user
     const user = await User.findById(userId);
     if (!user) {
-      console.log('❌ User not found');
       return res.status(404).json({
         success: false,
         message: 'User not found'
@@ -408,14 +374,12 @@ export const clearUserLicense = async (req, res) => {
 
     // Check if user has an activated license
     if (!user.activatedLicenseKey) {
-      console.log('❌ User has no activated license');
       return res.status(400).json({
         success: false,
         message: 'No license to clear'
       });
     }
 
-    console.log('✅ User has license, clearing it');
 
     // Clear the user's license
     const updateResult = await User.findByIdAndUpdate(
@@ -430,7 +394,6 @@ export const clearUserLicense = async (req, res) => {
       { new: true }
     );
 
-    console.log('✅ License cleared from user:', updateResult);
 
     res.json({
       success: true,
@@ -450,40 +413,29 @@ export const clearUserLicense = async (req, res) => {
 // Delete license key (superadmin only)
 export const deleteLicenseKey = async (req, res) => {
   try {
-    console.log('🔍 Delete License Key - Request received');
-    console.log('🔍 Method:', req.method);
-    console.log('🔍 URL:', req.url);
-    console.log('🔍 Params:', req.params);
-    console.log('🔍 User:', req.user);
     
     const { key } = req.params;
     const userId = req.user.id;
 
-    console.log('🔍 License Key to delete:', key);
-    console.log('🔍 User ID:', userId);
 
     // Check if user is superadmin
     const user = await User.findById(userId);
     if (!user || user.role !== 'superadmin') {
-      console.log('❌ User is not superadmin:', user?.role);
       return res.status(403).json({
         success: false,
         message: 'Only superadmins can delete license keys'
       });
     }
 
-    console.log('✅ User is superadmin, proceeding with deletion');
 
     const licenseKey = await LicenseKey.findOne({ key: key.toUpperCase() });
     if (!licenseKey) {
-      console.log('❌ License key not found:', key);
       return res.status(404).json({
         success: false,
         message: 'License key not found'
       });
     }
 
-    console.log('✅ License key found, removing from users and deleting');
 
     // Remove license key from all users who have it activated
     const userUpdateResult = await User.updateMany(
@@ -497,12 +449,10 @@ export const deleteLicenseKey = async (req, res) => {
       }
     );
 
-    console.log('✅ Updated users:', userUpdateResult);
 
     // Delete the license key document
     const deleteResult = await LicenseKey.findByIdAndDelete(licenseKey._id);
 
-    console.log('✅ License key deleted:', deleteResult);
 
     res.json({
       success: true,

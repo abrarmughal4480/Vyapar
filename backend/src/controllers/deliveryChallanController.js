@@ -122,18 +122,9 @@ export const updateDeliveryChallanStatus = async (req, res) => {
     const { challanId } = req.params;
     const { status, invoiceNumber } = req.body;
     
-    console.log('=== UPDATE DELIVERY CHALLAN STATUS ===');
-    console.log('User ID:', userId);
-    console.log('Challan ID:', challanId);
-    console.log('Request body:', req.body);
-    console.log('Status:', status);
-    console.log('Invoice Number:', invoiceNumber);
     
     // Validate ObjectId
     if (!mongoose.Types.ObjectId.isValid(challanId)) {
-      console.log('Invalid ObjectId:', challanId);
-      console.log('ObjectId validation failed for:', challanId);
-      console.log('ObjectId type:', typeof challanId);
       return res.status(400).json({ 
         success: false, 
         message: 'Invalid challan ID format',
@@ -157,7 +148,6 @@ export const updateDeliveryChallanStatus = async (req, res) => {
       backendStatus = 'Cancelled';
     }
     
-    console.log('Mapped backend status:', backendStatus);
     
     const updateData = { 
       status: backendStatus, 
@@ -169,8 +159,6 @@ export const updateDeliveryChallanStatus = async (req, res) => {
       updateData.invoiceNumber = invoiceNumber;
     }
     
-    console.log('Update data:', updateData);
-    console.log('Query filter:', { _id: challanId, userId });
     
     const deliveryChallan = await DeliveryChallan.findOneAndUpdate(
       { _id: challanId, userId },
@@ -178,17 +166,9 @@ export const updateDeliveryChallanStatus = async (req, res) => {
       { new: true }
     );
     
-    console.log('Find result:', deliveryChallan);
-    
     if (!deliveryChallan) {
-      console.log('Challan not found!');
-      console.log('Search criteria:', { _id: challanId, userId });
       return res.status(404).json({ success: false, message: 'Delivery challan not found' });
     }
-    
-    console.log('Successfully updated delivery challan:', deliveryChallan);
-    console.log('Updated status:', deliveryChallan.status);
-    console.log('Updated invoice number:', deliveryChallan.invoiceNumber);
     res.json({ success: true, data: deliveryChallan });
   } catch (err) {
     console.error('Error updating delivery challan:', err);

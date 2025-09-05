@@ -9,7 +9,6 @@ const dropSingleFieldIndexes = async () => {
     
     // Get all indexes
     const indexes = await collection.indexes();
-    console.log('Current indexes:', indexes);
     
     // Check for problematic single-field unique indexes
     const problematicIndexes = indexes.filter(index => 
@@ -19,16 +18,8 @@ const dropSingleFieldIndexes = async () => {
       (index.key.quotationNo === 1 || index.key.quotationNumber === 1)
     );
     
-    console.log('Found problematic indexes:', problematicIndexes);
-    
     for (const index of problematicIndexes) {
-      console.log('Dropping problematic index:', index.name);
       await collection.dropIndex(index.name);
-      console.log('Successfully dropped index:', index.name);
-    }
-    
-    if (problematicIndexes.length === 0) {
-      console.log('No problematic single-field indexes found');
     }
   } catch (error) {
     console.error('Error dropping indexes:', error);
@@ -47,11 +38,9 @@ const generateQuotationNumber = async (userId) => {
       quotationNo: { $regex: /^QT\d+$/ } 
     }).sort({ quotationNo: -1 });
     
-    console.log('Last quotation for user:', lastQuotation);
     
     if (!lastQuotation || !lastQuotation.quotationNo) {
       // No quotations exist for this user, start with QT001
-      console.log('No previous quotations found, starting with QT001');
       return 'QT001';
     }
     
@@ -60,12 +49,10 @@ const generateQuotationNumber = async (userId) => {
     if (match) {
       const nextNum = String(parseInt(match[1], 10) + 1).padStart(3, '0');
       const nextQuotationNo = `QT${nextNum}`;
-      console.log('Generated next quotation number:', nextQuotationNo);
       return nextQuotationNo;
     }
     
     // Fallback to QT001 if pattern doesn't match
-    console.log('Pattern match failed, using QT001');
     return 'QT001';
   } catch (error) {
     console.error('Error generating quotation number:', error);
@@ -91,11 +78,9 @@ const generateUniqueQuotationNumber = async (userId) => {
     });
     
     if (!existingQuotation) {
-      console.log('Found unique quotation number:', quotationNo);
       return quotationNo;
     }
     
-    console.log('Quotation number already exists, trying next...');
     attempts++;
     
     // Force increment the number for next attempt
@@ -104,7 +89,6 @@ const generateUniqueQuotationNumber = async (userId) => {
       const currentNum = parseInt(match[1], 10);
       const nextNum = String(currentNum + attempts).padStart(3, '0');
       const nextQuotationNo = `QT${nextNum}`;
-      console.log('Trying next number:', nextQuotationNo);
       
       // Check if this next number is available
       const nextExistingQuotation = await Quotation.findOne({ 
@@ -116,7 +100,6 @@ const generateUniqueQuotationNumber = async (userId) => {
       });
       
       if (!nextExistingQuotation) {
-        console.log('Found unique next quotation number:', nextQuotationNo);
         return nextQuotationNo;
       }
     }
@@ -136,12 +119,8 @@ export const createQuotation = async (req, res) => {
       const userId = req.user && (req.user._id || req.user.id);
       if (!userId) return res.status(401).json({ message: 'Unauthorized' });
       
-      console.log(`Creating quotation with data (attempt ${retryCount + 1}):`, req.body);
-      console.log('User ID:', userId);
-      
       // Generate unique quotation number for this user
       const quotationNo = await generateUniqueQuotationNumber(userId);
-      console.log('Generated unique quotation number:', quotationNo);
       
       // Ensure we have a valid quotation number
       if (!quotationNo) {
@@ -170,7 +149,6 @@ export const createQuotation = async (req, res) => {
         partyBalanceAfterTransaction: customerBalance, // For quotations, balance remains same
       });
       await quotation.save();
-      console.log('Quotation saved successfully:', quotation._id);
       res.status(201).json({ success: true, data: quotation });
       return;
     } catch (err) {
@@ -178,7 +156,6 @@ export const createQuotation = async (req, res) => {
       
       // Handle specific MongoDB errors
       if (err.code === 11000) {
-        console.log('Duplicate key error, retrying...');
         retryCount++;
         if (retryCount >= maxRetries) {
           return res.status(400).json({ 
@@ -233,21 +210,10 @@ export const updateQuotationStatus = async (req, res) => {
     const { id } = req.params;
     const { status, convertedTo } = req.body;
     
-    console.log('Updating quotation status:', { id, status, convertedTo, userId });
-    
-    // Try to find the quotation with more detailed logging
+    // Try to find the quotation
     const quotation = await Quotation.findOne({ _id: id, userId });
-    console.log('Found quotation:', quotation ? 'Yes' : 'No');
     
     if (!quotation) {
-      // Try to find without userId constraint to see if it exists
-      const anyQuotation = await Quotation.findById(id);
-      console.log('Quotation exists without userId constraint:', anyQuotation ? 'Yes' : 'No');
-      
-      // Try to find by quotation number as well
-      const quotationByNumber = await Quotation.findOne({ quotationNo: id });
-      console.log('Quotation found by number:', quotationByNumber ? 'Yes' : 'No');
-      
       return res.status(404).json({ success: false, message: 'Quotation not found' });
     }
     
@@ -263,7 +229,6 @@ export const updateQuotationStatus = async (req, res) => {
     
     await quotation.save();
     
-    console.log('Quotation status updated successfully');
     res.json({ success: true, data: quotation });
   } catch (err) {
     console.error('Update quotation status error:', err);
@@ -279,7 +244,6 @@ export const fixQuotationIndexes = async () => {
     
     // Get all indexes
     const indexes = await collection.indexes();
-    console.log('Current quotation indexes:', indexes);
     
     // Check for problematic single-field unique indexes
     const problematicIndexes = indexes.filter(index => 
@@ -289,17 +253,12 @@ export const fixQuotationIndexes = async () => {
       (index.key.quotationNo === 1 || index.key.quotationNumber === 1)
     );
     
-    console.log('Found problematic indexes:', problematicIndexes);
-    
     if (problematicIndexes.length > 0) {
       for (const index of problematicIndexes) {
-        console.log('Dropping problematic index:', index.name);
         await collection.dropIndex(index.name);
-        console.log('Successfully dropped index:', index.name);
       }
       return { success: true, message: `Fixed ${problematicIndexes.length} problematic index(es)` };
     } else {
-      console.log('No problematic single-field indexes found');
       return { success: true, message: 'No problematic indexes found' };
     }
   } catch (error) {

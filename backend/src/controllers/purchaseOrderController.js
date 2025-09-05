@@ -165,7 +165,6 @@ export const fixCompletedPurchaseOrders = async (req, res) => {
       ]
     });
     
-    console.log(`Found ${completedOrders.length} completed orders without invoice numbers`);
     
     let fixedCount = 0;
     for (const order of completedOrders) {
@@ -177,7 +176,6 @@ export const fixCompletedPurchaseOrders = async (req, res) => {
       await order.save();
       fixedCount++;
       
-      console.log(`Fixed order ${order.orderNumber} with invoice number ${dummyInvoiceNumber}`);
     }
     
     res.json({ 

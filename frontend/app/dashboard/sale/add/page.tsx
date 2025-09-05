@@ -1209,7 +1209,7 @@ const AddSalePageWithSearchParams = () => {
             tax: parsedData.tax || '',
             taxType: parsedData.taxType || '%',
             paymentType: parsedData.paymentType || 'Credit',
-            receivedAmount: parsedData.receivedAmount || '',
+            receivedAmount: parsedData.received || '',
             editingId: null
           });
           setDescription(parsedData.description || '');
@@ -1308,7 +1308,7 @@ const AddSalePageWithSearchParams = () => {
       const token = localStorage.getItem('token') || '';
       console.log('Fetching sale data for edit ID:', editId);
       
-      getSaleById(editId, token).then(result => {
+      getSaleById(editId, token).then(async (result) => {
         console.log('Sale data fetch result:', result);
         
         if (result && result.success && result.sale) {
@@ -1335,7 +1335,7 @@ const AddSalePageWithSearchParams = () => {
             tax: saleData.tax || '',
             taxType: saleData.taxType || '%',
             paymentType: saleData.paymentType || 'Credit',
-            receivedAmount: saleData.receivedAmount || '', // Add this line
+            receivedAmount: saleData.received || '', // Use correct field name from backend
             editingId: saleData._id || saleData.id || null
           });
           
@@ -1343,6 +1343,17 @@ const AddSalePageWithSearchParams = () => {
           setDescription(saleData.description || '');
           setUploadedImage(saleData.imageUrl || null);
           setSaleStatus(saleData.status || 'Draft');
+          
+          // Fetch party balance for the edited sale
+          if (saleData.partyName) {
+            try {
+              const balance = await getPartyBalance(saleData.partyName, token);
+              setPartyBalance(balance);
+            } catch (err) {
+              console.error('Error fetching party balance for edit:', err);
+              setPartyBalance(null);
+            }
+          }
         } else {
           console.error('Failed to fetch sale data:', result);
         }

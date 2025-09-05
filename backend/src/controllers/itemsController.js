@@ -98,9 +98,6 @@ export const addItem = async (req, res) => {
     const userId = req.params.userId;
     const data = req.body;
     
-    // Log the incoming data for debugging
-    console.log('Incoming data:', JSON.stringify(data, null, 2));
-    console.log('Unit data:', data.unit);
 
     // Check if this is a bulk import request or regular item creation
     const isBulkImport = data.baseUnit || data.secondaryUnit || data.conversionRateRaw;
@@ -203,9 +200,6 @@ export const addItem = async (req, res) => {
     invalidateDashboardCache(userId);
     
     // Keep the original unit object structure for frontend price conversion
-    // Log what was actually saved
-    console.log('SAVED openingQuantity:', itemObj.openingQuantity, 'minStock:', itemObj.minStock, 'location:', itemObj.location);
-    console.log('SAVED unit:', itemObj.unit);
     res.status(201).json({ success: true, data: itemObj });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -215,28 +209,22 @@ export const addItem = async (req, res) => {
 // Bulk import items - Optimized for performance with detailed logging
 export const bulkImportItems = async (req, res) => {
   const importId = Date.now().toString();
-  console.log(`[${importId}] Bulk import request received`);
   
   try {
     const userId = req.params.userId;
     const items = req.body.items || [];
     
-    console.log(`[${importId}] UserId: ${userId}`);
-    console.log(`[${importId}] Items count: ${items.length}`);
     
     if (!Array.isArray(items) || items.length === 0) {
-      console.log(`[${importId}] No items provided for bulk import`);
       return res.status(400).json({ 
         success: false, 
         message: 'No items provided for bulk import' 
       });
     }
 
-    console.log(`[${importId}] Starting optimized bulk import...`);
     const startTime = Date.now();
 
     // Process all items in memory first
-    console.log(`[${importId}] Step 1: Processing items in memory...`);
     const processedItems = [];
     const itemIds = [];
     
@@ -260,21 +248,15 @@ export const bulkImportItems = async (req, res) => {
       }
     }
     
-    console.log(`[${importId}] Step 1 completed: ${processedItems.length} items processed`);
-
     // Batch check for existing items
-    console.log(`[${importId}] Step 2: Checking for existing items...`);
     const existingItems = await Item.find({ 
       userId, 
-      itemId: { $in: itemIds } 
+      itemId: { $in: itemIds }
     }).lean();
     
-    console.log(`[${importId}] Found ${existingItems.length} existing items`);
-
     const existingItemIds = new Set(existingItems.map(item => item.itemId));
     
     // Separate new and existing items
-    console.log(`[${importId}] Step 3: Separating new and existing items...`);
     const newItems = [];
     const updateOperations = [];
     
@@ -294,7 +276,6 @@ export const bulkImportItems = async (req, res) => {
       }
     });
     
-    console.log(`[${importId}] Step 3 completed: ${newItems.length} new items, ${updateOperations.length} updates`);
 
     let successCount = 0;
     let errorCount = 0;
@@ -302,7 +283,6 @@ export const bulkImportItems = async (req, res) => {
 
     // Batch insert new items
     if (newItems.length > 0) {
-      console.log(`[${importId}] Step 4: Inserting ${newItems.length} new items...`);
       try {
         const insertStartTime = Date.now();
         const insertResult = await Item.insertMany(newItems, { 
@@ -312,7 +292,6 @@ export const bulkImportItems = async (req, res) => {
         const insertTime = Date.now() - insertStartTime;
         
         successCount += insertResult.insertedCount || newItems.length;
-        console.log(`[${importId}] Insert completed in ${insertTime}ms: ${insertResult.insertedCount || newItems.length} items inserted`);
         
         // Add results for inserted items
         newItems.forEach(item => {
@@ -341,13 +320,10 @@ export const bulkImportItems = async (req, res) => {
           });
         });
       }
-    } else {
-      console.log(`[${importId}] No new items to insert`);
     }
 
     // Batch update existing items
     if (updateOperations.length > 0) {
-      console.log(`[${importId}] Step 5: Updating ${updateOperations.length} existing items...`);
       try {
         const updateStartTime = Date.now();
         const updateResult = await Item.bulkWrite(updateOperations, { 
@@ -356,7 +332,6 @@ export const bulkImportItems = async (req, res) => {
         const updateTime = Date.now() - updateStartTime;
         
         successCount += updateResult.modifiedCount || updateOperations.length;
-        console.log(`[${importId}] Update completed in ${updateTime}ms: ${updateResult.modifiedCount || updateOperations.length} items updated`);
         
         // Add results for updated items
         updateOperations.forEach(op => {
@@ -377,8 +352,6 @@ export const bulkImportItems = async (req, res) => {
           });
         });
       }
-    } else {
-      console.log(`[${importId}] No items to update`);
     }
 
     const endTime = Date.now();
@@ -387,8 +360,6 @@ export const bulkImportItems = async (req, res) => {
     // Invalidate dashboard cache to ensure stats update immediately after bulk import
     invalidateDashboardCache(userId);
     
-    console.log(`[${importId}] Bulk import completed in ${processingTime}ms. Success: ${successCount}, Errors: ${errorCount}`);
-    console.log(`[${importId}] Sending response to client...`);
 
     res.status(200).json({
       success: true,
@@ -402,7 +373,6 @@ export const bulkImportItems = async (req, res) => {
       }
     });
     
-    console.log(`[${importId}] Response sent successfully`);
   } catch (err) {
     console.error(`[${importId}] Bulk import error:`, err);
     console.error(`[${importId}] Error stack:`, err.stack);
@@ -435,9 +405,6 @@ export const getItems = async (req, res) => {
 export const getItemsByLoggedInUser = async (req, res) => {
   try {
     const userId = req.user && (req.user._id || req.user.id);
-    console.log('Fetching items for userId:', userId); // Debug log
-    console.log('Request headers:', req.headers);
-    console.log('User object:', req.user);
     if (!userId) return res.status(401).json({ success: false, message: 'User not authenticated' });
     const items = await Item.find({ userId });
     // Keep the original unit object structure for frontend price conversion
@@ -446,7 +413,6 @@ export const getItemsByLoggedInUser = async (req, res) => {
       // Don't convert unit to string, keep the object structure
       return itemObj;
     });
-    console.log('Found items:', items);
     res.json({ success: true, data: itemsWithOriginalUnit });
   } catch (err) {
     console.error('Error in getItemsByLoggedInUser:', err);
@@ -473,9 +439,6 @@ export const updateItem = async (req, res) => {
     const { userId, itemId } = req.params;
     const data = req.body;
     
-    // Log the incoming data for debugging
-    console.log('Update - Incoming data:', JSON.stringify(data, null, 2));
-    console.log('Update - Unit data:', data.unit);
     
     // Check if this is a bulk import request or regular item update
     const isBulkImport = data.baseUnit || data.secondaryUnit || data.conversionRateRaw;
@@ -578,10 +541,6 @@ export const updateItem = async (req, res) => {
     invalidateDashboardCache(userId);
     
     // Keep the original unit object structure for frontend price conversion
-    // Log what was actually updated
-    console.log('UPDATED openingQuantity:', updatedObj.openingQuantity, 'minStock:', updatedObj.minStock, 'location:', updatedObj.location);
-    console.log('UPDATED unit:', updatedObj.unit);
-    console.log('UPDATED batches:', updatedObj.batches);
     res.json({ success: true, data: updatedObj });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });

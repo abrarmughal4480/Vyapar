@@ -6,10 +6,6 @@ export const createExpense = async (req, res) => {
   try {
     const { expenseCategory, party, partyId, items, totalAmount, paymentType, receivedAmount, expenseDate, description } = req.body;
     
-    console.log('Received expense data:', req.body);
-    console.log('Party ID:', partyId);
-    console.log('Payment Type:', paymentType);
-    console.log('Received Amount:', receivedAmount);
     
     if (!expenseCategory || !party || !items || !Array.isArray(items) || items.length === 0 || !totalAmount || !paymentType || !expenseDate) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
@@ -56,16 +52,6 @@ export const createExpense = async (req, res) => {
             const currentReceivable = partyDoc.openingBalance || 0;
             const newReceivable = currentReceivable + creditAmount;
             
-            console.log('Updating party balance on expense creation:', {
-              partyId,
-              partyName: partyDoc.name,
-              currentReceivable,
-              creditAmount,
-              newReceivable,
-              paymentType,
-              totalAmount,
-              receivedAmount: finalReceivedAmount
-            });
             
             // Update party's receivable balance
             await Party.findByIdAndUpdate(partyId, {
@@ -76,17 +62,9 @@ export const createExpense = async (req, res) => {
           } else {
             // For Cash payments, no balance change needed
             partyBalanceAfterTransaction = partyDoc.openingBalance || 0;
-            console.log('No party balance update needed for Cash payment:', {
-              partyId,
-              partyName: partyDoc.name,
-              paymentType,
-              totalAmount,
-              receivedAmount: finalReceivedAmount
-            });
           }
           
         } else {
-          console.log('Party not found with ID:', partyId);
         }
       } else if (party) {
         // Fallback: find party by name
@@ -97,16 +75,6 @@ export const createExpense = async (req, res) => {
             const currentReceivable = partyDoc.openingBalance || 0;
             const newReceivable = currentReceivable + creditAmount;
             
-            console.log('Updating party balance by name on expense creation:', {
-              partyName: party,
-              partyId: partyDoc._id,
-              currentReceivable,
-              creditAmount,
-              newReceivable,
-              paymentType,
-              totalAmount,
-              receivedAmount: finalReceivedAmount
-            });
             
             await Party.findByIdAndUpdate(partyDoc._id, {
               openingBalance: newReceivable
@@ -116,17 +84,9 @@ export const createExpense = async (req, res) => {
           } else {
             // For Cash payments, no balance change needed
             partyBalanceAfterTransaction = partyDoc.openingBalance || 0;
-            console.log('No party balance update needed for Cash payment (by name):', {
-              partyName: party,
-              partyId: partyDoc._id,
-              paymentType,
-              totalAmount,
-              receivedAmount: finalReceivedAmount
-            });
           }
           
         } else {
-          console.log('Party not found with name:', party);
         }
       }
     } catch (err) {
@@ -284,13 +244,6 @@ export const updateExpense = async (req, res) => {
           const currentReceivable = partyDoc.openingBalance || 0;
           const newReceivable = Math.max(0, currentReceivable - expense.creditAmount);
           
-          console.log('Recovering party balance on update:', {
-            partyId: expense.partyId,
-            partyName: partyDoc.name,
-            currentReceivable,
-            creditAmount: expense.creditAmount,
-            newReceivable
-          });
           
           await Party.findByIdAndUpdate(expense.partyId, {
             openingBalance: newReceivable
@@ -428,14 +381,6 @@ export const deleteExpense = async (req, res) => {
             newReceivable = currentReceivable;
           }
           
-          console.log('Restoring party balance on delete:', {
-            partyId: expense.partyId,
-            partyName: partyDoc.name,
-            currentReceivable,
-            creditAmount: expense.creditAmount,
-            paymentType: expense.paymentType,
-            newReceivable
-          });
           
           await Party.findByIdAndUpdate(expense.partyId, {
             openingBalance: newReceivable
@@ -457,14 +402,6 @@ export const deleteExpense = async (req, res) => {
             newReceivable = currentReceivable;
           }
           
-          console.log('Restoring party balance on delete (by name):', {
-            partyName: expense.party,
-            partyId: partyDoc._id,
-            currentReceivable,
-            creditAmount: expense.creditAmount,
-            paymentType: expense.paymentType,
-            newReceivable
-          });
           
           await Party.findByIdAndUpdate(partyDoc._id, {
             openingBalance: newReceivable

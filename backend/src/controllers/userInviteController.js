@@ -141,7 +141,6 @@ export const updateUserCompanyContext = async (req, res) => {
     invite.requestedTo = currentUserId;
     await invite.save();
 
-    console.log(`User ${currentUserId} joined company ${companyId}`);
 
     res.json({ 
       success: true, 
@@ -196,9 +195,6 @@ export const deleteUserInvite = async (req, res) => {
     const { inviteId } = req.params;
     const requestedBy = req.user && (req.user._id || req.user.id);
     
-    console.log('=== DELETE INVITE START ===');
-    console.log('Invite ID:', inviteId);
-    console.log('Requested by user:', requestedBy);
     
     if (!inviteId || !requestedBy) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
@@ -207,21 +203,12 @@ export const deleteUserInvite = async (req, res) => {
     // Find the invite and verify ownership
     const invite = await UserInvite.findById(inviteId);
     if (!invite) {
-      console.log('Invite not found');
       return res.status(404).json({ success: false, message: 'Invite not found' });
     }
 
-    console.log('Found invite:', {
-      id: invite._id,
-      email: invite.email,
-      status: invite.status,
-      requestedTo: invite.requestedTo,
-      requestedBy: invite.requestedBy
-    });
 
     // Only the person who sent the invite can delete it
     if (invite.requestedBy.toString() !== requestedBy.toString()) {
-      console.log('Authorization failed: User not authorized to delete this invite');
       return res.status(403).json({ success: false, message: 'Not authorized to delete this invite' });
     }
 
@@ -230,18 +217,10 @@ export const deleteUserInvite = async (req, res) => {
 
     // If the invite was for a specific user (has requestedTo), remove their access and invalidate token
     if (invite.requestedTo) {
-      console.log('=== REMOVING USER ACCESS AND INVALIDATING TOKEN ===');
-      console.log('User ID to remove access:', invite.requestedTo);
       
       try {
         // Get user's current state BEFORE removal
         const userBefore = await User.findById(invite.requestedTo);
-        console.log('User BEFORE access removal:', {
-          id: userBefore?._id,
-          email: userBefore?.email,
-          currentToken: userBefore?.currentToken ? 'EXISTS' : 'NONE',
-          joinedCompanies: userBefore?.joinedCompanies || []
-        });
 
         // Remove user from this company's joinedCompanies and clear their token
         const updateResult = await User.findByIdAndUpdate(
@@ -253,7 +232,6 @@ export const deleteUserInvite = async (req, res) => {
           { new: true }
         );
         
-        console.log('User access removal result:', updateResult);
         
         // Also remove this user from the company's joinedCompanies (if they were added)
         await User.findByIdAndUpdate(
@@ -261,18 +239,9 @@ export const deleteUserInvite = async (req, res) => {
           { $pull: { joinedCompanies: invite.requestedTo } }
         );
         
-        console.log('User removed from company joinedCompanies');
         
         // Get user's state AFTER removal
         const userAfter = await User.findById(invite.requestedTo);
-        console.log('User AFTER access removal:', {
-          id: userAfter?._id,
-          email: userAfter?.email,
-          currentToken: userAfter?.currentToken ? 'EXISTS' : 'NONE',
-          joinedCompanies: userAfter?.joinedCompanies || []
-        });
-        
-        console.log('User access removal and token invalidation successful for user:', invite.requestedTo);
         
       } catch (tokenError) {
         console.error('=== ERROR DURING USER ACCESS REMOVAL ===');
@@ -281,28 +250,13 @@ export const deleteUserInvite = async (req, res) => {
         // Continue with invite deletion even if access removal fails
       }
     } else {
-      console.log('=== REMOVING USER ACCESS BY EMAIL ===');
-      console.log('No specific user ID, searching by email:', invite.email);
       
       // If no specific user ID, try to find user by email and remove their access
       try {
         const userByEmail = await User.findOne({ email: invite.email });
         if (userByEmail) {
-          console.log('Found user by email:', {
-            id: userByEmail._id,
-            email: userByEmail.email,
-            currentToken: userByEmail.currentToken ? 'EXISTS' : 'NONE',
-            joinedCompanies: userByEmail.joinedCompanies || []
-          });
-          
           // Get user's current state BEFORE removal
           const userBefore = await User.findById(userByEmail._id);
-          console.log('User BEFORE access removal (by email):', {
-            id: userBefore?._id,
-            email: userBefore?.email,
-            currentToken: userBefore?.currentToken ? 'EXISTS' : 'NONE',
-            joinedCompanies: userBefore?.joinedCompanies || []
-          });
 
           // Remove user from this company's joinedCompanies and clear their token
           const updateResult = await User.findByIdAndUpdate(
@@ -314,7 +268,6 @@ export const deleteUserInvite = async (req, res) => {
             { new: true }
           );
           
-          console.log('User access removal result (by email):', updateResult);
           
           // Also remove this user from the company's joinedCompanies (if they were added)
           await User.findByIdAndUpdate(
@@ -322,21 +275,11 @@ export const deleteUserInvite = async (req, res) => {
             { $pull: { joinedCompanies: userByEmail._id } }
           );
           
-          console.log('User removed from company joinedCompanies (by email)');
           
           // Get user's state AFTER removal
           const userAfter = await User.findById(userByEmail._id);
-          console.log('User AFTER access removal (by email):', {
-            id: userAfter?._id,
-            email: userAfter?.email,
-            currentToken: userAfter?.currentToken ? 'EXISTS' : 'NONE',
-            joinedCompanies: userAfter?.joinedCompanies || []
-          });
-          
-          console.log('User access removal and token invalidation successful for user (by email):', userByEmail._id);
           
         } else {
-          console.log('No user found with email:', invite.email);
         }
       } catch (emailTokenError) {
         console.error('=== ERROR DURING EMAIL USER ACCESS REMOVAL ===');
@@ -346,12 +289,8 @@ export const deleteUserInvite = async (req, res) => {
       }
     }
 
-    console.log('=== DELETING INVITE ===');
     // Delete the invite
     const deleteResult = await UserInvite.findByIdAndDelete(inviteId);
-    console.log('Invite deletion result:', deleteResult);
-
-    console.log('=== DELETE INVITE COMPLETE ===');
     res.json({ success: true, message: 'Invite deleted successfully' });
   } catch (err) {
     console.error('=== ERROR IN DELETE INVITE ===');

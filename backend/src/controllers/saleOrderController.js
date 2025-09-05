@@ -156,13 +156,9 @@ export const deleteSaleOrder = async (req, res) => {
   try {
     const userId = req.user && req.user._id;
     const { orderId } = req.params;
-    console.log("Delete sale order request: orderId =", orderId, "userId =", userId);
     // Try to find by _id only first
     const saleOrderById = await SaleOrder.findOne({ _id: orderId });
-    console.log("Sale order found by _id only:", saleOrderById);
     if (saleOrderById) {
-      console.log("Sale order userId in DB:", saleOrderById.userId, "Type:", typeof saleOrderById.userId);
-      console.log("Request userId:", userId, "Type:", typeof userId);
     }
     // Defensive ObjectId cast
     let objectUserId;
@@ -171,7 +167,6 @@ export const deleteSaleOrder = async (req, res) => {
     } else if (userId instanceof mongoose.Types.ObjectId) {
       objectUserId = userId;
     } else {
-      console.log("Invalid userId for ObjectId cast:", userId);
       return res.status(400).json({ success: false, message: 'Invalid userId' });
     }
     const saleOrder = await SaleOrder.findOneAndDelete({ _id: orderId, userId: objectUserId });

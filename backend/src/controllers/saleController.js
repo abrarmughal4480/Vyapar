@@ -94,10 +94,6 @@ export const createSale = async (req, res) => {
           // Use the reduceStock method from the items model
           await dbItem.reduceStock(stockQuantity);
           
-          console.log(`Stock reduction for ${saleItem.item}:`, {
-            quantity: stockQuantity,
-            currentStock: dbItem.stock
-          });
           
           // Persist consumed batches into sale item
           const consumedBatches = plannedBatches;
@@ -242,7 +238,6 @@ export const createSale = async (req, res) => {
           saleOrder.invoiceNumber = sale.invoiceNo;
           saleOrder.convertedToInvoice = sale._id;
           await saleOrder.save();
-          console.log(`Updated sales order ${req.body.sourceOrderId} to completed status`);
         }
       } catch (err) {
         console.error('Failed to update sales order status:', err);
@@ -280,7 +275,6 @@ export const createSale = async (req, res) => {
       console.error('Failed to update party openingBalance:', err);
     }
     
-    console.log(`Successfully created sale invoice for user: ${sale.userId}`);
     clearAllCacheForUser(userId); // Invalidate all related caches
     res.status(201).json({ success: true, sale: saleObj });
   } catch (err) {
@@ -631,14 +625,11 @@ export const deleteSale = async (req, res) => {
   try {
     const userId = req.user && req.user._id;
     const { saleId } = req.params;
-    console.log('Delete sale request by user:', userId, 'for saleId:', saleId);
     const sale = await Sale.findOne({ _id: saleId });
-    console.log('Sale found:', sale);
     if (!sale) {
       return res.status(404).json({ success: false, message: 'Sale not found' });
     }
     if (String(sale.userId) !== String(userId)) {
-      console.log('UserId mismatch:', sale.userId, '!=', userId);
       return res.status(403).json({ success: false, message: 'Not authorized to delete this sale' });
     }
     
@@ -697,15 +688,8 @@ export const deleteSale = async (req, res) => {
         
         // Handle simple stock restoration
         if (dbItem) {
-          console.log(`Restoring stock for item: ${saleItem.item}`);
-          
           // Simple stock restoration
           dbItem.stock = (dbItem.stock || 0) + stockQuantity;
-          
-          console.log(`Restored stock for item: ${saleItem.item}`);
-          console.log(`Sale quantity: ${saleItem.qty} ${saleItem.unit}`);
-          console.log(`Stock quantity restored: ${stockQuantity}`);
-          console.log(`Current stock: ${dbItem.stock}`);
         }
         
         await dbItem.save();
@@ -720,7 +704,6 @@ export const deleteSale = async (req, res) => {
         if (partyDoc) {
           partyDoc.openingBalance = (partyDoc.openingBalance || 0) - sale.balance;
           await partyDoc.save();
-          console.log(`Updated party balance for deleted credit sale: -${sale.balance}`);
         }
       }
     } catch (err) {
@@ -754,62 +737,80 @@ export const updateSale = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Sale not found' });
     }
 
-    console.log('Updating sale:', saleId, 'for user:', userId);
 
-    // 2. First restore stock from old sale items
+    // 2. Calculate quantity differences and restore only what's needed
     const oldItems = oldSale.items || [];
+    const newItems = updateData.items || [];
+    
     for (const oldItem of oldItems) {
       const dbItem = await Item.findOne({ userId: userId.toString(), name: oldItem.item });
       if (dbItem) {
-        // Log stock before restoration
-        const stockBeforeRestore = dbItem.stock || 0;
+        // Find corresponding new item to calculate difference
+        const newItem = newItems.find(item => item.item === oldItem.item);
+        const oldQty = Number(oldItem.qty);
+        const newQty = newItem ? Number(newItem.qty) : 0;
         
-        // Convert quantity to base unit for stock restoration
-        let stockQuantity = Number(oldItem.qty);
+        // Calculate how much to restore (only if new quantity is less than old)
+        const quantityToRestore = Math.max(0, oldQty - newQty);
         
-        // Handle unit conversion for restoration
-        if (dbItem.unit) {
-          const itemUnit = dbItem.unit;
-          const saleUnit = oldItem.unit;
+        if (quantityToRestore > 0) {
+          // Log stock before restoration
+          const stockBeforeRestore = dbItem.stock || 0;
           
-          if (typeof itemUnit === 'object' && itemUnit.base && itemUnit.secondary) {
-            if (saleUnit === itemUnit.secondary && itemUnit.conversionFactor) {
-              stockQuantity = Number(oldItem.qty) * itemUnit.conversionFactor;
-            }
-          } else if (typeof itemUnit === 'string' && itemUnit.includes(' / ')) {
-            const parts = itemUnit.split(' / ');
-            const secondaryUnit = parts[1];
-            if (saleUnit === secondaryUnit) {
-              stockQuantity = Number(oldItem.qty) * 12; // Default conversion factor
-            }
-          }
-        }
-        
-        // CRITICAL FIX: Restore stock with proper batch structure from old consumed batches
-        if (oldItem.consumedBatches && Array.isArray(oldItem.consumedBatches) && oldItem.consumedBatches.length > 0) {
-          // Restore each consumed batch individually to maintain FIFO structure
-          console.log(`   🔄 Restoring ${oldItem.consumedBatches.length} batches with original purchase prices`);
+          // Convert quantity to base unit for stock restoration
+          let stockQuantity = quantityToRestore;
           
-          for (const consumedBatch of oldItem.consumedBatches) {
-            const batchQty = consumedBatch.quantity || 0;
-            const batchPrice = consumedBatch.purchasePrice || 0;
+          // Handle unit conversion for restoration
+          if (dbItem.unit) {
+            const itemUnit = dbItem.unit;
+            const saleUnit = oldItem.unit;
             
-            if (batchQty > 0) {
-              // Add each batch back with its original purchase price
-              await dbItem.addStock(batchQty, batchPrice);
-              console.log(`   ✅ Restored batch: ${batchQty} units at price ${batchPrice}`);
+            if (typeof itemUnit === 'object' && itemUnit.base && itemUnit.secondary) {
+              if (saleUnit === itemUnit.secondary && itemUnit.conversionFactor) {
+                stockQuantity = quantityToRestore * itemUnit.conversionFactor;
+              }
+            } else if (typeof itemUnit === 'string' && itemUnit.includes(' / ')) {
+              const parts = itemUnit.split(' / ');
+              const secondaryUnit = parts[1];
+              if (saleUnit === secondaryUnit) {
+                stockQuantity = quantityToRestore * 12; // Default conversion factor
+              }
             }
           }
-        } else {
-          // Fallback: use addStock with item's current purchase price
-          await dbItem.addStock(stockQuantity, oldItem.purchasePrice || dbItem.purchasePrice || 0);
-          console.log(`   ⚠️ No consumed batches found, using fallback restoration`);
+          
+          // CRITICAL FIX: Restore stock with proper batch structure from old consumed batches
+          if (oldItem.consumedBatches && Array.isArray(oldItem.consumedBatches) && oldItem.consumedBatches.length > 0) {
+            // Calculate how much to restore proportionally from old consumed batches
+            const oldTotalQuantity = oldItem.consumedBatches.reduce((sum, batch) => sum + (batch.quantity || 0), 0);
+            const restoreRatio = oldTotalQuantity > 0 ? quantityToRestore / oldTotalQuantity : 0;
+            
+            let remainingToRestore = quantityToRestore;
+            
+            for (const consumedBatch of oldItem.consumedBatches) {
+              if (remainingToRestore <= 0) break;
+              
+              const batchQty = consumedBatch.quantity || 0;
+              const batchPrice = consumedBatch.purchasePrice || 0;
+              
+              // Calculate how much to restore from this batch proportionally
+              const restoreFromBatch = Math.min(remainingToRestore, Math.round(batchQty * restoreRatio));
+              
+              if (restoreFromBatch > 0) {
+                // Add this portion back with its original purchase price
+                await dbItem.addStock(restoreFromBatch, batchPrice);
+                remainingToRestore -= restoreFromBatch;
+              }
+            }
+            
+            // If there's still remaining to restore, use fallback
+            if (remainingToRestore > 0) {
+              await dbItem.addStock(remainingToRestore, oldItem.purchasePrice || dbItem.purchasePrice || 0);
+            }
+          } else {
+            // Fallback: use addStock with item's current purchase price
+            await dbItem.addStock(stockQuantity, oldItem.purchasePrice || dbItem.purchasePrice || 0);
+          }
         }
-        
-        console.log(`📦 STOCK RESTORATION for ${oldItem.item}:`);
-        console.log(`   Before restore: ${stockBeforeRestore} units`);
-        console.log(`   Restored: +${stockQuantity} units (old sale quantity)`);
-        console.log(`   After restore: ${dbItem.stock} units`);
       }
     }
 
@@ -818,11 +819,10 @@ export const updateSale = async (req, res) => {
       const Party = (await import('../models/parties.js')).default;
       const oldParty = await Party.findOne({ name: oldSale.partyName, user: userId });
       if (oldParty) {
-        // Revert old credit balance
-        if (oldSale.paymentType === 'Credit' && oldSale.balance > 0) {
+        // Revert old balance for both credit and cash sales
+        if (oldSale.balance > 0) {
           oldParty.openingBalance = (oldParty.openingBalance || 0) - oldSale.balance;
           await oldParty.save();
-          console.log(`Reverted party balance for ${oldSale.partyName}: -${oldSale.balance}`);
         }
       }
     } catch (err) {
@@ -830,7 +830,6 @@ export const updateSale = async (req, res) => {
     }
 
     // 4. Process new sale items and reduce stock
-    const newItems = updateData.items || [];
     for (const newItem of newItems) {
       const dbItem = await Item.findOne({ userId: userId.toString(), name: newItem.item });
       if (dbItem) {
@@ -842,28 +841,21 @@ export const updateSale = async (req, res) => {
         // Calculate additional quantity needed (only consume the difference)
         const additionalQty = Math.max(0, newQty - oldQty);
         
-        console.log(`Item: ${newItem.item}, Old qty: ${oldQty}, New qty: ${newQty}, Additional needed: ${additionalQty}`);
-        
         // SIMPLE LOGIC: Calculate quantity change and adjust accordingly
         const quantityChange = newQty - oldQty;
-        console.log(`📊 QUANTITY CHANGE for ${newItem.item}: ${oldQty} → ${newQty} (change: ${quantityChange > 0 ? '+' : ''}${quantityChange} units)`);
         
         if (quantityChange !== 0) {
           // Get old consumed batches
           const oldConsumedBatches = oldSaleItem ? (oldSaleItem.consumedBatches || []) : [];
           
           if (quantityChange > 0) {
-            // Quantity increased - consume TOTAL NEW QUANTITY from stock
-            console.log(`   📈 Quantity increased: consuming TOTAL NEW QUANTITY (${newQty}) from stock`);
-            
-            // IMPORTANT: First consume from actual batches, then update stock
-            console.log(`   Consuming ${newQty} units from actual batches using FIFO method`);
+            // Quantity increased - consume ADDITIONAL QUANTITY from stock
             
             // CRITICAL FIX: Capture consumed batches BEFORE calling reduceStock
             // This ensures we track the exact batches and prices that will be consumed
             const consumedBatches = [];
             let totalCost = 0;
-            let remainingToConsume = newQty;
+            let remainingToConsume = additionalQty;
             
             // Process batches in FIFO order to capture what will be consumed
             for (let i = 0; i < dbItem.batches.length && remainingToConsume > 0; i++) {
@@ -884,14 +876,11 @@ export const updateSale = async (req, res) => {
                 // Update remaining to consume
                 remainingToConsume -= consumeFromBatch;
                 
-                console.log(`   Will consume ${consumeFromBatch} units from batch at price ${batch.purchasePrice}`);
               }
             }
             
             // Handle case where we need more stock than available in batches
             if (remainingToConsume > 0) {
-              console.log(`   ⚠️ Warning: Need ${remainingToConsume} more units than available in batches`);
-              
               // Add remaining units as consumed from current purchase price
               consumedBatches.push({
                 quantity: remainingToConsume,
@@ -899,86 +888,48 @@ export const updateSale = async (req, res) => {
               });
               
               totalCost += remainingToConsume * (dbItem.purchasePrice || 0);
-              console.log(`   Will consume ${remainingToConsume} units at current purchase price: ${dbItem.purchasePrice || 0}`);
             }
             
             // Now use reduceStock method for proper FIFO-based stock reduction
-            await dbItem.reduceStock(newQty);
-            
-            console.log(`   ✅ Stock reduced using FIFO method: ${newQty} units consumed`);
-            console.log(`   Stock after consuming total new quantity: ${dbItem.stock} units`);
-            console.log(`   Batches after consumption:`, dbItem.batches);
+            await dbItem.reduceStock(additionalQty);
             
             // Set the consumed batches and total cost
             newItem.consumedBatches = consumedBatches;
             newItem.totalCost = totalCost;
             
-            console.log(`   ✅ Consumed batches from actual stock:`, consumedBatches);
-            console.log(`   ✅ Total cost: ${totalCost}`);
-            
           } else {
-            // Quantity decreased - we need to consume the NEW quantity from stock
-            console.log(`   📉 Quantity decreased: consuming NEW quantity (${newQty}) from stock`);
-            
-            // IMPORTANT: We restore old stock (+15) but then consume NEW quantity (-13)
-            // So final stock = restored stock - new quantity = 20 - 13 = 7 units
-            const stockToConsume = newQty;
-            console.log(`   🔄 Consuming ${stockToConsume} units (new sale quantity) from restored stock`);
-            
-            // CRITICAL FIX: Use reduceStock method for proper FIFO-based stock reduction
-            await dbItem.reduceStock(stockToConsume);
-            console.log(`   📦 Stock after consuming new quantity: ${dbItem.stock} units`);
-            
-            // CORRECT APPROACH: New sale quantity is newQty, so consumed batches should total newQty
-            // We need to reduce from old consumed batches to match newQty
-            const targetQuantity = newQty; // This is the new sale quantity
+            // Quantity decreased - we only restore the difference, no additional consumption needed
+            // For quantity decreased, we need to create consumed batches that represent the NEW quantity
+            // We should use the old consumed batches but reduce them proportionally to match the new quantity
             const oldTotalQuantity = oldConsumedBatches.reduce((sum, b) => sum + b.quantity, 0);
-            const reductionNeeded = oldTotalQuantity - targetQuantity;
+            const newQuantity = newQty;
+            const reductionRatio = oldTotalQuantity > 0 ? newQuantity / oldTotalQuantity : 0;
             
-            console.log(`   📊 Old consumed batches total: ${oldTotalQuantity} units`);
-            console.log(`   🎯 Target quantity (new sale): ${targetQuantity} units`);
-            console.log(`   🔄 Need to reduce: ${reductionNeeded} units`);
+            // Create new consumed batches by reducing old ones proportionally
+            const newConsumedBatches = [];
+            let totalCost = 0;
             
-            if (reductionNeeded > 0) {
-              // Start reducing from last batch (LIFO)
-              let remainingToReduce = reductionNeeded;
-              let newConsumedBatches = [...oldConsumedBatches];
+            for (const oldBatch of oldConsumedBatches) {
+              const oldQty = oldBatch.quantity;
+              const newQty = Math.round(oldQty * reductionRatio);
               
-              for (let i = newConsumedBatches.length - 1; i >= 0 && remainingToReduce > 0; i--) {
-                const batch = newConsumedBatches[i];
-                const currentQty = batch.quantity;
-                const reduceFromBatch = Math.min(currentQty, remainingToReduce);
-                
-                if (reduceFromBatch > 0) {
-                  const oldQty = batch.quantity;
-                  batch.quantity = currentQty - reduceFromBatch;
-                  remainingToReduce -= reduceFromBatch;
-                  console.log(`   Reduced ${reduceFromBatch} units from batch at price ${batch.purchasePrice}: ${oldQty} → ${batch.quantity}`);
-                }
+              if (newQty > 0) {
+                newConsumedBatches.push({
+                  quantity: newQty,
+                  purchasePrice: oldBatch.purchasePrice
+                });
+                totalCost += newQty * oldBatch.purchasePrice;
               }
-              
-              // Remove batches with 0 quantity
-              newConsumedBatches = newConsumedBatches.filter(b => b.quantity > 0);
-              
-              console.log(`   📊 New consumed batches:`, newConsumedBatches);
-              newItem.consumedBatches = newConsumedBatches;
-            } else {
-              // No reduction needed, keep old batches
-              console.log(`   No reduction needed, keeping old consumed batches`);
-              newItem.consumedBatches = oldConsumedBatches;
             }
-            // Calculate total cost based on final consumed batches
-            newItem.totalCost = newItem.consumedBatches.reduce((sum, b) => sum + (b.quantity * b.purchasePrice), 0);
             
-            console.log(`   ✅ Reduced consumed batches, new total: ${newItem.consumedBatches.reduce((sum, b) => sum + b.quantity, 0)} units`);
+            // Set the consumed batches and total cost
+            newItem.consumedBatches = newConsumedBatches;
+            newItem.totalCost = totalCost;
+            
           }
-          
-          console.log(`   Final consumed batches:`, newItem.consumedBatches);
-          console.log(`   Final total cost: ${newItem.totalCost}`);
           
         } else {
           // No quantity change - keep old consumed batches
-          console.log(`   No quantity change - keeping old consumed batches`);
           newItem.consumedBatches = oldSaleItem ? (oldSaleItem.consumedBatches || []) : [];
           newItem.totalCost = oldSaleItem ? (oldSaleItem.totalCost || 0) : 0;
         }
@@ -1032,8 +983,9 @@ export const updateSale = async (req, res) => {
     const grandTotal = Math.max(0, originalSubTotal - totalDiscount + taxValue);
     
     // Calculate balance
-    let received = Number(updateData.received) || 0;
+    let received = Number(updateData.receivedAmount || updateData.received) || 0;
     const balance = grandTotal - received;
+    
 
     // 6. Update party balance for new sale
     try {
@@ -1043,16 +995,17 @@ export const updateSale = async (req, res) => {
         if (updateData.paymentType === 'Credit') {
           // Add new credit balance
           newParty.openingBalance = (newParty.openingBalance || 0) + balance;
-        } else if (updateData.paymentType === 'Cash' && balance > 0) {
-          // Add remaining balance if any unpaid amount
-          newParty.openingBalance = (newParty.openingBalance || 0) + balance;
+        } else if (updateData.paymentType === 'Cash') {
+          // For cash sales, add balance if there's any unpaid amount
+          if (balance > 0) {
+            newParty.openingBalance = (newParty.openingBalance || 0) + balance;
+          }
         }
         
         // Calculate and store party balance after this transaction
         const partyBalanceAfterTransaction = newParty.openingBalance;
         
         await newParty.save();
-        console.log(`Updated party balance for ${updateData.partyName}: +${balance}, new balance: ${partyBalanceAfterTransaction}`);
         
         // Store the party balance after transaction for this sale
         updateData.partyBalanceAfterTransaction = partyBalanceAfterTransaction;
@@ -1091,7 +1044,6 @@ export const updateSale = async (req, res) => {
       }));
     }
 
-    console.log(`Successfully updated sale ${saleId} for user: ${userId}`);
     clearAllCacheForUser(userId); // Invalidate all related caches
     
     res.json({ success: true, sale: saleObj });

@@ -41,29 +41,24 @@ export const checkPageAccess = async (userEmail, companyId, requestedPage) => {
     });
 
     if (!userInvite) {
-      console.log('No accepted invite found for user:', userEmail, 'in company:', companyId);
       return false;
     }
 
     const role = userInvite.role;
-    console.log(`Checking access for ${userEmail} with role ${role} to page ${requestedPage}`);
 
     // Get role permissions
     const rolePermissions = PAGE_PERMISSIONS[role];
     if (!rolePermissions) {
-      console.log(`No permissions defined for role: ${role}`);
       return false;
     }
 
     // Check if page is restricted for this role
     if (rolePermissions.restrictedPages.includes(requestedPage)) {
-      console.log(`Page ${requestedPage} is restricted for role ${role}`);
       return false;
     }
 
     // Check if page is allowed for this role
     const hasAccess = rolePermissions.pages.includes(requestedPage);
-    console.log(`Access ${hasAccess ? 'GRANTED' : 'DENIED'} for ${userEmail} (${role}) to ${requestedPage}`);
     
     return hasAccess;
   } catch (error) {

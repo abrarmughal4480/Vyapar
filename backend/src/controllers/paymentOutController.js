@@ -96,8 +96,6 @@ export const createPaymentOut = async (req, res) => {
     
     await paymentOut.save();
     
-    console.log(`Payment out processed for purchase ${purchaseId}: Amount=${amount}, New Paid=${purchase.paid}, New Balance=${purchase.balance}`);
-    console.log('Payment out record saved:', paymentOut.toObject());
     
     res.status(201).json({ 
       success: true, 

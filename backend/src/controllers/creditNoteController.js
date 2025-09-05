@@ -31,7 +31,6 @@ export const createCreditNote = async (req, res) => {
         // Use addStock method to create a new batch
         await dbItem.addStock(quantity, restorePrice);
         
-        console.log(`Restored ${quantity} units to ${noteItem.item} via credit note at price ${restorePrice}, new stock: ${dbItem.stock}`);
       }
     }
     // Calculate subTotal

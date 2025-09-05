@@ -253,10 +253,6 @@ const authController = {
       // This token will be used by session manager to validate the session
       const updateResult = await User.findByIdAndUpdate(userId, { currentToken: token });
       
-      console.log(`User ${userId} switched to company context: ${companyId}`);
-      console.log(`Updated currentToken in database for user ${userId}`);
-      console.log(`New token: ${token.substring(0, 20)}...`);
-      console.log(`Database update result:`, updateResult ? 'Success' : 'Failed');
 
       return res.json({ 
         success: true, 
@@ -303,10 +299,6 @@ const authController = {
       // Update user's currentToken in database
       const updateResult = await User.findByIdAndUpdate(userId, { currentToken: token });
 
-      console.log(`User ${userId} reset to user context`);
-      console.log(`Updated currentToken in database for user ${userId}`);
-      console.log(`New token: ${token.substring(0, 20)}...`);
-      console.log(`Database update result:`, updateResult ? 'Success' : 'Failed');
 
       return res.json({ 
         success: true, 

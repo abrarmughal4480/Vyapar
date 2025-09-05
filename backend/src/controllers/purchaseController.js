@@ -15,11 +15,6 @@ export const createPurchase = async (req, res) => {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
     
-    console.log('Backend received due date:', {
-      dueDate: req.body.dueDate,
-      type: typeof req.body.dueDate,
-      fullBody: req.body
-    });
     
     // Increment stock for each item
     for (const purchaseItem of items) {
@@ -77,11 +72,6 @@ export const createPurchase = async (req, res) => {
         // Add stock as a new batch with purchase price
         const updatedItem = await dbItem.addStock(stockQuantity, Number(purchaseItem.price));
 
-        console.log(`Stock adding for item: ${purchaseItem.item}`);
-        console.log(`Purchase quantity: ${purchaseItem.qty} ${purchaseItem.unit}`);
-        console.log(`Stock quantity to add: ${stockQuantity}`);
-        console.log(`Purchase price: ${purchaseItem.price}`);
-        console.log(`New stock after batch add: ${updatedItem.stock}`);
       }
     }
     
@@ -164,14 +154,6 @@ export const createPurchase = async (req, res) => {
     
     await purchase.save();
     
-    console.log('Purchase saved to database:', {
-      _id: purchase._id,
-      billNo: purchase.billNo,
-      supplierName: purchase.supplierName,
-      dueDate: purchase.dueDate,
-      dueDateType: typeof purchase.dueDate,
-      fullPurchase: purchase.toObject()
-    });
     
     // Note: Purchase order status update is now handled in the frontend
     // to match the pattern used in sales conversion
@@ -196,19 +178,16 @@ export const createPurchase = async (req, res) => {
           await purchase.save();
           
           await supplierDoc.save();
-          console.log(`Updated supplier ${purchase.supplierName} balance: -${unpaidAmount} (credit payment, unpaid amount)`);
         } else {
           // For cash payments, set partyBalanceAfterTransaction to current balance (no change)
           purchase.partyBalanceAfterTransaction = supplierCurrentBalance;
           await purchase.save();
-          console.log(`No balance update needed for ${purchase.supplierName} (cash payment - 100% paid)`);
         }
       }
     } catch (err) {
       console.error('Failed to update supplier openingBalance:', err);
     }
     
-    console.log(`Successfully created purchase bill for user: ${purchase.userId} with bill number: ${purchase.billNo} and total: ${purchase.grandTotal}`);
     res.status(201).json({ success: true, purchase });
     clearAllCacheForUser(userId);
   } catch (err) {
@@ -366,17 +345,12 @@ export const makePayment = async (req, res) => {
           // Increase supplier balance by the payment amount (you're paying them, reducing debt)
           supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + amount;
           await supplierDoc.save();
-          console.log(`Updated supplier ${purchase.supplierName} balance after payment: +${amount}`);
         }
       } catch (err) {
         console.error('Failed to update supplier balance after payment:', err);
       }
     }
     
-    console.log(`Payment processed for purchase ${purchaseId}: Amount=${amount}, New Paid=${purchase.paid}, New Balance=${purchase.balance}`);
-    if (payment) {
-      console.log('Payment record saved:', payment.toObject());
-    }
     
     res.json({ 
       success: true, 
@@ -470,7 +444,6 @@ export const deletePurchase = async (req, res) => {
           // Use reduceStock method to properly handle batch removal
           try {
             await dbItem.reduceStock(stockQuantity);
-            console.log(`Reverted stock for ${purchaseItem.item} during delete: -${stockQuantity}, new stock: ${dbItem.stock}`);
           } catch (error) {
             // If reduceStock fails due to insufficient stock, do simple reduction
             console.warn(`Reduce stock failed for ${purchaseItem.item} during delete, doing simple reduction:`, error.message);
@@ -569,7 +542,6 @@ export const updatePurchase = async (req, res) => {
         // Use reduceStock method to properly handle batch removal
         try {
           await dbItem.reduceStock(stockQuantity);
-          console.log(`Reverted stock for ${oldItem.item}: -${stockQuantity}, new stock: ${dbItem.stock}`);
         } catch (error) {
           // If reduceStock fails due to insufficient stock, do simple reduction
           console.warn(`Reduce stock failed for ${oldItem.item}, doing simple reduction:`, error.message);
@@ -611,7 +583,6 @@ export const updatePurchase = async (req, res) => {
         
         // Use addStock method to properly handle batch creation
         await dbItem.addStock(stockQuantity, Number(newItem.price));
-        console.log(`Added stock for ${newItem.item}: +${stockQuantity} at price ${newItem.price}, new stock: ${dbItem.stock}`);
       }
     }
     
@@ -661,9 +632,10 @@ export const updatePurchase = async (req, res) => {
     // Calculate new grand total
     const newGrandTotal = Math.max(0, originalSubTotal - totalDiscount + taxValue);
     
-    // Calculate new balance (considering existing paid amount)
-    const existingPaid = existingPurchase.paid || 0;
-    const newBalance = Math.max(0, newGrandTotal - existingPaid);
+    // Calculate new balance (considering new paid amount from updateData)
+    const newPaid = Number(updateData.paid || updateData.paidAmount || existingPurchase.paid) || 0;
+    const newBalance = Math.max(0, newGrandTotal - newPaid);
+    
     
     // Step 4: Update supplier balance if supplier name changed
     if (updateData.supplierName && updateData.supplierName !== existingPurchase.supplierName) {
@@ -681,7 +653,7 @@ export const updatePurchase = async (req, res) => {
         // Update new supplier balance
         const newSupplierDoc = await Party.findOne({ name: updateData.supplierName, user: userId });
         if (newSupplierDoc) {
-          const newUnpaidAmount = newGrandTotal - existingPaid;
+          const newUnpaidAmount = newGrandTotal - newPaid;
           newSupplierDoc.openingBalance = (newSupplierDoc.openingBalance || 0) - newUnpaidAmount;
           await newSupplierDoc.save();
         }
@@ -695,7 +667,7 @@ export const updatePurchase = async (req, res) => {
         const supplierDoc = await Party.findOne({ name: existingPurchase.supplierName, user: userId });
         if (supplierDoc) {
           const oldUnpaidAmount = existingPurchase.grandTotal - (existingPurchase.paid || 0);
-          const newUnpaidAmount = newGrandTotal - existingPaid;
+          const newUnpaidAmount = newGrandTotal - newPaid;
           const balanceAdjustment = oldUnpaidAmount - newUnpaidAmount;
           
           supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + balanceAdjustment;
@@ -717,6 +689,7 @@ export const updatePurchase = async (req, res) => {
         taxValue,
         grandTotal: newGrandTotal,
         balance: newBalance,
+        paid: newPaid,
         updatedAt: new Date()
       },
       { new: true }
@@ -747,15 +720,6 @@ export const getPaymentsByUser = async (req, res) => {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
     
-    console.log('Fetching payments for userId:', userId);
-    
-    // First, let's check if there are any payments at all
-    const paymentCount = await Payment.countDocuments({ userId });
-    console.log('Total payments found:', paymentCount);
-    
-    // Let's also check all payments for this user to see what's in the database
-    const allPayments = await Payment.find({ userId });
-    console.log('All payments for user:', allPayments.map(p => ({ id: p._id, amount: p.amount, billNo: p.billNo, supplierName: p.supplierName })));
     
     // Convert userId to ObjectId safely
     let objectUserId;
@@ -814,7 +778,6 @@ export const getPaymentsByUser = async (req, res) => {
       }));
     }
     
-    console.log('Payments with aggregation:', payments);
     res.json({ success: true, payments });
   } catch (err) {
     console.error('Error fetching payments:', err);

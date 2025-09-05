@@ -10,7 +10,6 @@ export const requirePageAccess = (pageName) => {
     try {
       // Only check permissions if user is in company context
       if (req.user.context !== 'company') {
-        console.log('User not in company context, skipping permission check');
         return next();
       }
 
@@ -18,20 +17,17 @@ export const requirePageAccess = (pageName) => {
       const companyId = req.user.id;
 
       if (!userEmail || !companyId) {
-        console.log('Missing user email or company ID for permission check');
         return res.status(403).json({ 
           message: 'Access denied: Missing user information' 
         });
       }
 
-      console.log(`🔒 Checking access for ${userEmail} to page: ${pageName}`);
 
       // Check if user has access to this page
       const hasAccess = await checkPageAccess(userEmail, companyId, pageName);
       
       if (!hasAccess) {
         const userRole = await getUserRole(userEmail, companyId);
-        console.log(`❌ Access DENIED for ${userEmail} (${userRole}) to ${pageName}`);
         
         return res.status(403).json({ 
           message: `Access denied. Your role (${userRole || 'Unknown'}) cannot access this page.`,
@@ -41,7 +37,6 @@ export const requirePageAccess = (pageName) => {
         });
       }
 
-      console.log(`✅ Access GRANTED for ${userEmail} to ${pageName}`);
       next();
     } catch (error) {
       console.error('Error in access control middleware:', error);
@@ -126,7 +121,6 @@ export const addUserPermissions = async (req, res, next) => {
     req.userPermissions = permissions;
     req.userRole = role;
 
-    console.log(`📋 Added permissions for ${userEmail} (${role}):`, permissions?.pages || []);
 
     next();
   } catch (error) {

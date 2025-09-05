@@ -36,9 +36,6 @@ router.get('/session-check', authMiddleware, async (req, res) => {
     
     // If user has currentToken field and it doesn't match, force logout
     if (user.currentToken && user.currentToken !== currentToken) {
-      console.log(`Session check failed: Token mismatch for user ${userId}`);
-      console.log(`Database token: ${user.currentToken}`);
-      console.log(`Request token: ${currentToken}`);
       return res.status(401).json({
         success: false,
         code: 'SESSION_EXPIRED',

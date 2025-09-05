@@ -264,8 +264,8 @@ export const getDashboardStats = async (req, res) => {
               $cond: {
                 if: { 
                   $and: [
-                    { $ne: ['$purchasePrice', null] },
-                    { $gte: ['$purchasePrice', 0] }
+                    { $ne: ['$salePrice', null] },
+                    { $gte: ['$salePrice', 0] }
                   ]
                 },
                 then: { 
@@ -289,7 +289,7 @@ export const getDashboardStats = async (req, res) => {
                         }
                       }
                     },
-                    '$purchasePrice'
+                    '$salePrice'
                   ]
                 },
                 else: 0
@@ -1098,14 +1098,14 @@ export const testStockValue = async (req, res) => {
     const userId = req.user && (req.user._id || req.user.id);
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
 
-    const items = await Item.find({ userId: userId }).select('name stock purchasePrice openingQuantity openingStockQuantity').lean();
+    const items = await Item.find({ userId: userId }).select('name stock salePrice openingQuantity openingStockQuantity').lean();
     
     let totalStockValue = 0;
     const itemDetails = [];
     
     items.forEach(item => {
       const currentStock = item.stock || item.openingQuantity || item.openingStockQuantity || 0;
-      const stockValue = currentStock * (item.purchasePrice || 0);
+      const stockValue = currentStock * (item.salePrice || 0);
       totalStockValue += stockValue;
       itemDetails.push({
         name: item.name,
@@ -1113,7 +1113,7 @@ export const testStockValue = async (req, res) => {
         openingQuantity: item.openingQuantity || 0,
         openingStockQuantity: item.openingStockQuantity || 0,
         currentStock: currentStock,
-        purchasePrice: item.purchasePrice || 0,
+        salePrice: item.salePrice || 0,
         stockValue: stockValue
       });
     });
@@ -1125,7 +1125,7 @@ export const testStockValue = async (req, res) => {
         totalStockValue,
         itemDetails,
         itemsWithStock: items.filter(item => (item.stock || 0) > 0).length,
-        itemsWithPrice: items.filter(item => (item.purchasePrice || 0) > 0).length
+        itemsWithPrice: items.filter(item => (item.salePrice || 0) > 0).length
       }
     });
   } catch (err) {

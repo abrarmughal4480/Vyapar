@@ -9,6 +9,8 @@ import { getUserItems } from '../../../../http/items'
 import ReactDOM from 'react-dom'
 import Toast from '../../../components/Toast'
 import { CustomDropdown, type DropdownOption } from '../../../components/CustomDropdown'
+import { ItemsDropdown } from '../../../components/ItemsDropdown'
+import { UnitsDropdown } from '../../../components/UnitsDropdown'
 import { useSidebar } from '../../../contexts/SidebarContext'
 
 const getUnitDisplay = (unit: any) => {
@@ -113,6 +115,275 @@ const convertPrice = (currentPrice: string, fromUnit: string, toUnit: string, it
   return currentPrice;
 };
 
+const ItemRow = React.memo(({
+  item,
+  index,
+  handleItemChange,
+  showItemSuggestions,
+  setShowItemSuggestions,
+  itemSuggestions,
+  deleteRow,
+  addRow,
+  formData
+}: {
+  item: any;
+  index: number;
+  handleItemChange: (id: number, field: string, value: any) => void;
+  showItemSuggestions: { [id: number]: boolean };
+  setShowItemSuggestions: React.Dispatch<React.SetStateAction<{ [id: number]: boolean }>>;
+  itemSuggestions: any[];
+  deleteRow: (id: number) => void;
+  addRow: () => void;
+  formData: any;
+}) => {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  const [itemDropdownIndex, setItemDropdownIndex] = useState(0);
+  const [unitDropdownIndex, setUnitDropdownIndex] = useState(0);
+  const [isKeyboardNavigating, setIsKeyboardNavigating] = useState(false);
+  const [unitDropdownOpen, setUnitDropdownOpen] = useState(false);
+
+  const updateDropdownPosition = () => {
+    if (inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
+      const style: React.CSSProperties = {
+        position: 'absolute' as const,
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.left + window.scrollX + 4,
+        width: rect.width,
+        zIndex: 9999
+      };
+      setDropdownStyle(style);
+    }
+  };
+
+  useLayoutEffect(() => {
+    if (showItemSuggestions[item.id]) {
+      updateDropdownPosition();
+      window.addEventListener('scroll', updateDropdownPosition, true);
+      window.addEventListener('resize', updateDropdownPosition);
+      const handleClickOutside = (event: MouseEvent) => {
+        if (
+          inputRef.current &&
+          !inputRef.current.contains(event.target as Node)
+        ) {
+          setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
+        }
+      };
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        window.removeEventListener('scroll', updateDropdownPosition, true);
+        window.removeEventListener('resize', updateDropdownPosition);
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showItemSuggestions[item.id]]);
+
+  const handleFocus = () => {
+    setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: true }));
+    setItemDropdownIndex(0);
+    updateDropdownPosition();
+  };
+
+  const unitOptions = (() => {
+    const options: DropdownOption[] = [];
+    if (item.item) {
+      const selectedItem = itemSuggestions.find(i => i.name === item.item);
+      if (selectedItem && selectedItem.unit) {
+        const unit = selectedItem.unit;
+        if (typeof unit === 'object' && unit.base) {
+          if (unit.base && unit.base !== 'NONE') {
+            options.push({ value: unit.base, label: unit.base });
+          }
+          if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) {
+            options.push({ value: unit.secondary, label: unit.secondary });
+          }
+        } else if (typeof unit === 'string' && unit.includes(' / ')) {
+          const parts = unit.split(' / ');
+          if (parts[0] && parts[0] !== 'NONE') {
+            options.push({ value: parts[0], label: parts[0] });
+          }
+          if (parts[1] && parts[1] !== 'None') {
+            options.push({ value: parts[1], label: parts[1] });
+          }
+        } else if (typeof unit === 'string') {
+          options.push({ value: unit, label: unit });
+        }
+      }
+    }
+    if (options.length === 0) {
+      options.push({ value: 'NONE', label: 'NONE' });
+    }
+    return options;
+  })();
+
+  return (
+    <tr className={`border-b border-gray-100 ${index % 2 === 0 ? 'bg-white' : 'bg-blue-50'} hover:bg-blue-100 transition-colors`}>
+      <td className="py-2 px-2 font-medium">{index + 1}</td>
+      <td className="py-2 px-2">
+        <ItemsDropdown
+          items={itemSuggestions}
+          value={item.item}
+          onChange={(val) => handleItemChange(item.id, "item", val)}
+          onItemSelect={(selectedItem) => {
+            if (selectedItem.salePrice) {
+              handleItemChange(item.id, "price", selectedItem.salePrice.toString());
+            }
+            if (selectedItem.unit) {
+              const unitDisplay = getUnitDisplay(selectedItem.unit);
+              handleItemChange(item.id, "unit", unitDisplay);
+            }
+          }}
+          showSuggestions={showItemSuggestions[item.id] || false}
+          setShowSuggestions={(show) => setShowItemSuggestions(prev => ({ ...prev, [item.id]: show }))}
+          placeholder="Enter item name..."
+        />
+      </td>
+      <td className="py-2 px-2">
+        <input
+          type="number"
+          min={0}
+          value={item.qty}
+          onChange={e => {
+            handleItemChange(item.id, 'qty', e.target.value);
+            if (
+              index === formData.items.length - 1 &&
+              e.target.value &&
+              !formData.items.some((row: { qty?: number }, idx: number) => idx > index && !row.qty)
+            ) {
+              addRow();
+            }
+          }}
+          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+        />
+      </td>
+      <td className="py-2 px-2">
+        <UnitsDropdown
+          units={unitOptions}
+          value={item.unit}
+          onChange={val => {
+            const selectedItem = itemSuggestions.find(i => i.name === item.item);
+            if (selectedItem) {
+              if (item.qty) {
+                let convertedQty = parseFloat(item.qty) || 0;
+                if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                  if (val === selectedItem.unit.secondary) {
+                    convertedQty = convertedQty * selectedItem.unit.conversionFactor;
+                  }
+                }
+
+                const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
+                const wholesalePrice = selectedItem.wholesalePrice || 0;
+
+                let finalPrice;
+                if (convertedQty >= minWholesaleQty && wholesalePrice > 0) {
+                  if (val === selectedItem.unit?.base) {
+                    finalPrice = wholesalePrice;
+                  } else if (val === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                    finalPrice = wholesalePrice * selectedItem.unit.conversionFactor;
+                  } else {
+                    finalPrice = wholesalePrice;
+                  }
+                } else {
+                  if (val === selectedItem.unit?.base) {
+                    finalPrice = selectedItem.salePrice || 0;
+                  } else if (val === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                    finalPrice = (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor;
+                  } else {
+                    finalPrice = selectedItem.salePrice || 0;
+                  }
+                }
+
+                handleItemChange(item.id, 'price', finalPrice);
+              } else {
+                if (val === selectedItem.unit?.base) {
+                  handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
+                } else if (val === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                  handleItemChange(item.id, 'price', (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor);
+                } else {
+                  handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
+                }
+              }
+            }
+            handleItemChange(item.id, 'unit', val);
+          }}
+          dropdownIndex={unitDropdownIndex}
+          setDropdownIndex={setUnitDropdownIndex}
+          optionsCount={unitOptions.length}
+        />
+        {item.unit === 'Custom' && (
+          <input
+            type="text"
+            value={item.customUnit}
+            onChange={e => handleItemChange(item.id, 'customUnit', e.target.value)}
+            className="mt-2 w-full px-3 py-2 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+            placeholder="Enter custom unit"
+            autoComplete="off"
+          />
+        )}
+      </td>
+      <td className="py-2 px-2">
+        <div className="relative">
+          <input
+            type="number"
+            min={0}
+            value={item.price}
+            onChange={e => handleItemChange(item.id, 'price', e.target.value)}
+            className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+          />
+          {(() => {
+            const selectedItem = itemSuggestions.find(i => i.name === item.item);
+            if (selectedItem && item.qty) {
+              const qty = parseFloat(item.qty) || 0;
+              const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
+              const wholesalePrice = selectedItem.wholesalePrice || 0;
+              const currentPrice = parseFloat(item.price) || 0;
+
+              let convertedQty = qty;
+              if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                if (item.unit === selectedItem.unit.secondary) {
+                  convertedQty = qty * selectedItem.unit.conversionFactor;
+                }
+              }
+
+              let expectedWholesalePrice = wholesalePrice;
+              if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                if (item.unit === selectedItem.unit.secondary) {
+                  expectedWholesalePrice = wholesalePrice * selectedItem.unit.conversionFactor;
+                }
+              }
+
+              if (convertedQty >= minWholesaleQty && wholesalePrice > 0 && Math.abs(currentPrice - expectedWholesalePrice) < 0.01) {
+                return (
+                  <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full shadow-sm">
+                    Wholesale
+                  </div>
+                );
+              }
+            }
+            return null;
+          })()}
+        </div>
+      </td>
+      <td className="py-2 px-2">
+        <span className="text-gray-900 font-semibold">{isNaN(item.amount) ? '0.00' : item.amount.toFixed(2)} {item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? item.unit : ''}</span>
+      </td>
+      <td className="py-2 px-2 flex gap-1">
+        {deleteRow && (
+          <button
+            type="button"
+            className="text-red-600 hover:text-red-700 px-2 py-1 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 transition-colors"
+            onClick={() => deleteRow(item.id)}
+            title="Delete row"
+          >
+            –
+          </button>
+        )}
+      </td>
+    </tr>
+  );
+});
+
 export default function CreateSalesOrderPage() {
   const router = useRouter()
   const [formData, setFormData] = useState({
@@ -188,7 +459,6 @@ export default function CreateSalesOrderPage() {
             type: 'success'
           });
         } catch (error) {
-          console.error('Error parsing quotation data:', error);
           setToast({
             message: 'Error loading quotation data. Please fill the form manually.',
             type: 'error'
@@ -214,7 +484,6 @@ export default function CreateSalesOrderPage() {
   const unitOptions = ['NONE', 'PCS', 'KG', 'METER', 'LITER', 'BOX', 'DOZEN']
   const taxOptions = ['NONE', 'GST 5%', 'GST 12%', 'GST 18%', 'GST 28%']
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
   useEffect(() => {
     setFormData(prev => ({
@@ -251,67 +520,10 @@ export default function CreateSalesOrderPage() {
     return salePrice;
   };
 
-  const updateItem = (id: number, field: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      items: prev.items.map((item) => {
-        if (item.id === id) {
-          let updatedItem = { ...item, [field]: value }
-
-          if (field === 'qty') {
-            const selectedItem = itemSuggestions.find(i => i.name === item.item);
-            if (selectedItem) {
-              // First check if wholesale pricing should be applied
-              const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
-              const wholesalePrice = selectedItem.wholesalePrice || 0;
-
-              // Convert quantity to base unit for comparison
-              let convertedQty = value;
-              if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
-                if (updatedItem.unit === selectedItem.unit.secondary) {
-                  convertedQty = value * selectedItem.unit.conversionFactor;
-                }
-              }
-
-              let finalPrice;
-              if (convertedQty >= minWholesaleQty && wholesalePrice > 0) {
-                // Apply wholesale pricing
-                if (updatedItem.unit === selectedItem.unit?.base) {
-                  finalPrice = wholesalePrice;
-                } else if (updatedItem.unit === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
-                  finalPrice = wholesalePrice * selectedItem.unit.conversionFactor;
-                } else {
-                  finalPrice = wholesalePrice;
-                }
-              } else {
-                // Apply regular sale pricing
-                if (updatedItem.unit === selectedItem.unit?.base) {
-                  finalPrice = selectedItem.salePrice || 0;
-                } else if (updatedItem.unit === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
-                  finalPrice = (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor;
-                } else {
-                  finalPrice = selectedItem.salePrice || 0;
-                }
-              }
-
-              updatedItem.price = finalPrice;
-              console.log(`Wholesale price calculation: qty=${value}, convertedQty=${convertedQty}, minWholesaleQty=${minWholesaleQty}, wholesalePrice=${wholesalePrice}, finalPrice=${finalPrice}`);
-            }
-          }
-
-          if (field === 'qty' || field === 'price') {
-            updatedItem.amount = updatedItem.qty * updatedItem.price
-          }
-          return updatedItem
-        }
-        return item
-      })
-    }))
-  }
 
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null);
 
-  const addRow = () => {
+  const addRow = useCallback(() => {
     const lastItem = formData.items[formData.items.length - 1];
     if (!lastItem.item || !lastItem.qty || !lastItem.price) {
       setToast({ message: 'Please fill the last row before adding a new one.', type: 'error' });
@@ -324,12 +536,12 @@ export default function CreateSalesOrderPage() {
         { id: Date.now(), item: '', qty: 1, unit: 'NONE', price: 0, amount: 0, customUnit: '' }
       ]
     }));
-  };
+  }, [formData.items]);
 
-  const removeRow = (id: number) => {
+  const removeRow = useCallback((id: number) => {
     if (formData.items.length === 1) return;
     setFormData(prev => ({ ...prev, items: prev.items.filter(item => item.id !== id) }));
-  };
+  }, [formData.items.length]);
 
   const fetchCustomerSuggestions = async () => {
     const token = getToken();
@@ -344,25 +556,70 @@ export default function CreateSalesOrderPage() {
   const [showItemSuggestions, setShowItemSuggestions] = useState<{ [id: number]: boolean }>({})
   const [partyBalance, setPartyBalance] = useState<number | null>(null)
 
+  const updateItem = useCallback((id: number, field: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map((item) => {
+        if (item.id === id) {
+          let updatedItem = { ...item, [field]: value }
+
+          if (field === 'qty') {
+            const selectedItem = itemSuggestions.find(i => i.name === item.item);
+            if (selectedItem) {
+              const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
+              const wholesalePrice = selectedItem.wholesalePrice || 0;
+              let convertedQty = value;
+              if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                if (updatedItem.unit === selectedItem.unit.secondary) {
+                  convertedQty = value * selectedItem.unit.conversionFactor;
+                }
+              }
+
+              let finalPrice;
+              if (convertedQty >= minWholesaleQty && wholesalePrice > 0) {
+                if (updatedItem.unit === selectedItem.unit?.base) {
+                  finalPrice = wholesalePrice;
+                } else if (updatedItem.unit === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                  finalPrice = wholesalePrice * selectedItem.unit.conversionFactor;
+                } else {
+                  finalPrice = wholesalePrice;
+                }
+              } else {
+                if (updatedItem.unit === selectedItem.unit?.base) {
+                  finalPrice = selectedItem.salePrice || 0;
+                } else if (updatedItem.unit === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                  finalPrice = (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor;
+                } else {
+                  finalPrice = selectedItem.salePrice || 0;
+                }
+              }
+
+              updatedItem.price = finalPrice;
+            }
+          }
+
+          if (field === 'qty' || field === 'price') {
+            updatedItem.amount = updatedItem.qty * updatedItem.price
+          }
+          return updatedItem
+        }
+        return item
+      })
+    }))
+  }, [itemSuggestions])
+
   const fetchItemSuggestions = async () => {
     const token = getToken();
     if (!token) return;
     try {
       const items = await getUserItems(token);
-      console.log('Fetched items for suggestions:', items);
       setItemSuggestions(items || []);
     } catch (error) {
-      console.error('Error fetching item suggestions:', error);
       setItemSuggestions([]);
     }
   };
 
   useEffect(() => {
-    console.log('Item suggestions updated:', itemSuggestions);
-  }, [itemSuggestions]);
-
-  useEffect(() => {
-    console.log('Component mounted, fetching initial item suggestions...');
     fetchItemSuggestions();
   }, []);
 
@@ -453,456 +710,6 @@ export default function CreateSalesOrderPage() {
     alert('Share functionality to be implemented')
   }
 
-  function ItemRow({
-    item,
-    index,
-    handleItemChange,
-    showItemSuggestions,
-    setShowItemSuggestions,
-    itemSuggestions,
-    deleteRow
-  }: {
-    item: any;
-    index: number;
-    handleItemChange: (id: number, field: string, value: any) => void;
-    showItemSuggestions: { [id: number]: boolean };
-    setShowItemSuggestions: React.Dispatch<React.SetStateAction<{ [id: number]: boolean }>>;
-    itemSuggestions: any[];
-    deleteRow: (id: number) => void;
-  }) {
-    const inputRef = React.useRef<HTMLInputElement>(null);
-    const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
-    const [itemDropdownIndex, setItemDropdownIndex] = useState(0);
-    const [unitDropdownIndex, setUnitDropdownIndex] = useState(0);
-    const [isKeyboardNavigating, setIsKeyboardNavigating] = useState(false);
-    const [unitDropdownOpen, setUnitDropdownOpen] = useState(false);
-
-    const updateDropdownPosition = () => {
-      if (inputRef.current) {
-        const rect = inputRef.current.getBoundingClientRect();
-        const style: React.CSSProperties = {
-          position: 'absolute' as const,
-          top: rect.bottom + window.scrollY + 4,
-          left: rect.left + window.scrollX + 4,
-          width: rect.width,
-          zIndex: 9999
-        };
-        setDropdownStyle(style);
-      }
-    };
-
-    useLayoutEffect(() => {
-      if (showItemSuggestions[item.id]) {
-        updateDropdownPosition();
-        window.addEventListener('scroll', updateDropdownPosition, true);
-        window.addEventListener('resize', updateDropdownPosition);
-        const handleClickOutside = (event: MouseEvent) => {
-          if (
-            inputRef.current &&
-            !inputRef.current.contains(event.target as Node)
-          ) {
-            setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
-          }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-          window.removeEventListener('scroll', updateDropdownPosition, true);
-          window.removeEventListener('resize', updateDropdownPosition);
-          document.removeEventListener('mousedown', handleClickOutside);
-        };
-      }
-    }, [showItemSuggestions[item.id]]);
-
-    const handleFocus = () => {
-      fetchItemSuggestions();
-      setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: true }));
-      setItemDropdownIndex(0);
-      updateDropdownPosition();
-    };
-
-    const unitOptions = (() => {
-      const options: DropdownOption[] = [];
-      if (item.item) {
-        const selectedItem = itemSuggestions.find(i => i.name === item.item);
-        if (selectedItem && selectedItem.unit) {
-          const unit = selectedItem.unit;
-          if (typeof unit === 'object' && unit.base) {
-            if (unit.base && unit.base !== 'NONE') {
-              options.push({ value: unit.base, label: unit.base });
-            }
-            if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) {
-              options.push({ value: unit.secondary, label: unit.secondary });
-            }
-          } else if (typeof unit === 'string' && unit.includes(' / ')) {
-            const parts = unit.split(' / ');
-            if (parts[0] && parts[0] !== 'NONE') {
-              options.push({ value: parts[0], label: parts[0] });
-            }
-            if (parts[1] && parts[1] !== 'None') {
-              options.push({ value: parts[1], label: parts[1] });
-            }
-          } else if (typeof unit === 'string') {
-            options.push({ value: unit, label: unit });
-          }
-        }
-      }
-      if (options.length === 0) {
-        options.push({ value: 'NONE', label: 'NONE' });
-      }
-      return options;
-    })();
-
-    return (
-      <tr className={`border-b border-gray-100 ${index % 2 === 0 ? 'bg-white' : 'bg-blue-50'} hover:bg-blue-100 transition-colors`}>
-        <td className="py-2 px-2 font-medium">{index + 1}</td>
-        <td className="py-2 px-2">
-          <input
-            ref={inputRef}
-            type="text"
-            value={item.item}
-            onChange={(e) => {
-              handleItemChange(item.id, "item", e.target.value);
-              setItemDropdownIndex(0); // reset highlight
-            }}
-            onFocus={handleFocus}
-            onBlur={() => {
-              setTimeout(() => {
-                const activeElement = document.activeElement as Element | null;
-                const dropdown = document.querySelector(
-                  `[data-dropdown-id="${item.id}"]`
-                );
-                if (!dropdown?.contains(activeElement)) {
-                  setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
-                }
-              }, 300);
-            }}
-            onMouseDown={(e) => {
-              // Ensure the input receives focus even if a parent prevented default
-              if (document.activeElement !== e.currentTarget) {
-                e.preventDefault();
-                e.currentTarget.focus();
-              }
-            }}
-            className="item-dropdown-input w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-            placeholder="Enter item name..."
-            data-testid={`item-input-${item.id}`}
-            onKeyDown={(e) => {
-              console.log(
-                "Items dropdown key pressed:",
-                e.key,
-                "Dropdown open:",
-                showItemSuggestions[item.id],
-                "Current index:",
-                itemDropdownIndex
-              );
-
-              if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
-                e.preventDefault();
-                e.stopPropagation();
-              }
-
-              if (!showItemSuggestions[item.id]) {
-                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-                  handleFocus();
-                }
-                return;
-              }
-
-              const filtered = itemSuggestions.filter(
-                (i) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase())
-              );
-              const optionsCount = filtered.length;
-
-              console.log(
-                "Filtered items count:",
-                optionsCount,
-                "Current index:",
-                itemDropdownIndex
-              );
-
-              if (e.key === "ArrowDown") {
-                setIsKeyboardNavigating(true);
-                const newIndex = Math.min(itemDropdownIndex + 1, optionsCount - 1);
-                console.log("ArrowDown: setting index to", newIndex);
-                setItemDropdownIndex(newIndex);
-              } else if (e.key === "ArrowUp") {
-                setIsKeyboardNavigating(true);
-                const newIndex = Math.max(itemDropdownIndex - 1, 0);
-                console.log("ArrowUp: setting index to", newIndex);
-                setItemDropdownIndex(newIndex);
-              } else if (e.key === "Enter") {
-                const idx = itemDropdownIndex;
-                const selected = filtered[idx];
-                if (selected) {
-                  setIsKeyboardNavigating(false);
-                  handleItemChange(item.id, "item", selected.name);
-                  const unitDisplay = getUnitDisplay(selected.unit);
-                  handleItemChange(item.id, "unit", unitDisplay);
-                  handleItemChange(item.id, "price", selected.salePrice || 0);
-                  handleItemChange(item.id, "qty", "1");
-                  setShowItemSuggestions((prev: any) => ({
-                    ...prev,
-                    [item.id]: false,
-                  }));
-                }
-              } else if (e.key === "Escape") {
-                setIsKeyboardNavigating(false);
-                setShowItemSuggestions((prev: any) => ({
-                  ...prev,
-                  [item.id]: false,
-                }));
-              }
-            }}
-          />
-          {showItemSuggestions[item.id] && typeof window !== 'undefined' && ReactDOM.createPortal(
-            <ul
-              style={dropdownStyle}
-              className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-dropdown-scrollbar"
-              data-dropdown-id={item.id}
-            >
-              {itemSuggestions
-                .filter((i: any) => i.name && i.name.toLowerCase().includes(item.item.toLowerCase()))
-                .map((i: any, idx: number) => (
-                  <li
-                    key={i._id}
-                    className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0 ${itemDropdownIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
-                    onMouseDown={e => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setIsKeyboardNavigating(false);
-                      handleItemChange(item.id, 'item', i.name);
-                      const unitDisplay = getUnitDisplay(i.unit);
-                      handleItemChange(item.id, 'unit', unitDisplay);
-
-                      let initialPrice = i.salePrice || 0;
-                      if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
-                        if (unitDisplay === i.unit.base) {
-                          initialPrice = i.salePrice || 0;
-                        } else if (unitDisplay === i.unit.secondary) {
-                          initialPrice = (i.salePrice || 0) * i.unit.conversionFactor;
-                        }
-                      }
-
-                      // Don't apply wholesale price immediately - only when quantity meets minimum requirement
-                      // The wholesale price will be applied when quantity changes via calculatePriceForQuantity function
-
-                      handleItemChange(item.id, 'price', initialPrice);
-                      handleItemChange(item.id, 'qty', 0); // Leave quantity empty
-                      setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
-                    }}
-                    ref={el => {
-                      // Only scroll when actively navigating with keyboard
-                      if (itemDropdownIndex === idx && el && isKeyboardNavigating) {
-                        const container = el.closest('ul');
-                        if (container) {
-                          const elementTop = el.offsetTop;
-                          const elementHeight = el.offsetHeight;
-                          const containerHeight = container.clientHeight;
-                          const scrollTop = container.scrollTop;
-
-                          // Check if element is outside visible area
-                          if (elementTop < scrollTop || elementTop + elementHeight > scrollTop + containerHeight) {
-                            // Scroll to keep element in view
-                            container.scrollTo({
-                              top: Math.max(0, elementTop - containerHeight / 2),
-                              behavior: 'smooth'
-                            });
-                          }
-                        }
-                      }
-                    }}
-                    role="option"
-                    aria-selected={itemDropdownIndex === idx}
-                    tabIndex={0}
-                    onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleItemChange(item.id, 'item', i.name);
-                        const unitDisplay = getUnitDisplay(i.unit);
-                        handleItemChange(item.id, 'unit', unitDisplay);
-
-                        let initialPrice = i.salePrice || 0;
-                        if (i.unit && typeof i.unit === 'object' && i.unit.conversionFactor) {
-                          if (unitDisplay === i.unit.base) {
-                            initialPrice = i.salePrice || 0;
-                          } else if (unitDisplay === i.unit.secondary) {
-                            initialPrice = (i.salePrice || 0) * i.unit.conversionFactor;
-                          }
-                        }
-
-                        // Don't apply wholesale price immediately - only when quantity meets minimum requirement
-                        // The wholesale price will be applied when quantity changes via calculatePriceForQuantity function
-
-                        handleItemChange(item.id, 'price', initialPrice);
-                        handleItemChange(item.id, 'qty', 0); // Leave quantity empty
-                        setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: false }));
-                      }
-                    }}
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium text-gray-800">{i.name}</span>
-                      <span className="text-xs text-gray-500">{getUnitDisplay(i.unit) || 'NONE'} • PKR {i.salePrice || 0} • Qty: {i.stock ?? 0}</span>
-                    </div>
-                  </li>
-                ))}
-            </ul>,
-            document.body
-          )}
-        </td>
-        <td className="py-2 px-2">
-          <input
-            type="number"
-            min={0}
-            value={item.qty}
-            onChange={e => {
-              handleItemChange(item.id, 'qty', e.target.value);
-              if (
-                index === formData.items.length - 1 &&
-                e.target.value &&
-                !formData.items.some((row: { qty?: number }, idx: number) => idx > index && !row.qty)
-              ) {
-                addRow();
-              }
-            }}
-            className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-          />
-        </td>
-        <td className="py-2 px-2">
-          <CustomDropdown
-            options={unitOptions}
-            value={item.unit}
-            onChange={val => {
-              const selectedItem = itemSuggestions.find(i => i.name === item.item);
-              if (selectedItem) {
-                // Don't convert quantity - keep it the same
-                // Only update price based on the new unit and current quantity
-                if (item.qty) {
-                  // Convert current quantity to base unit for wholesale check
-                  let convertedQty = parseFloat(item.qty) || 0;
-                  if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
-                    if (val === selectedItem.unit.secondary) {
-                      convertedQty = convertedQty * selectedItem.unit.conversionFactor;
-                    }
-                  }
-
-                  const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
-                  const wholesalePrice = selectedItem.wholesalePrice || 0;
-
-                  let finalPrice;
-                  if (convertedQty >= minWholesaleQty && wholesalePrice > 0) {
-                    // Apply wholesale pricing
-                    if (val === selectedItem.unit?.base) {
-                      finalPrice = wholesalePrice;
-                    } else if (val === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
-                      finalPrice = wholesalePrice * selectedItem.unit.conversionFactor;
-                    } else {
-                      finalPrice = wholesalePrice;
-                    }
-                  } else {
-                    // Apply regular sale pricing
-                    if (val === selectedItem.unit?.base) {
-                      finalPrice = selectedItem.salePrice || 0;
-                    } else if (val === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
-                      finalPrice = (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor;
-                    } else {
-                      finalPrice = selectedItem.salePrice || 0;
-                    }
-                  }
-
-                  handleItemChange(item.id, 'price', finalPrice);
-                } else {
-                  // If no quantity, just set the sale price converted to appropriate unit
-                  if (val === selectedItem.unit?.base) {
-                    handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
-                  } else if (val === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
-                    handleItemChange(item.id, 'price', (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor);
-                  } else {
-                    handleItemChange(item.id, 'price', selectedItem.salePrice || 0);
-                  }
-                }
-              }
-              handleItemChange(item.id, 'unit', val);
-            }}
-            dropdownIndex={unitDropdownIndex}
-            setDropdownIndex={setUnitDropdownIndex}
-            optionsCount={unitOptions.length}
-          />
-          {item.unit === 'Custom' && (
-            <input
-              type="text"
-              value={item.customUnit}
-              onChange={e => handleItemChange(item.id, 'customUnit', e.target.value)}
-              className="mt-2 w-full px-3 py-2 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
-              placeholder="Enter custom unit"
-              autoComplete="off"
-            />
-          )}
-        </td>
-        <td className="py-2 px-2">
-          <div className="relative">
-            <input
-              type="number"
-              min={0}
-              value={item.price}
-              onChange={e => handleItemChange(item.id, 'price', e.target.value)}
-              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-            />
-            {/* Wholesale price indicator */}
-            {(() => {
-              const selectedItem = itemSuggestions.find(i => i.name === item.item);
-              if (selectedItem && item.qty) {
-                const qty = parseFloat(item.qty) || 0;
-                const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
-                const wholesalePrice = selectedItem.wholesalePrice || 0;
-                const currentPrice = parseFloat(item.price) || 0;
-
-                // Convert quantity to base unit for comparison
-                let convertedQty = qty;
-                if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
-                  if (item.unit === selectedItem.unit.secondary) {
-                    convertedQty = qty * selectedItem.unit.conversionFactor;
-                  }
-                }
-
-                // Calculate expected wholesale price for current unit
-                let expectedWholesalePrice = wholesalePrice;
-                if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
-                  if (item.unit === selectedItem.unit.secondary) {
-                    expectedWholesalePrice = wholesalePrice * selectedItem.unit.conversionFactor;
-                  }
-                }
-
-                if (convertedQty >= minWholesaleQty && wholesalePrice > 0 && Math.abs(currentPrice - expectedWholesalePrice) < 0.01) {
-                  return (
-                    <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full shadow-sm">
-                      Wholesale
-                    </div>
-                  );
-                }
-              }
-              return null;
-            })()}
-          </div>
-        </td>
-        <td className="py-2 px-2">
-          <span className="text-gray-900 font-semibold">{isNaN(item.amount) ? '0.00' : item.amount.toFixed(2)} {item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? item.unit : ''}</span>
-        </td>
-        <td className="py-2 px-2 flex gap-1">
-          {formData.items.length > 1 && (
-            <button
-              type="button"
-              className="text-red-600 hover:text-red-700 px-2 py-1 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 transition-colors"
-              onClick={() => deleteRow(item.id)}
-              title="Delete row"
-            >
-              –
-            </button>
-          )}
-        </td>
-      </tr>
-    );
-  }
 
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
@@ -912,7 +719,6 @@ export default function CreateSalesOrderPage() {
     if (!event.target.files || event.target.files.length === 0) return;
     const file = event.target.files[0];
     setImageUploading(true);
-    // Simulate upload, or use your real upload logic here
     const reader = new FileReader();
     reader.onloadend = () => {
       setUploadedImage(reader.result as string);
@@ -925,13 +731,11 @@ export default function CreateSalesOrderPage() {
 
 
 
-  // Add state for customer dropdown highlight
   const [customerDropdownIndex, setCustomerDropdownIndex] = useState(0);
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-6">
-        {/* Sticky Header */}
         <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 flex justify-between items-center px-6 py-4">
           <h1 className="text-xl md:text-2xl font-bold text-gray-900">Add Sale Order</h1>
           <button
@@ -943,9 +747,7 @@ export default function CreateSalesOrderPage() {
             ✕
           </button>
         </div>
-        {/* Main Form */}
         <form className="divide-y divide-gray-200 w-full px-6 py-6">
-          {/* Error Display */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
               <div className="flex items-center">
@@ -961,9 +763,7 @@ export default function CreateSalesOrderPage() {
             </div>
           )}
 
-          {/* Customer and Date Section */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            {/* Left: Customer and Phone, consistent with sale add */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-blue-600 mb-2">Customer *</label>
@@ -974,7 +774,7 @@ export default function CreateSalesOrderPage() {
                     onChange={e => {
                       setFormData(prev => ({ ...prev, customer: e.target.value }));
                       setSearchDropdownOpen(true);
-                      setCustomerDropdownIndex(0); // reset highlight
+                      setCustomerDropdownIndex(0);
                     }}
                     onFocus={() => {
                       setSearchDropdownOpen(true);
@@ -990,7 +790,7 @@ export default function CreateSalesOrderPage() {
                         party.name.toLowerCase().includes(formData.customer.toLowerCase()) ||
                         (party.phone && party.phone.includes(formData.customer))
                       );
-                      const optionsCount = filtered.length + 1; // +1 for Add Customer
+                      const optionsCount = filtered.length + 1;
                       if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
                         e.preventDefault();
                         e.stopPropagation();
@@ -1021,7 +821,7 @@ export default function CreateSalesOrderPage() {
                         <ul className="bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-dropdown-scrollbar">
                           {/* Add Customer option at the top */}
                           <li
-                            className={`px-4 py-2 cursor-pointer text-blue-600 font-semibold hover:bg-blue-50 rounded-t-lg ${customerDropdownIndex === 0 ? 'bg-blue-100 text-blue-700' : ''}`}
+                            className={`px-4 py-2 cursor-pointer text-blue-600 font-semibold bg-white hover:bg-blue-50 rounded-t-lg ${customerDropdownIndex === 0 ? 'font-semibold text-gray-700' : ''}`}
                             onMouseDown={e => {
                               e.preventDefault();
                               e.stopPropagation();
@@ -1037,9 +837,7 @@ export default function CreateSalesOrderPage() {
                                   const containerHeight = container.clientHeight;
                                   const scrollTop = container.scrollTop;
 
-                                  // Check if element is outside visible area
                                   if (elementTop < scrollTop || elementTop + elementHeight > scrollTop + containerHeight) {
-                                    // Scroll to keep element in view
                                     container.scrollTo({
                                       top: Math.max(0, elementTop - containerHeight / 2),
                                       behavior: 'smooth'
@@ -1061,7 +859,7 @@ export default function CreateSalesOrderPage() {
                             .map((party: any, idx: number) => (
                               <li
                                 key={party._id || idx}
-                                className={`px-4 py-2 hover:bg-blue-100 cursor-pointer transition-colors ${customerDropdownIndex === idx + 1 ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+                                className={`px-4 py-2 bg-white hover:bg-blue-50 cursor-pointer transition-colors ${customerDropdownIndex === idx + 1 ? 'font-semibold text-gray-700' : 'text-gray-700'}`}
                                 onMouseDown={e => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -1077,9 +875,7 @@ export default function CreateSalesOrderPage() {
                                       const containerHeight = container.clientHeight;
                                       const scrollTop = container.scrollTop;
 
-                                      // Check if element is outside visible area
                                       if (elementTop < scrollTop || elementTop + elementHeight > scrollTop + containerHeight) {
-                                        // Scroll to keep element in view
                                         container.scrollTo({
                                           top: Math.max(0, elementTop - containerHeight / 2),
                                           behavior: 'smooth'
@@ -1119,7 +915,6 @@ export default function CreateSalesOrderPage() {
                 />
               </div>
             </div>
-            {/* Right: Invoice Date and Due Date vertically, small size */}
             <div className="flex flex-col gap-4 items-end justify-start">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Date</label>
@@ -1142,21 +937,11 @@ export default function CreateSalesOrderPage() {
             </div>
           </div>
 
-          {/* Items Table Section */}
           <div className={`bg-white px-6 py-6 w-full rounded-b-2xl`}>
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-semibold text-blue-800 flex items-center gap-2">
                 <span>🛒</span> Items
               </h2>
-              {/*
-              <button
-                type="button"
-                onClick={addRow}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-sm"
-              >
-                <span className="text-xl">+</span> Add Row
-              </button>
-              */}
             </div>
             <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100">
               <table className="w-full text-sm">
@@ -1182,6 +967,8 @@ export default function CreateSalesOrderPage() {
                       setShowItemSuggestions={setShowItemSuggestions}
                       itemSuggestions={itemSuggestions}
                       deleteRow={removeRow}
+                      addRow={addRow}
+                      formData={formData}
                     />
                   ))}
                 </tbody>
@@ -1189,7 +976,6 @@ export default function CreateSalesOrderPage() {
             </div>
           </div>
 
-          {/* Image Upload & Description Section */}
           <div className="bg-gray-50 px-6 py-6 w-full">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
@@ -1251,10 +1037,8 @@ export default function CreateSalesOrderPage() {
             </div>
           </div>
 
-          {/* Summary Section */}
           <div className="bg-white px-6 py-8 w-full rounded-xl shadow-sm mt-4">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-              {/* Discount */}
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
                   <span>💸</span> Discount
@@ -1295,7 +1079,6 @@ export default function CreateSalesOrderPage() {
                   </div>
                 </div>
               </div>
-              {/* Tax */}
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
                   <span>🧾</span> Tax
@@ -1331,7 +1114,6 @@ export default function CreateSalesOrderPage() {
                   ) : null}
                 </div>
               </div>
-              {/* Payment Type (optional, can be left out if not in sale order) */}
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
                   <span>💳</span> Payment Type
@@ -1352,7 +1134,6 @@ export default function CreateSalesOrderPage() {
                   <div className="text-xs text-gray-500 min-h-[24px] mt-1"></div>
                 </div>
               </div>
-              {/* Totals */}
               <div className="md:col-span-1 flex flex-col items-end gap-2">
                 <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full min-w-[220px]">
                   <div className="flex flex-col gap-1">
@@ -1379,7 +1160,6 @@ export default function CreateSalesOrderPage() {
             </div>
           </div>
         </form>
-        {/* Submit Button */}
         <div className="flex justify-end gap-4 px-6 py-6 bg-gray-50 border-t border-gray-200 w-full">
           <button
             type="button"

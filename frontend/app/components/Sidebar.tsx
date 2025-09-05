@@ -141,13 +141,6 @@ export default function Sidebar() {
       const token = localStorage.getItem('token')
       if (token) {
         const tokenPayload = JSON.parse(atob(token.split('.')[1]));
-        console.log('🔍 Sidebar Token Payload:', {
-          email: tokenPayload.email,
-          userEmail: tokenPayload.userEmail,
-          id: tokenPayload.id,
-          role: tokenPayload.role,
-          context: tokenPayload.context
-        });
       }
     } catch (error) {
       console.error('Error parsing token in sidebar:', error);
@@ -156,9 +149,6 @@ export default function Sidebar() {
     // Set user email from token
     if (currentUserInfo && currentUserInfo.email) {
       setUserEmail(currentUserInfo.email)
-      console.log('📧 Sidebar User Email set to:', currentUserInfo.email)
-    } else {
-      console.log('❌ No email found in currentUserInfo:', currentUserInfo)
     }
     
     // Check license key status from database
@@ -167,9 +157,7 @@ export default function Sidebar() {
         const token = localStorage.getItem('token')
         if (token) {
           setIsCheckingLicense(true)
-          console.log('Checking license status from database for email:', currentUserInfo?.email)
           const response = await checkLicenseStatus()
-          console.log('License status response:', response)
           
           if (response.success && response.data) {
             setHasLicenseKey(response.data.hasValidLicense)
@@ -230,14 +218,9 @@ export default function Sidebar() {
     // Only run on client side to prevent hydration issues
     if (typeof window === 'undefined') return;
     
-    console.log('showBuyPlan changed:', showBuyPlan)
-    console.log('hasLicenseKey:', hasLicenseKey)
-    console.log('isDataLoaded:', isDataLoaded)
-    console.log('isLicenseCheckComplete:', isLicenseCheckComplete)
     
     // Only proceed if all data is loaded and license check is complete
     if (!isDataLoaded || !isLicenseCheckComplete) {
-      console.log('Data not fully loaded yet, skipping overlay logic')
       return;
     }
     
@@ -247,7 +230,6 @@ export default function Sidebar() {
         currentPath === '/dashboard/pricing/' ||
         currentPath.includes('/dashboard/pricing') ||
         currentPath.includes('pricing')) {
-      console.log('On pricing page, not showing overlay - Path:', currentPath)
       removeOverlayOnPricing();
       return;
     }
@@ -259,11 +241,9 @@ export default function Sidebar() {
     if (showBuyPlan && !hasLicenseKey && daysSinceCreation > 3) {
       // Double check - don't create overlay on pricing page
       if (window.location.pathname === '/dashboard/pricing') {
-        console.log('Pricing page detected, not creating overlay')
         return;
       }
       
-      console.log('Showing trial expiration overlay')
       
       // Remove existing overlay first
       const existingOverlay = document.getElementById('buy-plan-overlay')
@@ -349,16 +329,13 @@ export default function Sidebar() {
       
       overlay.appendChild(messageDiv)
       
-      console.log('Adding overlay with styles:', overlay.style.cssText)
       
       // Try to append to overlay container first, fallback to body
       const overlayContainer = document.getElementById('overlay-container')
       if (overlayContainer) {
         overlayContainer.appendChild(overlay)
-        console.log('Overlay added to overlay container')
       } else {
         document.body.appendChild(overlay)
-        console.log('Overlay added to body (fallback)')
       }
       
       // Restore scroll position after overlay is added
@@ -370,7 +347,6 @@ export default function Sidebar() {
       const overlay = document.getElementById('buy-plan-overlay')
       if (overlay) {
         overlay.remove()
-        console.log('Overlay removed - conditions not met')
         
         // Restore scroll position after overlay is removed
         requestAnimationFrame(() => {
@@ -399,7 +375,6 @@ export default function Sidebar() {
       const overlay = document.getElementById('buy-plan-overlay');
       if (overlay) {
         overlay.remove();
-        console.log('Quick fix: Overlay removed from pricing page - Path:', currentPath);
       }
       
       // Also remove any overlay with similar ID

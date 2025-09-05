@@ -6,9 +6,11 @@ export interface Item {
   id: string;
   name: string;
   salePrice?: number;
+  purchasePrice?: number;
+  stock?: number;
+  unit?: any;
   wholesalePrice?: number;
   minimumWholesaleQuantity?: number;
-  unit?: any;
 }
 
 export interface ItemsDropdownProps {
@@ -34,12 +36,14 @@ export function ItemsDropdown({
   showSuggestions = false,
   setShowSuggestions
 }: ItemsDropdownProps) {
-  const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+
+  // Use showSuggestions prop to control dropdown visibility
+  const isOpen = showSuggestions;
 
   // Filter items based on search term
   const filteredItems = items.filter(item => 
@@ -51,16 +55,15 @@ export function ItemsDropdown({
       if (!ref.current) return;
       if (!(event.target instanceof Node)) return;
       if (!ref.current.contains(event.target as Node)) {
-        setOpen(false);
         if (setShowSuggestions) setShowSuggestions(false);
       }
     }
-    if (open) document.addEventListener('mousedown', handleClickOutside);
+    if (isOpen) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open, setShowSuggestions]);
+  }, [isOpen, setShowSuggestions]);
 
   useEffect(() => {
-    if (open && inputRef.current) {
+    if (isOpen && inputRef.current) {
       const rect = inputRef.current.getBoundingClientRect();
       const viewportHeight = window.innerHeight;
       const dropdownHeight = Math.min(12 * 16, filteredItems.length * 40); // 12rem max, or items * 40px
@@ -89,15 +92,15 @@ export function ItemsDropdown({
         overflowY: 'auto',
       });
     }
-  }, [open, filteredItems.length]);
+  }, [isOpen, filteredItems.length]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return;
     
-    if (!open) {
+    if (!isOpen) {
       if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowDown') {
         e.preventDefault();
-        setOpen(true);
+        if (setShowSuggestions) setShowSuggestions(true);
         setHighlightedIndex(0);
         if (inputRef.current) inputRef.current.focus();
       }
@@ -134,11 +137,9 @@ export function ItemsDropdown({
         const selectedItem = filteredItems[highlightedIndex];
         onChange(selectedItem.name);
         if (onItemSelect) onItemSelect(selectedItem);
-        setOpen(false);
         if (setShowSuggestions) setShowSuggestions(false);
       }
     } else if (e.key === 'Escape') {
-      setOpen(false);
       if (setShowSuggestions) setShowSuggestions(false);
     }
   };
@@ -146,7 +147,6 @@ export function ItemsDropdown({
   const handleItemClick = (item: Item) => {
     onChange(item.name);
     if (onItemSelect) onItemSelect(item);
-    setOpen(false);
     if (setShowSuggestions) setShowSuggestions(false);
   };
 
@@ -159,20 +159,16 @@ export function ItemsDropdown({
       onChange(newValue);
     }
     
-    if (!open) {
-      setOpen(true);
+    if (!isOpen) {
+      if (setShowSuggestions) setShowSuggestions(true);
     }
   };
 
   const handleInputFocus = () => {
-    setOpen(true);
     if (setShowSuggestions) setShowSuggestions(true);
   };
 
-  // Debug logging
-  useEffect(() => {
-    console.log('ItemsDropdown state:', { open, filteredItems: filteredItems.length, dropdownStyle });
-  }, [open, filteredItems.length, dropdownStyle]);
+
 
   return (
     <div ref={ref} className={`relative ${disabled ? 'opacity-60 pointer-events-none' : ''} ${className}`}> 
@@ -183,9 +179,12 @@ export function ItemsDropdown({
           value={value}
           onChange={handleInputChange}
           onFocus={handleInputFocus}
+          onClick={handleInputFocus}
           onBlur={() => {
             // Close dropdown when input loses focus (moving to another field)
-            setTimeout(() => setOpen(false), 150);
+            setTimeout(() => {
+              if (setShowSuggestions) setShowSuggestions(false);
+            }, 150);
           }}
           onKeyDown={handleKeyDown}
           className="w-full px-3 py-2 border-2 border-blue-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
@@ -200,7 +199,7 @@ export function ItemsDropdown({
         </div>
       </div>
       
-      {open && typeof window !== 'undefined' && ReactDOM.createPortal(
+      {isOpen && typeof window !== 'undefined' && ReactDOM.createPortal(
         <ul
           style={dropdownStyle}
           className="bg-white border-2 border-blue-100 rounded-lg shadow-lg custom-dropdown-scrollbar"
@@ -213,7 +212,7 @@ export function ItemsDropdown({
               <li
                 key={item.id || `${item.name}-${idx}`}
                 data-dropdown-index={idx}
-                className={`px-4 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 transition-colors ${value === item.name ? 'bg-blue-100 font-semibold text-blue-700' : 'text-gray-700'} ${highlightedIndex === idx ? 'bg-blue-100 text-blue-700 font-semibold' : ''}`}
+                className={`px-4 py-2 cursor-pointer flex items-center gap-2 bg-white hover:bg-blue-50 transition-colors ${value === item.name ? 'font-semibold text-gray-700' : 'text-gray-700'} ${highlightedIndex === idx ? 'font-semibold text-gray-700' : ''}`}
                 onMouseDown={e => { e.preventDefault(); handleItemClick(item); }}
                 tabIndex={0}
                 onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { 
@@ -227,9 +226,27 @@ export function ItemsDropdown({
 
               >
                 <span className="flex-1">{item.name}</span>
-                {item.salePrice && (
-                  <span className="text-sm text-gray-500">PKR {item.salePrice}</span>
-                )}
+                <div className="flex items-center text-xs text-gray-500">
+                  {item.purchasePrice && (
+                    <span>Purchase: PKR {item.purchasePrice}</span>
+                  )}
+                  {item.salePrice && (
+                    <>
+                      {item.purchasePrice && <span className="mx-2">•</span>}
+                      <span>Sale: PKR {item.salePrice}</span>
+                    </>
+                  )}
+                  {(item.stock !== undefined || item.unit) && (
+                    <>
+                      {(item.purchasePrice || item.salePrice) && <span className="mx-2">•</span>}
+                      <span>
+                        {item.stock !== undefined && `Qty: ${item.stock}`}
+                        {item.stock !== undefined && item.unit && ' '}
+                        {item.unit && (typeof item.unit === 'object' ? (item.unit.base || item.unit.secondary || 'Unit') : item.unit)}
+                      </span>
+                    </>
+                  )}
+                </div>
               </li>
             ))
           ) : (

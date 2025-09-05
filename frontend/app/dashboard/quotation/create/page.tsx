@@ -190,6 +190,7 @@ export default function CreateSalesOrderPage() {
   const [imageUploading, setImageUploading] = useState(false)
   const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([]);
   const [itemSuggestions, setItemSuggestions] = useState<any[]>([]);
+  const [showItemSuggestions, setShowItemSuggestions] = useState<{ [id: number]: boolean }>({});
 
   const [partyBalance, setPartyBalance] = useState<number | null>(null);
   
@@ -718,6 +719,9 @@ export default function CreateSalesOrderPage() {
                             const amount = initialPrice * 0; // Amount is 0 since quantity is 0
                             updateItem(item.id, 'amount', amount);
                           }}
+                          showSuggestions={showItemSuggestions[item.id] || false}
+                          setShowSuggestions={(show) => setShowItemSuggestions(prev => ({ ...prev, [item.id]: show }))}
+                          placeholder="Enter item name..."
                         />
 
                       </td>

@@ -286,6 +286,7 @@ export default function AddPurchasePage() {
   const [showPartySuggestions, setShowPartySuggestions] = useState(false);
 
   const [itemSuggestions, setItemSuggestions] = useState<any[]>([]);
+  const [showItemSuggestions, setShowItemSuggestions] = useState<{ [id: number]: boolean }>({});
   const [partyBalance, setPartyBalance] = useState<number|null>(null);
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null);
   const [formErrors, setFormErrors] = useState<any>({});
@@ -1948,6 +1949,9 @@ export default function AddPurchasePage() {
                                     handleItemChange(item.id, 'price', initialPrice);
                                     handleItemChange(item.id, 'qty', '');
                                   }}
+                                  showSuggestions={showItemSuggestions[item.id] || false}
+                                  setShowSuggestions={(show) => setShowItemSuggestions(prev => ({ ...prev, [item.id]: show }))}
+                                  placeholder="Enter item name..."
                                 />
                               ) : (
                                 <input

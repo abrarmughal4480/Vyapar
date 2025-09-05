@@ -23,6 +23,11 @@ export interface GenerateLicenseKeyRequest {
   maxDevices: number;
 }
 
+export interface UpdateLicenseKeyRequest {
+  duration: number;
+  maxDevices: number;
+}
+
 export interface ActivateLicenseKeyRequest {
   key: string;
   deviceInfo?: string;
@@ -89,6 +94,16 @@ export const clearUserLicense = async (): Promise<{ success: boolean; message: s
     return response.data;
   } catch (error: any) {
     throw new Error(error.response?.data?.message || 'Failed to clear license');
+  }
+};
+
+// Update a license key (superadmin only)
+export const updateLicenseKey = async (key: string, data: UpdateLicenseKeyRequest): Promise<{ success: boolean; message: string; data: LicenseKey }> => {
+  try {
+    const response = await api.put(`/api/license-keys/update/${key}`, data);
+    return response.data;
+  } catch (error: any) {
+    throw new Error(error.response?.data?.message || 'Failed to update license key');
   }
 };
 

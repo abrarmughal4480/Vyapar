@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Copy, CheckCircle, ChevronDown, Key, Users, Calendar, Trash2 } from 'lucide-react';
-import { generateLicenseKey, getAllLicenseKeys, deleteLicenseKey, LicenseKey } from '@/http/license-keys';
+import { Copy, CheckCircle, ChevronDown, Key, Users, Calendar, Trash2, Edit } from 'lucide-react';
+import { generateLicenseKey, getAllLicenseKeys, deleteLicenseKey, updateLicenseKey, LicenseKey } from '@/http/license-keys';
 import Toast from '@/components/Toast';
 
 export default function LicenseGenerator() {
@@ -19,6 +19,12 @@ export default function LicenseGenerator() {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
+  const [editingKey, setEditingKey] = useState<LicenseKey | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    duration: 1,
+    maxDevices: 1
+  });
 
   const durationOptions = [
     { value: 1, label: '1 Year' },
@@ -31,6 +37,7 @@ export default function LicenseGenerator() {
   const deviceOptions = [
     { value: 1, label: '1 Device' },
     { value: 2, label: '2 Devices' },
+    { value: 3, label: '3 Devices' },
     { value: 5, label: '5 Devices' },
     { value: 10, label: '10 Devices' },
     { value: 20, label: '20 Devices' },
@@ -40,6 +47,22 @@ export default function LicenseGenerator() {
   // Fetch all license keys on component mount
   useEffect(() => {
     fetchLicenseKeys();
+  }, []);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.duration-dropdown') && !target.closest('.devices-dropdown')) {
+        setShowDurationDropdown(false);
+        setShowDevicesDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
   const fetchLicenseKeys = async () => {
@@ -98,13 +121,10 @@ export default function LicenseGenerator() {
     }
 
     try {
-      console.log('🗑️ Attempting to delete license key:', key);
       const result = await deleteLicenseKey(key);
-      console.log('✅ Delete result:', result);
       showToastMessage('License key deleted successfully!', 'success');
       await fetchLicenseKeys();
     } catch (error: any) {
-      console.error('❌ Delete error:', error);
       showToastMessage(error.message, 'error');
     }
   };
@@ -114,6 +134,37 @@ export default function LicenseGenerator() {
     setToastType(type);
     setShowToast(true);
     setTimeout(() => setShowToast(false), 3000);
+  };
+
+  // Handle edit license key
+  const handleEditKey = (licenseKey: LicenseKey) => {
+    setEditingKey(licenseKey);
+    setEditFormData({
+      duration: licenseKey.duration,
+      maxDevices: licenseKey.maxDevices
+    });
+    setShowEditModal(true);
+  };
+
+  // Save edited license key
+  const handleSaveEdit = async () => {
+    if (!editingKey) return;
+    
+    try {
+      await updateLicenseKey(editingKey.key, editFormData);
+      showToastMessage('License key updated successfully!', 'success');
+      setShowEditModal(false);
+      setEditingKey(null);
+      await fetchLicenseKeys();
+    } catch (error: any) {
+      showToastMessage(error.message, 'error');
+    }
+  };
+
+  // Close edit modal
+  const handleCloseEdit = () => {
+    setShowEditModal(false);
+    setEditingKey(null);
   };
 
   const getSelectedDurationLabel = () => {
@@ -165,7 +216,7 @@ export default function LicenseGenerator() {
                     <Calendar className="w-4 h-4 inline mr-2 text-blue-600" />
                     License Duration
                   </label>
-                  <div className="relative">
+                  <div className="relative duration-dropdown">
                     <button
                       onClick={() => setShowDurationDropdown(!showDurationDropdown)}
                       className="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-300 rounded-xl hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
@@ -199,7 +250,7 @@ export default function LicenseGenerator() {
                     <Users className="w-4 h-4 inline mr-2 text-purple-600" />
                     Number of Devices
                   </label>
-                  <div className="relative">
+                  <div className="relative devices-dropdown">
                     <button
                       onClick={() => setShowDevicesDropdown(!showDevicesDropdown)}
                       className="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-300 rounded-xl hover:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-200"
@@ -262,7 +313,7 @@ export default function LicenseGenerator() {
             <div className="lg:col-span-2">
               {isLoading ? (
                 <div className="bg-gradient-to-br from-gray-50 to-blue-50 rounded-2xl p-12 text-center border border-gray-200">
-                  <RefreshCw className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-4" />
+                  <div className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-4 border-4 border-blue-200 border-t-blue-600 rounded-full"></div>
                   <p className="text-gray-500">Loading license keys...</p>
                 </div>
               ) : generatedKeys.length > 0 ? (
@@ -294,14 +345,14 @@ export default function LicenseGenerator() {
                         }`}
                       >
                         <div className="flex items-center space-x-4">
-                          <div className={`flex items-center justify-center w-8 h-8 rounded-full font-semibold text-sm ${
+                          <div className={`flex items-center justify-center w-8 h-8 rounded-full font-semibold text-sm min-w-[32px] min-h-[32px] ${
                             isExpired(licenseKey.expiresAt)
                               ? 'bg-red-100 text-red-600'
                               : licenseKey.currentUsage >= licenseKey.maxDevices
                               ? 'bg-orange-100 text-orange-600'
                               : 'bg-blue-100 text-blue-600'
                           }`}>
-                            #{index + 1}
+                            {generatedKeys.length - index}
                           </div>
                           <div>
                             <span className="font-mono text-lg font-bold text-gray-900">{licenseKey.key}</span>
@@ -336,24 +387,27 @@ export default function LicenseGenerator() {
                         <div className="flex items-center space-x-2">
                           <button
                             onClick={() => copyToClipboard(licenseKey, index)}
-                            className="flex items-center space-x-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors duration-200"
+                            className="flex items-center justify-center w-10 h-10 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors duration-200"
+                            title={copiedIndex === index ? "Copied!" : "Copy"}
                           >
                             {copiedIndex === index ? (
-                              <>
-                                <CheckCircle className="w-4 h-4" />
-                                <span className="text-sm font-medium">Copied!</span>
-                              </>
+                              <CheckCircle className="w-4 h-4" />
                             ) : (
-                              <>
-                                <Copy className="w-4 h-4" />
-                                <span className="text-sm font-medium">Copy</span>
-                              </>
+                              <Copy className="w-4 h-4" />
                             )}
                           </button>
                           
                           <button
+                            onClick={() => handleEditKey(licenseKey)}
+                            className="flex items-center justify-center w-10 h-10 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors duration-200"
+                            title="Edit Key"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          
+                          <button
                             onClick={() => handleDeleteKey(licenseKey.key)}
-                            className="flex items-center space-x-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors duration-200"
+                            className="flex items-center justify-center w-10 h-10 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors duration-200"
                             title="Delete Key"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -373,7 +427,7 @@ export default function LicenseGenerator() {
                     Configure your license settings and generate your first license key
                   </p>
                   <div className="flex items-center justify-center space-x-2 text-sm text-gray-400">
-                    <Settings className="w-4 h-4" />
+                    <span>⚙️</span>
                     <span>Select duration and devices to get started</span>
                   </div>
                 </div>
@@ -423,6 +477,86 @@ export default function LicenseGenerator() {
           </div>
         </div>
       </div>
+
+      {/* Edit Modal */}
+      {showEditModal && editingKey && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 w-full max-w-md mx-4">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Edit License Key</h2>
+              <button
+                onClick={handleCloseEdit}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  License Key
+                </label>
+                <input
+                  type="text"
+                  value={editingKey.key}
+                  disabled
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Duration (Years)
+                </label>
+                <select
+                  value={editFormData.duration}
+                  onChange={(e) => setEditFormData(prev => ({ ...prev, duration: parseInt(e.target.value) }))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {durationOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Max Devices
+                </label>
+                <select
+                  value={editFormData.maxDevices}
+                  onChange={(e) => setEditFormData(prev => ({ ...prev, maxDevices: parseInt(e.target.value) }))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {deviceOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            
+            <div className="flex justify-end space-x-4 mt-8">
+              <button
+                onClick={handleCloseEdit}
+                className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast Notification */}
       {showToast && (

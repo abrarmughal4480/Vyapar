@@ -410,6 +410,102 @@ export const clearUserLicense = async (req, res) => {
   }
 };
 
+// Update license key (superadmin only)
+export const updateLicenseKey = async (req, res) => {
+  try {
+    const { key } = req.params;
+    const { duration, maxDevices } = req.body;
+    const userId = req.user.id;
+
+    // Check if user is superadmin
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only superadmins can update license keys'
+      });
+    }
+
+    // Validate input
+    if (!duration || !maxDevices) {
+      return res.status(400).json({
+        success: false,
+        message: 'Duration and maxDevices are required'
+      });
+    }
+
+    if (duration < 1 || duration > 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'Duration must be between 1 and 10 years'
+      });
+    }
+
+    if (maxDevices < 1 || maxDevices > 50) {
+      return res.status(400).json({
+        success: false,
+        message: 'Max devices must be between 1 and 50'
+      });
+    }
+
+    // Find the license key
+    const licenseKey = await LicenseKey.findOne({ key: key.toUpperCase() });
+    if (!licenseKey) {
+      return res.status(404).json({
+        success: false,
+        message: 'License key not found'
+      });
+    }
+
+    // Check if new maxDevices is less than current usage
+    if (maxDevices < licenseKey.currentUsage) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot set max devices to ${maxDevices}. Current usage is ${licenseKey.currentUsage}`
+      });
+    }
+
+    // Calculate new expiration date based on current date + new duration
+    const newExpiresAt = new Date();
+    newExpiresAt.setFullYear(newExpiresAt.getFullYear() + duration);
+
+    // Update the license key
+    const updatedLicenseKey = await LicenseKey.findByIdAndUpdate(
+      licenseKey._id,
+      {
+        duration,
+        maxDevices,
+        expiresAt: newExpiresAt,
+        updatedAt: new Date()
+      },
+      { new: true }
+    ).populate('generatedBy', 'name email')
+     .populate('usedDevices.userId', 'name email');
+
+    res.json({
+      success: true,
+      message: 'License key updated successfully',
+      data: {
+        key: updatedLicenseKey.key,
+        duration: updatedLicenseKey.duration,
+        maxDevices: updatedLicenseKey.maxDevices,
+        currentUsage: updatedLicenseKey.currentUsage,
+        remainingDevices: updatedLicenseKey.remainingDevices,
+        expiresAt: updatedLicenseKey.expiresAt,
+        updatedAt: updatedLicenseKey.updatedAt
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error updating license key:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update license key',
+      error: error.message
+    });
+  }
+};
+
 // Delete license key (superadmin only)
 export const deleteLicenseKey = async (req, res) => {
   try {

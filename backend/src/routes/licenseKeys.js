@@ -6,6 +6,7 @@ import {
   activateLicenseKey, 
   checkLicenseStatus, 
   deleteLicenseKey,
+  updateLicenseKey,
   clearUserLicense
 } from '../controllers/licenseKeyController.js';
 
@@ -27,6 +28,9 @@ router.get('/status', authMiddleware, checkLicenseStatus);
 router.get('/test', (req, res) => {
   res.json({ success: true, message: 'License keys route is working' });
 });
+
+// Update license key (superadmin only)
+router.put('/update/:key', authMiddleware, updateLicenseKey);
 
 // Delete license key (superadmin only) - using POST method as fallback
 router.delete('/delete/:key', authMiddleware, deleteLicenseKey);

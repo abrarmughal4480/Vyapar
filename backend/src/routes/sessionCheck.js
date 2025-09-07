@@ -34,14 +34,19 @@ router.get('/session-check', authMiddleware, async (req, res) => {
       });
     }
     
-    // If user has currentToken field and it doesn't match, force logout
-    if (user.currentToken && user.currentToken !== currentToken) {
-      return res.status(401).json({
-        success: false,
-        code: 'SESSION_EXPIRED',
-        message: 'Another device has logged in with this account'
-      });
+    // For company context, don't check token match as multiple contexts are allowed
+    // For user context, check if token matches current active token
+    if (req.user.context !== 'company') {
+      if (user.currentToken && user.currentToken !== currentToken) {
+        return res.status(401).json({
+          success: false,
+          code: 'SESSION_EXPIRED',
+          message: 'Another device has logged in with this account'
+        });
+      }
     }
+    // For company context, just verify the user exists and has access to the company
+    // (this is already done in authMiddleware)
     
     res.json({ 
       success: true, 

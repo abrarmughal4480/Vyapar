@@ -32,6 +32,24 @@ export default function JoinCompanyPage() {
   const [companySwitchLoading, setCompanySwitchLoading] = useState<boolean>(false);
   const joinedCompanies = invites.filter(invite => invite.status === 'Accepted');
   
+  // Debug logging for joined companies
+  React.useEffect(() => {
+    console.log('📊 Joined companies data:', {
+      totalInvites: invites.length,
+      joinedCompanies: joinedCompanies.length,
+      joinedCompaniesData: joinedCompanies.map(c => ({
+        id: c._id,
+        companyName: c.companyName,
+        requestedBy: c.requestedBy,
+        status: c.status,
+        fullInvite: c
+      })),
+      currentUserId,
+      selectedCompany,
+      selectedCompanyId
+    });
+  }, [invites, joinedCompanies, currentUserId, selectedCompany, selectedCompanyId]);
+  
   // Load selected company from localStorage on component mount
   React.useEffect(() => {
     const savedCompany = localStorage.getItem('selectedCompany');
@@ -65,20 +83,82 @@ export default function JoinCompanyPage() {
           // If not in localStorage, try to get from token payload
           try {
             const tokenPayload = JSON.parse(atob(token.split('.')[1]));
-            if (tokenPayload.userId) {
+            console.log('🔍 Token payload:', tokenPayload);
+            
+            // If user is in company context, use originalUserId
+            if (tokenPayload.originalUserId) {
+              currentUserIdFromStorage = tokenPayload.originalUserId;
+              setCurrentUserId(tokenPayload.originalUserId);
+              localStorage.setItem('currentUserId', tokenPayload.originalUserId);
+              console.log('🏢 User in company context, using originalUserId:', tokenPayload.originalUserId);
+            } else if (tokenPayload.userId) {
               currentUserIdFromStorage = tokenPayload.userId;
               setCurrentUserId(tokenPayload.userId);
               localStorage.setItem('currentUserId', tokenPayload.userId);
+              console.log('👤 User in user context, using userId:', tokenPayload.userId);
             } else if (tokenPayload.id) {
               currentUserIdFromStorage = tokenPayload.id;
               setCurrentUserId(tokenPayload.id);
               localStorage.setItem('currentUserId', tokenPayload.id);
+              console.log('🆔 Using token id:', tokenPayload.id);
             }
           } catch (e) {
-            // Silent error handling
+            console.error('❌ Error parsing token:', e);
           }
         } else if (currentUserIdFromStorage) {
           setCurrentUserId(currentUserIdFromStorage);
+        }
+        
+        // Always re-parse token to get the correct user ID, even if we have it in localStorage
+        if (token) {
+          try {
+            const tokenPayload = JSON.parse(atob(token.split('.')[1]));
+            console.log('🔄 Re-parsing token for user ID:', {
+              fullPayload: tokenPayload,
+              hasOriginalUserId: !!tokenPayload.originalUserId,
+              hasUserId: !!tokenPayload.userId,
+              hasId: !!tokenPayload.id,
+              context: tokenPayload.context,
+              currentUserIdBeforeUpdate: currentUserId
+            });
+            
+            // If user is in company context, use originalUserId
+            if (tokenPayload.originalUserId) {
+              const correctUserId = tokenPayload.originalUserId;
+              console.log('🏢 Found originalUserId in token:', correctUserId);
+              if (currentUserId !== correctUserId) {
+                console.log('🔄 Updating currentUserId from', currentUserId, 'to', correctUserId);
+                setCurrentUserId(correctUserId);
+                localStorage.setItem('currentUserId', correctUserId);
+              } else {
+                console.log('✅ currentUserId already correct:', correctUserId);
+              }
+            } else if (tokenPayload.userId) {
+              const correctUserId = tokenPayload.userId;
+              console.log('👤 Found userId in token:', correctUserId);
+              if (currentUserId !== correctUserId) {
+                console.log('🔄 Updating currentUserId from', currentUserId, 'to', correctUserId);
+                setCurrentUserId(correctUserId);
+                localStorage.setItem('currentUserId', correctUserId);
+              } else {
+                console.log('✅ currentUserId already correct:', correctUserId);
+              }
+            } else {
+              console.log('❌ No originalUserId or userId found in token, using id:', tokenPayload.id);
+              // Even if no originalUserId, we should use the id from token if it's different
+              const correctUserId = tokenPayload.id;
+              if (currentUserId !== correctUserId) {
+                console.log('🔄 Updating currentUserId from', currentUserId, 'to', correctUserId);
+                setCurrentUserId(correctUserId);
+                localStorage.setItem('currentUserId', correctUserId);
+                console.log('✅ currentUserId updated to:', correctUserId);
+              } else {
+                console.log('✅ currentUserId already correct:', correctUserId);
+              }
+            }
+          } catch (e) {
+            console.error('❌ Error re-parsing token:', e);
+          }
         }
       } catch {
         setInvites([]);
@@ -163,12 +243,23 @@ export default function JoinCompanyPage() {
   const updateJWTTokenWithCompanyContext = async (companyId: string) => {
     try {
       const originalToken = localStorage.getItem('token');
-      if (!originalToken) return;
+      if (!originalToken) {
+        console.error('❌ No token found in localStorage');
+        return;
+      }
 
       // Call backend to get a new token with company context
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const url = `${API_BASE_URL}/auth/switch-context`;
       
-      const response = await fetch(`${API_BASE_URL}/auth/switch-context`, {
+      console.log('🔄 Starting company switch:', {
+        companyId,
+        url,
+        hasToken: !!originalToken,
+        tokenPreview: originalToken.substring(0, 20) + '...'
+      });
+      
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -179,12 +270,30 @@ export default function JoinCompanyPage() {
         })
       });
 
+      console.log('📡 API Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ Company switch successful:', data);
         
         // Update localStorage with new token
         localStorage.setItem('token', data.token);
         localStorage.setItem('originalToken', originalToken); // Keep original for reset
+        
+        console.log('💾 Token updated in localStorage');
+        
+        // Notify session manager about token change
+        try {
+          const sessionManager = await import('../../../../lib/sessionManager');
+          sessionManager.default.refreshToken();
+        } catch (error) {
+          console.log('Session manager not available');
+        }
         
         setToast({
           show: true,
@@ -194,32 +303,50 @@ export default function JoinCompanyPage() {
 
         // Auto refresh page after 1 second to update all components
         setTimeout(() => {
+          console.log('🔄 Refreshing page...');
           window.location.reload();
         }, 1000);
       } else {
+        const errorData = await response.json().catch(() => ({ message: 'Failed to parse error response' }));
+        console.error('❌ Company switch failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        });
+        
         setToast({
           show: true,
-          message: 'Failed to switch to company context',
+          message: `Failed to switch to company context: ${errorData.message || 'Unknown error'}`,
           type: 'error'
         });
       }
     } catch (error) {
-      // Silent error handling
+      console.error('💥 Company switch error:', error);
       setToast({
         show: true,
-        message: 'Error switching context',
+        message: `Error switching context: ${error instanceof Error ? error.message : 'Unknown error'}`,
         type: 'error'
       });
     }
   };
 
   // Function to reset JWT token to original user
-  const resetJWTTokenToUser = () => {
+  const resetJWTTokenToUser = async () => {
     try {
+      console.log('🔄 Resetting to user context...');
       const originalToken = localStorage.getItem('originalToken');
       if (originalToken) {
+        console.log('✅ Original token found, switching back');
         localStorage.setItem('token', originalToken);
         localStorage.removeItem('originalToken');
+        
+        // Notify session manager about token change
+        try {
+          const sessionManager = await import('../../../../lib/sessionManager');
+          sessionManager.default.refreshToken();
+        } catch (error) {
+          console.log('Session manager not available');
+        }
         
         setToast({
           show: true,
@@ -229,11 +356,14 @@ export default function JoinCompanyPage() {
 
         // Auto refresh page after 1 second to update all components
         setTimeout(() => {
+          console.log('🔄 Refreshing page after user context reset...');
           window.location.reload();
         }, 1000);
+      } else {
+        console.log('❌ No original token found');
       }
     } catch (error) {
-      // Silent error handling
+      console.error('💥 Error resetting to user context:', error);
     }
   };
 
@@ -260,30 +390,55 @@ export default function JoinCompanyPage() {
                   <select
                   value={selectedCompany || ''}
                   onChange={async (e) => {
+                    console.log('🎯 Company dropdown changed:', {
+                      selectedValue: e.target.value,
+                      currentUserId,
+                      joinedCompanies: joinedCompanies.length
+                    });
+                    
                     setCompanySwitchLoading(true);
                     try {
                       const oldCompanyId = selectedCompanyId;
                       const selectedInvite = joinedCompanies.find(c => c.companyName === e.target.value);
+                      // The user is joining the company that invited them, so we use requestedBy as the company ID
                       let newCompanyId = selectedInvite ? selectedInvite.requestedBy : null;
                       
-                      // If no company selected, use current user's ID
-                      if (!e.target.value && currentUserId) {
-                        newCompanyId = currentUserId;
-                      }
+                      console.log('🔍 Company selection details:', {
+                        selectedInvite,
+                        newCompanyId,
+                        oldCompanyId,
+                        isOwnCompany: !e.target.value,
+                        currentUserId,
+                        shouldSwitch: newCompanyId !== oldCompanyId,
+                        // Database data from selectedInvite
+                        dbData: selectedInvite ? {
+                          inviteId: selectedInvite._id,
+                          companyName: selectedInvite.companyName,
+                          requestedBy: selectedInvite.requestedBy, // Company ID
+                          requestedTo: selectedInvite.requestedTo, // User ID
+                          status: selectedInvite.status
+                        } : null
+                      });
                       
                       setSelectedCompany(e.target.value);
                       setSelectedCompanyId(newCompanyId);
                       
-                      // Update JWT token with company context
-                      if (newCompanyId && newCompanyId !== currentUserId) {
-                        await updateJWTTokenWithCompanyContext(newCompanyId);
-                      } else if (!e.target.value && currentUserId) {
-                        // Reset to original user token
+                      // Handle company context switching
+                      if (!e.target.value) {
+                        // Empty selection = My Own Company - reset to user context
+                        console.log('🏠 Switching to own company - resetting to user context');
                         await resetJWTTokenToUser();
+                      } else if (newCompanyId && newCompanyId !== oldCompanyId) {
+                        // Company selected - switch to company context
+                        console.log('🔄 Calling updateJWTTokenWithCompanyContext with:', newCompanyId);
+                        await updateJWTTokenWithCompanyContext(newCompanyId);
+                      } else {
+                        console.log('⚠️ No action needed - same company selected');
                       }
                     } catch (error) {
-                      console.error('Error switching company context:', error);
+                      console.error('💥 Error switching company context:', error);
                     } finally {
+                      console.log('🏁 Company switch process completed');
                       setCompanySwitchLoading(false);
                     }
                   }}

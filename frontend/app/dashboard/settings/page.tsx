@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Edit, Trash2, Plus, Mail, User, Crown, AlertTriangle, LogOut } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getUserInvites, deleteUserInvite } from '@/http/api';
@@ -123,9 +123,13 @@ export default function SettingsPage() {
   const [searchUser, setSearchUser] = useState('');
   const [currentRole, setCurrentRole] = useState<string>('Admin');
   const [currentEmail, setCurrentEmail] = useState<string>('');
+  const [isClient, setIsClient] = useState(false);
+  const [canAddUser, setCanAddUser] = useState(false);
+  const [canViewUsers, setCanViewUsers] = useState(false);
   const router = useRouter();
-  // Get current user role and email
-  React.useEffect(() => {
+  // Handle client-side initialization
+  useEffect(() => {
+    setIsClient(true);
     const userInfo = getCurrentUserInfo();
     if (userInfo) {
       setCurrentEmail(userInfo.email);
@@ -137,6 +141,8 @@ export default function SettingsPage() {
         context: userInfo.context
       });
     }
+    setCanAddUser(canAccessAddUser());
+    setCanViewUsers(canViewInvitedUsers());
   }, []);
 
   React.useEffect(() => {
@@ -244,7 +250,9 @@ export default function SettingsPage() {
             >
               Join Company
             </button>
-            {canAccessAddUser() ? (
+            {!isClient ? (
+              <div className="bg-gray-200 animate-pulse h-10 w-32 rounded-lg"></div>
+            ) : canAddUser ? (
               <button
                 onClick={() => router.push('/dashboard/settings/add-user')}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow"
@@ -280,7 +288,20 @@ export default function SettingsPage() {
         </div>
       </div>
       {/* Invited Users Table - Only show for admin roles */}
-      {canViewInvitedUsers() ? (
+      {!isClient ? (
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100 mb-8">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-6 border-b border-gray-200 gap-4">
+            <h2 className="text-lg font-semibold text-gray-900">Invited Users</h2>
+          </div>
+          <div className="p-6">
+            <div className="animate-pulse space-y-4">
+              <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+              <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+              <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+            </div>
+          </div>
+        </div>
+      ) : canViewUsers ? (
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100 mb-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-6 border-b border-gray-200 gap-4">
             <h2 className="text-lg font-semibold text-gray-900">Invited Users</h2>

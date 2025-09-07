@@ -110,8 +110,10 @@ class SessionManager {
         this.stopMonitoring();
         window.location.href = '/';
       } else if (event.key === 'token' && event.newValue) {
-        // Token was updated (possibly company context change), just continue monitoring
+        // Token was updated (possibly company context change), continue monitoring
         console.log('Token updated, continuing session monitoring');
+        // Force a session check with the new token
+        this.checkSession();
       }
     }
   }
@@ -172,6 +174,12 @@ class SessionManager {
   // Check session immediately (for manual triggers)
   async checkSessionNow() {
     await this.checkSession();
+  }
+
+  // Refresh token (for company context changes)
+  refreshToken() {
+    console.log('Token refreshed, forcing session check');
+    this.checkSession();
   }
 }
 

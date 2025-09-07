@@ -249,9 +249,8 @@ const authController = {
 
       const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
       
-      // Update user's currentToken in database to prevent session manager from logging out
-      // This token will be used by session manager to validate the session
-      const updateResult = await User.findByIdAndUpdate(userId, { currentToken: token });
+      // For company context, don't update currentToken - keep the original user token
+      // Company context tokens are validated differently in session check
       
 
       return res.json({ 

@@ -55,6 +55,11 @@ const PAGE_PERMISSIONS: Record<UserRole, {
 // Get current user info from token
 export const getCurrentUserInfo = (): UserInfo | null => {
   try {
+    // Check if we're on the client side
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    
     const token = localStorage.getItem('token');
     if (!token) return null;
 
@@ -76,6 +81,11 @@ export const getCurrentUserInfo = (): UserInfo | null => {
 // Get original user email for license checking
 export const getOriginalUserEmail = (): string | null => {
   try {
+    // Check if we're on the client side
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    
     const token = localStorage.getItem('token');
     if (!token) return null;
 

@@ -746,9 +746,20 @@ export const updateProfile = async (req, res) => {
       
       if (files.profileImage) {
         const file = files.profileImage;
-        const fileBuffer = await fs.promises.readFile(file.filepath);
-        const imageUrl = await uploadProfileImage(fileBuffer, `${userId}_profile`);
-        updateData.profileImage = imageUrl;
+        // Check if file has filepath property and it's not undefined
+        if (file && file.filepath && typeof file.filepath === 'string') {
+          try {
+            const fileBuffer = await fs.promises.readFile(file.filepath);
+            const imageUrl = await uploadProfileImage(fileBuffer, `${userId}_profile`);
+            updateData.profileImage = imageUrl;
+          } catch (fileError) {
+            console.error('Error reading uploaded file:', fileError);
+            return res.status(400).json({ success: false, message: 'Error processing uploaded file' });
+          }
+        } else {
+          console.error('Invalid file object:', file);
+          return res.status(400).json({ success: false, message: 'Invalid file upload' });
+        }
       }
       delete updateData.password;
       const user = await User.findByIdAndUpdate(userId, updateData, { new: true, runValidators: true }).select('-password');

@@ -52,7 +52,7 @@ router.get('/api/dashboard/payables', authMiddleware, getPayablesList);
 router.get('/api/dashboard/sales-overview/:userId', authMiddleware, getSalesOverview);
 
 // Add the new route for recent activity (with user ID - keep for backward compatibility)
-router.get('/dashboard/recent-activity/:userId', getRecentActivity);
+router.get('/dashboard/recent-activity/:userId', authMiddleware, getRecentActivity);
 
 // Profile routes
 router.get('/profile', authMiddleware, getProfile);

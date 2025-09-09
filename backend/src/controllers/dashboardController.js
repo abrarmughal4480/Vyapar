@@ -16,6 +16,36 @@ if (!global.dashboardCache) {
 }
 const dashboardCache = global.dashboardCache;
 
+// Cache size limit to prevent memory issues
+const MAX_CACHE_SIZE = 1000;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Memory management for cache
+const cleanupCache = () => {
+  const now = Date.now();
+  const keysToDelete = [];
+  
+  for (const [key, value] of dashboardCache.entries()) {
+    if (value.timestamp && (now - value.timestamp) > CACHE_TTL) {
+      keysToDelete.push(key);
+    }
+  }
+  
+  keysToDelete.forEach(key => dashboardCache.delete(key));
+  
+  // If cache is still too large, remove oldest entries
+  if (dashboardCache.size > MAX_CACHE_SIZE) {
+    const entries = Array.from(dashboardCache.entries());
+    entries.sort((a, b) => (a[1].timestamp || 0) - (b[1].timestamp || 0));
+    
+    const toRemove = entries.slice(0, dashboardCache.size - MAX_CACHE_SIZE);
+    toRemove.forEach(([key]) => dashboardCache.delete(key));
+  }
+};
+
+// Clean cache every 2 minutes
+setInterval(cleanupCache, 2 * 60 * 1000);
+
 const _clearUserDashboardCache = (userId) => {
   const cacheKeys = Array.from(dashboardCache.keys()).filter(key => key.startsWith(`dashboard_${userId}`));
   cacheKeys.forEach(key => dashboardCache.delete(key));
@@ -30,12 +60,39 @@ const _invalidateSpecificCache = (userId, cacheType) => {
   dashboardCache.delete(cacheKey);
 };
 
+// Helper function to get cached data with TTL
+const _getCachedData = (key) => {
+  const cached = dashboardCache.get(key);
+  if (cached && cached.timestamp && (Date.now() - cached.timestamp) < CACHE_TTL) {
+    return cached.data;
+  }
+  if (cached) {
+    dashboardCache.delete(key); // Remove expired cache
+  }
+  return null;
+};
+
+// Helper function to set cached data with TTL
+const _setCachedData = (key, data) => {
+  dashboardCache.set(key, {
+    data,
+    timestamp: Date.now()
+  });
+};
+
 const _getExpenseStatsForUser = async (userId) => {
   try {
-    const totalExpenses = await Expense.aggregate([
+    // Add timeout for database operations
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Database operation timeout')), 10000)
+    );
+    
+    const expensePromise = Expense.aggregate([
       { $match: { userId: new mongoose.Types.ObjectId(userId) } },
       { $group: { _id: null, total: { $sum: '$totalAmount' } } }
     ]).allowDiskUse(true);
+    
+    const totalExpenses = await Promise.race([expensePromise, timeoutPromise]);
     return totalExpenses[0]?.total || 0;
   } catch (error) {
     console.error('Error getting expense stats:', error);

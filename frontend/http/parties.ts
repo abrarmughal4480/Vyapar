@@ -2,7 +2,6 @@ import api from './api';
 
 export interface PartyData {
   name: string;
-  partyType: string;
   phone?: string;
   email?: string;
   gstNumber?: string;

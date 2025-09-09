@@ -12,7 +12,6 @@ import { getCurrentUserInfo, canAddData, canEditData, canDeleteData } from '../.
 interface Party {
   id: string
   name: string
-  type: 'Customer' | 'Supplier' | 'Both'
   phone: string
   email: string
   gstin: string
@@ -68,7 +67,6 @@ function PartiesPageContent() {
 
   const [newParty, setNewParty] = useState<Omit<Party, 'id' | 'createdDate'>>({
     name: '',
-    type: 'Customer',
     phone: '',
     email: '',
     gstin: '',
@@ -131,7 +129,6 @@ function PartiesPageContent() {
         const transformedParties = result.data.map((party: any) => ({
           id: party._id || party.id,
           name: party.name || 'Unknown Party',
-          type: party.partyType || 'Customer',
           phone: party.phone || '',
           email: party.email || '',
           gstin: party.gstNumber || '',
@@ -198,11 +195,6 @@ function PartiesPageContent() {
       // Store return URL if provided
       if (returnUrlParam) {
         setReturnUrl(returnUrlParam);
-        
-        // If coming from purchase add page, set type to Supplier
-        if (returnUrlParam.includes('purchaseAdd')) {
-          setNewParty(prev => ({ ...prev, type: 'Supplier' }));
-        }
       }
       
       // Remove the parameters from URL without page reload
@@ -263,7 +255,6 @@ function PartiesPageContent() {
       // Prepare party data for backend
       const partyData = {
         name: newParty.name,
-        partyType: newParty.type,
         phone: newParty.phone,
         email: newParty.email,
         gstNumber: newParty.gstin,
@@ -293,7 +284,6 @@ function PartiesPageContent() {
           setParties(parties.map(p => p.id === editingParty.id ? {
             ...result.data,
             id: result.data._id || result.data.id,
-            type: result.data.partyType || 'Customer',
             gstin: result.data.gstNumber || '',
             notes: result.data.note || '',
             status: result.data.status === 'active' ? 'Active' : 'Inactive',
@@ -310,7 +300,6 @@ function PartiesPageContent() {
           setParties([...parties, {
             ...result.data,
             id: result.data._id || result.data.id,
-            type: result.data.partyType || 'Customer',
             gstin: result.data.gstNumber || '',
             notes: result.data.note || '',
             status: result.data.status === 'active' ? 'Active' : 'Inactive',
@@ -326,10 +315,10 @@ function PartiesPageContent() {
             setToast({ message: 'Party added successfully! Redirecting back...', type: 'success' });
             // Redirect back to return URL if provided (for new parties only)
             setTimeout(() => {
-              // Add the newly created supplier info to the return URL
+              // Add the newly created party info to the return URL
               const url = new URL(returnUrl, window.location.origin);
-              url.searchParams.set('newSupplier', result.data.name);
-              url.searchParams.set('newSupplierId', result.data._id || result.data.id);
+              url.searchParams.set('newParty', result.data.name);
+              url.searchParams.set('newPartyId', result.data._id || result.data.id);
               router.push(url.toString());
             }, 1000); // Small delay to show success message
           } else {
@@ -371,14 +360,6 @@ function PartiesPageContent() {
     return 'text-gray-600'
   }
 
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'Customer': return 'bg-blue-100 text-blue-800'
-      case 'Supplier': return 'bg-purple-100 text-purple-800'
-      case 'Both': return 'bg-green-100 text-green-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
-  }
 
   const getStatusColor = (status: string) => {
     return status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
@@ -393,8 +374,6 @@ function PartiesPageContent() {
                          party.gstin.toLowerCase().includes(searchTerm.toLowerCase())
     
     const matchesStatus = activeTab === 'all' || 
-                         (activeTab === 'customer' && (party.type === 'Customer' || party.type === 'Both')) ||
-                         (activeTab === 'supplier' && (party.type === 'Supplier' || party.type === 'Both')) ||
                          (activeTab === 'debtors' && party.currentBalance > 0) ||
                          (activeTab === 'creditors' && party.currentBalance < 0) ||
                          (activeTab === 'active' && party.status === 'Active')
@@ -404,7 +383,6 @@ function PartiesPageContent() {
 
   const exportColumns: ExportColumn[] = [
     { label: 'Name', key: 'name' },
-    { label: 'Type', key: 'type' },
     { label: 'Phone', key: 'phone' },
     { label: 'Email', key: 'email' },
     { label: 'GSTIN', key: 'gstin' },
@@ -453,7 +431,6 @@ function PartiesPageContent() {
   const resetForm = () => {
     setNewParty({
       name: '',
-      type: 'Customer',
       phone: '',
       email: '',
       gstin: '',
@@ -493,18 +470,6 @@ function PartiesPageContent() {
       name: 'All',
       fullName: 'All Parties',
       count: parties.length
-    },
-    {
-      id: 'customer',
-      name: 'Customers',
-      fullName: 'Customers',
-      count: parties.filter(p => p.type === 'Customer' || p.type === 'Both').length
-    },
-    {
-      id: 'supplier',
-      name: 'Suppliers',
-      fullName: 'Suppliers',
-      count: parties.filter(p => p.type === 'Supplier' || p.type === 'Both').length
     },
     {
       id: 'debtors',
@@ -742,9 +707,6 @@ function PartiesPageContent() {
                       </div>
                     </div>
                     <div className="flex flex-col items-end space-y-1">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getTypeColor(party.type)}`}>
-                        {party.type}
-                      </span>
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(party.status)}`}>
                         {party.status}
                       </span>
@@ -797,7 +759,6 @@ function PartiesPageContent() {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Party</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -818,11 +779,6 @@ function PartiesPageContent() {
                                 <div className="text-xs text-gray-500">GSTIN: {party.gstin}</div>
                               )}
                             </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getTypeColor(party.type)}`}>
-                              {party.type}
-                            </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             <div>{party.phone}</div>

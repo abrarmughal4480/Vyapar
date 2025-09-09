@@ -12,7 +12,6 @@ const partiesController = {
         email,
         address,
         gstNumber,
-        partyType,
         openingBalance,
         pan,
         city,
@@ -33,7 +32,6 @@ const partiesController = {
         email,
         address,
         gstNumber,
-        partyType,
         openingBalance: openingBalance || 0,
         firstOpeningBalance: openingBalance || 0, // Save the first opening balance
         pan,
@@ -60,7 +58,7 @@ const partiesController = {
   },
   getPartiesByUser: async (req, res) => {
     try {
-      const { search, status, partyType } = req.query;
+      const { search, status } = req.query;
       
       // Build query more efficiently
       const query = { user: req.user.id };
@@ -80,14 +78,10 @@ const partiesController = {
         query.status = status;
       }
       
-      // Add party type filter
-      if (partyType) {
-        query.partyType = partyType;
-      }
       
       // Use lean() for better performance when you don't need Mongoose document methods
       const parties = await Party.find(query)
-        .select('name phone email address gstNumber partyType openingBalance firstOpeningBalance pan city state pincode tags status note createdAt')
+        .select('name phone email address gstNumber openingBalance firstOpeningBalance pan city state pincode tags status note createdAt')
         .sort({ name: 1 })
         .lean();
       
@@ -120,7 +114,6 @@ const partiesController = {
         email: req.body.email,
         address: req.body.address,
         gstNumber: req.body.gstNumber,
-        partyType: req.body.partyType,
         openingBalance: req.body.openingBalance,
         // Note: firstOpeningBalance is NOT included here - it should never change
         pan: req.body.pan,

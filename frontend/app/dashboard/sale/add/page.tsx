@@ -931,6 +931,14 @@ const AddSalePageWithSearchParams = () => {
       if (result.success && result.sale && result.sale._id) {
         setInvoiceNo(result.sale.invoiceNo || null);
         
+        // Check if party was auto-created
+        if (result.partyCreated) {
+          setToast({ 
+            message: `Party "${newSale.partyName}" was automatically created and sale saved! Invoice No: ${result.sale.invoiceNo || ''}`, 
+            type: 'success' 
+          });
+        }
+        
         // If this was converted from a quotation, update the quotation status
         if (quotationId) {
           try {
@@ -1127,10 +1135,17 @@ const AddSalePageWithSearchParams = () => {
       }
       
       if (result.success && result.sale && result.sale._id) {
-        if (newSale.editingId) {
-          setToast({ message: `Sale updated successfully! Invoice No: ${result.sale.invoiceNo || ''}`, type: 'success' });
+        if (result.partyCreated) {
+          setToast({ 
+            message: `Party "${newSale.partyName}" was automatically created and sale ${newSale.editingId ? 'updated' : 'saved'}! Invoice No: ${result.sale.invoiceNo || ''}`, 
+            type: 'success' 
+          });
         } else {
-          setToast({ message: `Sale saved successfully! Invoice No: ${result.sale.invoiceNo || ''}`, type: 'success' });
+          if (newSale.editingId) {
+            setToast({ message: `Sale updated successfully! Invoice No: ${result.sale.invoiceNo || ''}`, type: 'success' });
+          } else {
+            setToast({ message: `Sale saved successfully! Invoice No: ${result.sale.invoiceNo || ''}`, type: 'success' });
+          }
         }
         // Redirect to sale page
         setTimeout(() => router.push('/dashboard/sale'), 1500);

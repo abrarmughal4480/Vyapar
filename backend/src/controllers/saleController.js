@@ -24,6 +24,37 @@ export const createSale = async (req, res) => {
     }
     const userIdObj = new mongoose.Types.ObjectId(userId);
     
+    // Check if party exists, if not create it
+    const Party = (await import('../models/parties.js')).default;
+    let party = await Party.findOne({ name: partyName, user: userId });
+    let partyCreated = false;
+    
+    if (!party) {
+      // Create new party with default values
+      party = new Party({
+        name: partyName,
+        phone: req.body.phoneNo || '',
+        contactNumber: req.body.phoneNo || '',
+        email: '',
+        address: '',
+        gstNumber: '',
+        openingBalance: 0,
+        firstOpeningBalance: 0,
+        pan: '',
+        city: '',
+        state: '',
+        pincode: '',
+        tags: [],
+        status: 'active',
+        note: 'Auto-created from sale',
+        user: userId
+      });
+      
+      await party.save();
+      partyCreated = true;
+      console.log(`Auto-created party: ${partyName}`);
+    }
+    
     // Decrement stock for each item
     for (const saleItem of items) {
       // Convert quantity to base unit for stock calculation
@@ -267,36 +298,35 @@ export const createSale = async (req, res) => {
     // Update party openingBalance in DB based on payment type
     // balance = grandTotal - received (remaining amount to be paid)
     try {
-      const Party = (await import('../models/parties.js')).default;
-      const partyDoc = await Party.findOne({ name: sale.partyName, user: userId });
-      if (partyDoc) {
+      // Use the party we found/created earlier
+      if (party) {
         // Store party's current balance before transaction
-        const partyCurrentBalance = partyDoc.openingBalance || 0;
+        const partyCurrentBalance = party.openingBalance || 0;
         
         if (req.body.paymentType === 'Credit') {
           // For credit sales, add the remaining balance (credit amount) to party balance
           // balance = grandTotal - received
-          partyDoc.openingBalance = partyCurrentBalance + balance;
+          party.openingBalance = partyCurrentBalance + balance;
         } else if (req.body.paymentType === 'Cash') {
           // For cash sales, only add remaining balance if there's any unpaid amount
           if (balance > 0) {
-            partyDoc.openingBalance = partyCurrentBalance + balance;
+            party.openingBalance = partyCurrentBalance + balance;
           }
         }
         
         // Calculate and update partyBalanceAfterTransaction
-        const partyBalanceAfterTransaction = partyDoc.openingBalance;
+        const partyBalanceAfterTransaction = party.openingBalance;
         sale.partyBalanceAfterTransaction = partyBalanceAfterTransaction;
         await sale.save();
         
-        await partyDoc.save();
+        await party.save();
       }
     } catch (err) {
       console.error('Failed to update party openingBalance:', err);
     }
     
     clearAllCacheForUser(userId); // Invalidate all related caches
-    res.status(201).json({ success: true, sale: saleObj });
+    res.status(201).json({ success: true, sale: saleObj, partyCreated });
   } catch (err) {
     console.error('Sale creation error:', err);
     console.error('Request body:', req.body);
@@ -455,155 +485,45 @@ export const receivePartyPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing partyName or invalid amount' });
     }
 
-    // Get all sales for this party with balance > 0, sorted by creation date (oldest first)
-    const sales = await Sale.find({ 
-      partyName: partyName, 
-      userId: new mongoose.Types.ObjectId(userId),
-      balance: { $gt: 0 } 
-    }).sort({ createdAt: 1 });
-
-    // Allow payments even when no outstanding sales (for setting opening balance)
-    if (sales.length === 0 && amount > 0) {
-      // If no outstanding sales but amount > 0, this is setting opening balance
-      try {
-        const Party = (await import('../models/parties.js')).default;
-        const partyDoc = await Party.findOne({ name: partyName, user: userId });
-        if (partyDoc) {
-          // Add amount as opening balance (credit for future)
-          partyDoc.openingBalance = (partyDoc.openingBalance || 0) + amount;
-          await partyDoc.save();
-        }
-        
-        res.json({ 
-          success: true, 
-          message: `Opening balance set for ${partyName}`,
-          updatedSales: 0,
-          remainingAmount: 0,
-          discountApplied: false,
-          discountValue: 0,
-          totalDiscountApplied: 0,
-          newTotalGrandTotal: 0,
-          newTotalOutstandingBalance: 0,
-          paymentProcessed: false,
-          excessAmount: amount,
-          openingBalanceSet: true
-        });
-        
-        clearAllCacheForUser(userId);
-        return;
-      } catch (err) {
-        console.error('Failed to set opening balance:', err);
-        return res.status(500).json({ success: false, message: 'Failed to set opening balance' });
-      }
-    } else if (sales.length === 0 && amount === 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'No outstanding sales found' 
-      });
-    }
-
-    // Calculate total outstanding balance for all sales
-    const totalOutstandingBalance = sales.reduce((sum, sale) => sum + (sale.balance || 0), 0);
-    const totalGrandTotal = sales.reduce((sum, sale) => sum + (sale.grandTotal || 0), 0);
-
-    // Calculate discount if provided
-    let discountValue = 0;
-    let newTotalGrandTotal = totalGrandTotal;
-    let newTotalOutstandingBalance = totalOutstandingBalance;
-
-    if (discount && discount > 0 && discountType) {
-      if (discountType === '%') {
-        // Percentage discount on total outstanding balance
-        discountValue = (totalOutstandingBalance * discount) / 100;
-      } else if (discountType === 'PKR') {
-        // Fixed PKR discount
-        discountValue = Math.min(discount, totalOutstandingBalance);
-      }
-      
-      newTotalOutstandingBalance = Math.max(0, totalOutstandingBalance - discountValue);
-      newTotalGrandTotal = Math.max(0, totalGrandTotal - discountValue);
-    }
-
-    // Calculate excess amount (if received amount is more than due balance after discount)
-    const excessAmount = Math.max(0, amount - newTotalOutstandingBalance);
-
-    let remainingAmount = amount;
-    const updatedSales = [];
-    let totalDiscountApplied = 0;
-
-    // Update sales starting from oldest, applying discount proportionally
-    for (const sale of sales) {
-      const saleBalance = sale.balance || 0;
-      const saleGrandTotal = sale.grandTotal || 0;
-      
-      // Calculate proportional discount for this sale
-      let saleDiscount = 0;
-      if (discountValue > 0 && totalOutstandingBalance > 0) {
-        const discountRatio = saleBalance / totalOutstandingBalance;
-        saleDiscount = discountValue * discountRatio;
-      }
-      
-      // Apply discount to this sale
-      if (saleDiscount > 0) {
-        sale.grandTotal = Math.max(0, saleGrandTotal - saleDiscount);
-        sale.balance = Math.max(0, saleBalance - saleDiscount);
-        sale.discount = discount;
-        sale.discountType = discountType;
-        sale.discountValue = saleDiscount;
-        totalDiscountApplied += saleDiscount;
-      }
-
-      // Process payment only if there's an amount to pay
-      if (remainingAmount > 0) {
-        const paymentForThisSale = Math.min(remainingAmount, sale.balance);
-        sale.received = (sale.received || 0) + paymentForThisSale;
-        sale.balance = sale.balance - paymentForThisSale;
-        remainingAmount -= paymentForThisSale;
-      }
-      
-      await sale.save();
-      updatedSales.push(sale);
-    }
-
-    // Update party openingBalance
+    // Directly update party opening balance
     try {
       const Party = (await import('../models/parties.js')).default;
       const partyDoc = await Party.findOne({ name: partyName, user: userId });
-      if (partyDoc) {
-        if (amount > 0) {
-          // Reduce party balance by the actual payment amount
-          partyDoc.openingBalance = (partyDoc.openingBalance || 0) - amount;
-        }
-        
-        // If there's excess amount, add it as opening balance (credit for future)
-        if (excessAmount > 0) {
-          partyDoc.openingBalance = (partyDoc.openingBalance || 0) + excessAmount;
-        }
-        
-        await partyDoc.save();
+      
+      if (!partyDoc) {
+        return res.status(404).json({ success: false, message: 'Party not found' });
       }
-    } catch (err) {
-      console.error('Failed to update party openingBalance on payment:', err);
-    }
 
-    res.json({ 
-      success: true, 
-      message: amount > 0 ? `Payment processed successfully` : 'Discount applied successfully',
-      updatedSales: updatedSales.length,
-      remainingAmount: remainingAmount > 0 ? remainingAmount : 0,
-      discountApplied: discountValue > 0,
-      discountValue,
-      totalDiscountApplied,
-      newTotalGrandTotal,
-      newTotalOutstandingBalance,
-      paymentProcessed: amount > 0,
-      excessAmount: excessAmount > 0 ? excessAmount : 0,
-      openingBalanceSet: excessAmount > 0
-    });
-    
-    // Only clear cache if user context exists
-    if (userId) {
+      // Calculate discount amount if provided
+      let discountAmount = 0;
+      if (discount && discount > 0 && discountType) {
+        if (discountType === '%') {
+          discountAmount = (amount * discount) / 100;
+        } else if (discountType === 'PKR') {
+          discountAmount = Math.min(discount, amount);
+        }
+      }
+
+      // Calculate final amount after discount
+      const finalAmount = Math.max(0, amount - discountAmount);
+
+      // Subtract the final amount from party's opening balance (reducing their debt)
+      partyDoc.openingBalance = (partyDoc.openingBalance || 0) - finalAmount;
+      await partyDoc.save();
+
+      res.json({ 
+        success: true, 
+        message: `Payment received for ${partyName}`,
+        amount: finalAmount,
+        discountApplied: discountAmount > 0,
+        discountAmount,
+        newOpeningBalance: partyDoc.openingBalance
+      });
+      
       clearAllCacheForUser(userId);
+    } catch (err) {
+      console.error('Failed to update party opening balance:', err);
+      return res.status(500).json({ success: false, message: 'Failed to update party balance' });
     }
   } catch (err) {
     console.error('Party payment error:', err);
@@ -1008,9 +928,37 @@ export const updateSale = async (req, res) => {
     
 
     // 6. Update party balance for new sale
+    let partyCreated = false;
     try {
       const Party = (await import('../models/parties.js')).default;
-      const newParty = await Party.findOne({ name: updateData.partyName, user: userId });
+      let newParty = await Party.findOne({ name: updateData.partyName, user: userId });
+      
+      // If party doesn't exist, create it
+      if (!newParty) {
+        newParty = new Party({
+          name: updateData.partyName,
+          phone: updateData.phoneNo || '',
+          contactNumber: updateData.phoneNo || '',
+          email: '',
+          address: '',
+          gstNumber: '',
+          openingBalance: 0,
+          firstOpeningBalance: 0,
+          pan: '',
+          city: '',
+          state: '',
+          pincode: '',
+        tags: [],
+        status: 'active',
+        note: 'Auto-created from sale update',
+          user: userId
+        });
+        
+        await newParty.save();
+        partyCreated = true;
+        console.log(`Auto-created party during update: ${updateData.partyName}`);
+      }
+      
       if (newParty) {
         if (updateData.paymentType === 'Credit') {
           // Add new credit balance
@@ -1066,7 +1014,7 @@ export const updateSale = async (req, res) => {
 
     clearAllCacheForUser(userId); // Invalidate all related caches
     
-    res.json({ success: true, sale: saleObj });
+    res.json({ success: true, sale: saleObj, partyCreated });
   } catch (err) {
     console.error('Sale update error:', err);
     res.status(500).json({ success: false, message: err.message });

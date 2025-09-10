@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { makePayment, getPurchasesByUser, makeBulkPaymentToParty } from '@/http/purchases';
 import Toast from './Toast';
-import { fetchPartiesByUserId } from '@/http/parties';
+import { fetchPartiesByUserId, getPartyBalance } from '@/http/parties';
 import { Settings } from 'lucide-react';
 import { jwtDecode } from 'jwt-decode';
 
@@ -117,12 +117,12 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
   const [showSettings, setShowSettings] = useState(false);
   const [partyTotal, setPartyTotal] = useState(0);
   const [partyDueBalance, setPartyDueBalance] = useState(0);
+  const [partyOpeningBalance, setPartyOpeningBalance] = useState(0);
 
-  // Function to fetch and calculate party totals
-  const fetchPartyTotals = async (partyName: string) => {
+  // Function to fetch party opening balance
+  const fetchPartyBalance = async (partyName: string) => {
     if (!partyName) {
-      setPartyTotal(0);
-      setPartyDueBalance(0);
+      setPartyOpeningBalance(0);
       return;
     }
 
@@ -130,42 +130,22 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
       const token = (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
       if (!token) return;
 
-      // Get userId from token
-      let userId = '';
-      try {
-        const decoded: any = jwtDecode(token);
-        userId = decoded.userId || decoded._id || decoded.id || '';
-      } catch (e) {
-        console.error('JWT decode error:', e);
-        return;
-      }
-
-      if (!userId) return;
-
-      // Fetch all purchases for this user
-      const result = await getPurchasesByUser(userId, token);
-      if (result && result.success && Array.isArray(result.purchases)) {
-        // Filter purchases for the selected party
-        const partyPurchases = result.purchases.filter((purchase: any) => 
-          purchase.supplierName?.toLowerCase() === partyName.toLowerCase()
+      // Get party balance data which includes opening balance
+      const party = await fetchPartiesByUserId(token);
+      if (party && party.success && Array.isArray(party.data)) {
+        const selectedPartyData = party.data.find((p: any) => 
+          p.name?.toLowerCase() === partyName.toLowerCase()
         );
-
-        // Calculate totals
-        const totalGrandTotal = partyPurchases.reduce((sum: number, purchase: any) => 
-          sum + (typeof purchase.grandTotal === 'number' ? purchase.grandTotal : 0), 0
-        );
-        
-        const totalDueBalance = partyPurchases.reduce((sum: number, purchase: any) => 
-          sum + (typeof purchase.balance === 'number' ? purchase.balance : 0), 0
-        );
-
-        setPartyTotal(totalGrandTotal);
-        setPartyDueBalance(totalDueBalance);
+        if (selectedPartyData && selectedPartyData._id) {
+          const balanceData = await getPartyBalance(selectedPartyData._id, token);
+          if (balanceData && balanceData.success) {
+            setPartyOpeningBalance(balanceData.data.openingBalance || 0);
+          }
+        }
       }
     } catch (err) {
-      console.error('Error fetching party totals:', err);
-      setPartyTotal(0);
-      setPartyDueBalance(0);
+      console.error('Error fetching party opening balance:', err);
+      setPartyOpeningBalance(0);
     }
   };
 
@@ -185,9 +165,9 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
   useEffect(() => {
     if (isOpen) {
       setPartySearch(initialPartyName || '');
-      // Also fetch totals for initial party if provided
+      // Also fetch balance for initial party if provided
       if (initialPartyName) {
-        fetchPartyTotals(initialPartyName);
+        fetchPartyBalance(initialPartyName);
       }
     }
   }, [isOpen, initialPartyName]);
@@ -235,13 +215,12 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
     if (showPartyDropdown) setPartyDropdownIndex(0);
   }, [showPartyDropdown, partySearch]);
 
-  // Fetch party totals when selectedParty changes
+  // Fetch party balance when selectedParty changes
   useEffect(() => {
     if (selectedParty?.name) {
-      fetchPartyTotals(selectedParty.name);
+      fetchPartyBalance(selectedParty.name);
     } else {
-      setPartyTotal(0);
-      setPartyDueBalance(0);
+      setPartyOpeningBalance(0);
     }
   }, [selectedParty]);
 
@@ -268,148 +247,45 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
     const amount = parseFloat(paidAmount) || 0;
     const discountAmount = parseFloat(discount) || 0;
     
-    // Calculate the actual due balance after discount
-    let actualDueBalance = selectedParty ? partyDueBalance : dueBalance;
-    if (discountAmount > 0) {
-      if (discountType === 'percentage') {
-        const discountInPkr = actualDueBalance * discountAmount / 100;
-        actualDueBalance = Math.max(0, actualDueBalance - discountInPkr);
-      } else {
-        actualDueBalance = Math.max(0, actualDueBalance - discountAmount);
-      }
-    }
-    
-    // If discount reduces balance to 0, set received amount to 0
-    let finalPaidAmount = amount;
-    if (discountAmount > 0) {
-      if (discountType === 'percentage') {
-        const discountInPkr = actualDueBalance * discountAmount / 100;
-        if (discountInPkr >= actualDueBalance) {
-          finalPaidAmount = 0; // Discount covers entire balance
-        } else {
-          finalPaidAmount = Math.max(0, amount - discountInPkr);
-        }
-      } else {
-        if (discountAmount >= actualDueBalance) {
-          finalPaidAmount = 0; // Discount covers entire balance
-        } else {
-          finalPaidAmount = Math.max(0, amount - discountAmount);
-        }
-      }
-    }
-    
-    // Calculate excess amount (if paid amount is more than due balance)
-    const excessAmount = Math.max(0, finalPaidAmount - actualDueBalance);
-    
-    // Allow 0 amount if discount covers everything, otherwise require positive amount
-    if (finalPaidAmount < 0 || (finalPaidAmount === 0 && discountAmount === 0)) {
-      setToast({ message: 'Please enter a valid payment amount or discount', type: 'error' });
+    if (!selectedParty) {
+      setToast({ message: 'Please select a party', type: 'error' });
       return;
-    }
-    
-    // Validate against party due balance for party payments (after discount)
-    if (selectedParty && !purchaseId) {
-      const currentBalance = selectedParty ? partyDueBalance : dueBalance;
-      const balanceAfterDiscount = discountAmount > 0 ? 
-        (discountType === 'percentage' ? 
-          currentBalance - (currentBalance * discountAmount / 100) : 
-          currentBalance - discountAmount) : 
-        currentBalance;
     }
     
     try {
       const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
       
-      // Check if we're making a bulk payment to party or individual purchase payment
-      if (selectedParty && selectedParty.name && !purchaseId) {
-        // NEW: Bulk payment to party
-        const paymentData = {
-          supplierName: selectedParty.name,
-          amount: finalPaidAmount,
-          discount: discountAmount > 0 ? discountAmount : undefined,
-          discountType: discountAmount > 0 ? (discountType === 'percentage' ? '%' : 'PKR') : undefined,
-          paymentType,
-          description: `Bulk payment for ${selectedParty.name}`,
-          imageUrl: imagePreview || ''
-        };
-        
-        const result = await makeBulkPaymentToParty(paymentData, token);
-        if (result && result.success) {
-          let message = result.message || 'Bulk payment successful!';
-          if (discountAmount > 0) {
-            message += ` (${discountType === 'percentage' ? discountAmount + '%' : 'PKR ' + discountAmount} discount)`;
-          }
-          if (finalPaidAmount === 0) {
-            message += ' - Full amount covered by discount';
-          }
-          
-          // Add message about excess amount being set as opening balance
-          if (excessAmount > 0) {
-            message += ` - PKR ${excessAmount.toLocaleString()} set as credit`;
-          }
-          
-          setToast({ message, type: 'success' });
-          // Refresh party totals after payment
-          await fetchPartyTotals(selectedParty.name);
-          if (onSave) onSave({ 
-            partyName: selectedParty.name, 
-            paymentType, 
-            date, 
-            total: partyTotal, 
-            dueBalance: partyDueBalance, 
-            paidAmount: finalPaidAmount, 
-            discount: discountAmount,
-            discountType,
-            image,
-            bulkPayment: true,
-            updatedPurchases: result.updatedPurchases,
-            excessAmount: excessAmount > 0 ? excessAmount : undefined
-          });
-          onClose();
-        } else {
-          setToast({ message: result?.message || 'Bulk payment failed', type: 'error' });
+      // Use bulk payment to party (updates party opening balance directly)
+      const paymentData = {
+        supplierName: selectedParty.name,
+        amount: amount,
+        discount: discountAmount > 0 ? discountAmount : undefined,
+        discountType: discountAmount > 0 ? (discountType === 'percentage' ? '%' : 'PKR') : undefined,
+        paymentType,
+        description: `Payment for ${selectedParty.name}`,
+        imageUrl: imagePreview || ''
+      };
+      
+      const result = await makeBulkPaymentToParty(paymentData, token);
+      if (result && result.success) {
+        let message = `Payment made to ${selectedParty.name}!`;
+        if (discountAmount > 0) {
+          message += ` (${discountType === 'percentage' ? discountAmount + '%' : 'PKR ' + discountAmount} discount)`;
         }
-      } else if (purchaseId) {
-        // OLD: Individual purchase payment
-        const paymentData = {
-          purchaseId,
-          amount: finalPaidAmount,
-          discount: discountAmount > 0 ? discountAmount : undefined,
-          discountType: discountAmount > 0 ? (discountType === 'percentage' ? '%' : 'PKR') : undefined,
-          paymentType,
-          description: `Payment for ${selectedParty?.name || ''}`,
-          imageUrl: imagePreview || ''
-        };
         
-        const result = await makePayment(paymentData, token);
-        if (result && result.success) {
-          let message = 'Payment successful!';
-          if (discountAmount > 0) {
-            message += ` (${discountType === 'percentage' ? discountAmount + '%' : 'PKR ' + discountAmount} discount)`;
-          }
-          if (excessAmount > 0) {
-            message += ` - PKR ${excessAmount.toLocaleString()} set as credit`;
-          }
-          
-          setToast({ message, type: 'success' });
-          if (onSave) onSave({ 
-            partyName: selectedParty?.name || '', 
-            paymentType, 
-            date, 
-            total, 
-            dueBalance, 
-            paidAmount: finalPaidAmount, 
-            discount: discountAmount,
-            discountType,
-            image,
-            excessAmount: excessAmount > 0 ? excessAmount : undefined
-          });
-          onClose();
-        } else {
-          setToast({ message: result?.message || 'Payment failed', type: 'error' });
-        }
+        setToast({ message, type: 'success' });
+        if (onSave) onSave({ 
+          partyName: selectedParty.name, 
+          paymentType, 
+          date, 
+          paidAmount: amount, 
+          discount: discountAmount,
+          discountType,
+          image
+        });
+        onClose();
       } else {
-        setToast({ message: 'Please select a party', type: 'error' });
+        setToast({ message: result?.message || 'Payment failed', type: 'error' });
       }
     } catch (err: any) {
       console.error('Payment error:', err);
@@ -462,7 +338,22 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
             <div style={{ flex: 1, minWidth: 240 }}>
               {/* Party selection field with live suggestions */}
               <div className="mb-4" style={{ position: 'relative' }}>
-                <label className="block text-gray-700 font-medium mb-1">Party</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label className="block text-gray-700 font-medium">Party</label>
+                  {selectedParty && partyOpeningBalance !== 0 && (
+                    <div style={{ 
+                      fontSize: 14, 
+                      fontWeight: 600, 
+                      color: partyOpeningBalance >= 0 ? '#059669' : '#dc2626',
+                      background: partyOpeningBalance >= 0 ? '#f0fdf4' : '#fef2f2',
+                      padding: '4px 8px',
+                      borderRadius: 6,
+                      border: `1px solid ${partyOpeningBalance >= 0 ? '#bbf7d0' : '#fecaca'}`
+                    }}>
+                      Balance: PKR {partyOpeningBalance.toLocaleString()}
+                    </div>
+                  )}
+                </div>
                 <input
                   ref={partyInputRef}
                   type="text"
@@ -485,7 +376,7 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
                         setSelectedParty(selectedPartyFromList);
                         setPartySearch(selectedPartyFromList.name);
                         setShowPartyDropdown(false);
-                        fetchPartyTotals(selectedPartyFromList.name);
+                        fetchPartyBalance(selectedPartyFromList.name);
                       }
                     } else if (e.key === 'Escape') {
                       setShowPartyDropdown(false);
@@ -515,7 +406,7 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
                         setSelectedParty(party);
                         setPartySearch(party.name);
                         setShowPartyDropdown(false);
-                        fetchPartyTotals(party.name);
+                        fetchPartyBalance(party.name);
                       }}
                       role="option"
                       aria-selected={partyDropdownIndex === idx}
@@ -577,49 +468,6 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
             </div>
             {/* Right Side */}
             <div style={{ flex: 1, minWidth: 240, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <div style={{ background: '#f8fafc', borderRadius: 14, padding: 28, marginBottom: 22, border: '1.5px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.01)' }}>
-                <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>Party Total</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: '#2563eb', marginBottom: 18 }}>PKR {(selectedParty ? partyTotal : total).toLocaleString()}</div>
-                <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px' }}>Party Due Balance</div>
-                <div style={{ fontSize: 22, fontWeight: 700, color: '#ea580c' }}>PKR {(selectedParty ? partyDueBalance : dueBalance).toLocaleString()}</div>
-                
-                {/* Show message when no due balance */}
-                {(selectedParty ? partyDueBalance : dueBalance) === 0 && (
-                  <div style={{ 
-                    marginTop: 16, 
-                    padding: 12, 
-                    background: '#f0f9ff', 
-                    border: '1px solid #0ea5e9', 
-                    borderRadius: 8, 
-                    fontSize: 13, 
-                    color: '#0369a1',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8
-                  }}>
-                    <span>💡</span>
-                    <span>No outstanding balance. You can still make payments to set credit.</span>
-                  </div>
-                )}
-                
-                {showDiscount && discount && parseFloat(discount) > 0 && (
-                  <>
-                    <div style={{ fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 6, letterSpacing: '0.5px', marginTop: 18 }}>After Discount</div>
-                    <div style={{ fontSize: 18, fontWeight: 600, color: '#059669', marginBottom: 8 }}>
-                      PKR {(() => {
-                        const discountAmount = parseFloat(discount) || 0;
-                        const currentBalance = selectedParty ? partyDueBalance : dueBalance;
-                        if (discountType === 'percentage') {
-                          const discountInPkr = currentBalance * discountAmount / 100;
-                          return Math.max(0, currentBalance - discountInPkr).toLocaleString();
-                        } else {
-                          return Math.max(0, currentBalance - discountAmount).toLocaleString();
-                        }
-                      })()}
-                    </div>
-                  </>
-                )}
-              </div>
               {showDiscount && (
                 <div>
                   <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Discount</label>
@@ -660,50 +508,20 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
                   </div>
                 </div>
               )}
-              <div>
+            </div>
+          </div>
+          <div style={{ padding: '0 40px 24px 40px', marginTop: 32 }}>
+            <div style={{ display: 'flex', gap: 48, flexWrap: 'wrap' }}>
+              {/* Left Side - Empty for spacing */}
+              <div style={{ flex: 1, minWidth: 240 }}></div>
+              {/* Right Side - Amount field */}
+              <div style={{ flex: 1, minWidth: 240 }}>
                 <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Paid Amount</label>
                 <input type="number" value={paidAmount} onChange={e => setPaidAmount(e.target.value)} style={{ width: '100%', padding: 12, border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#334155', fontSize: 15, fontWeight: 500 }} placeholder="Enter amount paid" />
-                {/* Show excess amount indicator */}
-                {paidAmount && parseFloat(paidAmount) > 0 && (() => {
-                  const amount = parseFloat(paidAmount) || 0;
-                  const discountAmount = parseFloat(discount) || 0;
-                  let actualDueBalance = selectedParty ? partyDueBalance : dueBalance;
-                  
-                  if (discountAmount > 0) {
-                    if (discountType === 'percentage') {
-                      const discountInPkr = actualDueBalance * discountAmount / 100;
-                      actualDueBalance = Math.max(0, actualDueBalance - discountInPkr);
-                    } else {
-                      actualDueBalance = Math.max(0, actualDueBalance - discountAmount);
-                    }
-                  }
-                  
-                  const excess = Math.max(0, amount - actualDueBalance);
-                  if (excess > 0) {
-                    return (
-                      <div style={{ 
-                        marginTop: 8, 
-                        padding: 8, 
-                        background: '#fef3c7', 
-                        border: '1px solid #f59e0b', 
-                        borderRadius: 6, 
-                        fontSize: 13, 
-                        color: '#92400e',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6
-                      }}>
-                        <span>💰</span>
-                        <span>Excess amount of <strong>PKR {excess.toLocaleString()}</strong> will be set as credit</span>
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
               </div>
             </div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '32px 40px', borderTop: '1.5px solid #e2e8f0', marginTop: 32 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 40px 32px 40px' }}>
             <button onClick={onClose} style={{ padding: '12px 24px', border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#f1f5f9', color: '#334155', marginRight: 14, fontWeight: 600, fontSize: 15, cursor: 'pointer', transition: 'background 0.2s' }}>Cancel</button>
             <button onClick={handleSave} style={{ padding: '12px 32px', borderRadius: 8, background: '#2563eb', color: 'white', fontWeight: 700, border: 'none', fontSize: 15, cursor: 'pointer', transition: 'background 0.2s' }}>Save</button>
           </div>

@@ -1,23 +1,23 @@
 import express from 'express';
-import { createQuotation, getQuotationsForUser, updateQuotationStatus, fixQuotationIndexes, deleteQuotation, updateQuotation } from '../controllers/quotationController.js';
+import quotationController from '../controllers/quotationController.js';
 import mongoose from 'mongoose';
 import authMiddleware from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
 
 // Create a new quotation
-router.post('/', createQuotation);
+router.post('/', quotationController.createQuotation);
 // Get all quotations for the logged-in user
-router.get('/', getQuotationsForUser);
+router.get('/', quotationController.getQuotationsForUser);
 // Update quotation status
-router.put('/:id/status', updateQuotationStatus);
+router.put('/:id/status', quotationController.updateQuotationStatus);
 // Delete a quotation
-router.delete('/:id', deleteQuotation);
+router.delete('/:id', quotationController.deleteQuotation);
 
 // Temporary route to fix database indexes
 router.post('/fix-indexes', async (req, res) => {
   try {
-    const result = await fixQuotationIndexes();
+    const result = await quotationController.fixQuotationIndexes();
     res.json(result);
   } catch (error) {
     console.error('Error fixing indexes:', error);
@@ -25,6 +25,6 @@ router.post('/fix-indexes', async (req, res) => {
   }
 });
 
-router.put('/update/:quotationId', authMiddleware, updateQuotation);
+router.put('/update/:quotationId', authMiddleware, quotationController.updateQuotation);
 
 export default router; 

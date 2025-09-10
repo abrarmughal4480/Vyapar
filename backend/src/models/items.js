@@ -77,25 +77,44 @@ itemSchema.methods.addStock = function(quantity, purchasePrice, purchaseId, supp
 };
 
 itemSchema.methods.reduceStock = function(quantity) {
-  if ((this.stock || 0) < quantity) {
-    throw new Error('Insufficient stock available');
-  }
-
   let remainingToDeduct = quantity;
   if (!Array.isArray(this.batches)) {
     this.batches = [];
   }
 
-  // FIFO consumption from batches
-  for (let index = 0; index < this.batches.length && remainingToDeduct > 0; index++) {
-    const batch = this.batches[index];
-    const deduction = Math.min(batch.quantity || 0, remainingToDeduct);
-    batch.quantity = (batch.quantity || 0) - deduction;
-    remainingToDeduct -= deduction;
+  // Calculate total available stock from all batches
+  const totalAvailableStock = this.batches.reduce((sum, batch) => sum + (batch.quantity || 0), 0);
+  
+  // Always allow negative stock - no more "Insufficient stock" errors
+  if (totalAvailableStock >= quantity) {
+    // Normal FIFO consumption from batches when sufficient stock is available
+    for (let index = 0; index < this.batches.length && remainingToDeduct > 0; index++) {
+      const batch = this.batches[index];
+      const deduction = Math.min(batch.quantity || 0, remainingToDeduct);
+      batch.quantity = (batch.quantity || 0) - deduction;
+      remainingToDeduct -= deduction;
+    }
+  }
+  
+  // If there's still remaining quantity to deduct (insufficient stock), 
+  // add it as negative quantity to the last batch or create a new batch
+  if (remainingToDeduct > 0) {
+    const lastBatch = this.batches[this.batches.length - 1];
+    if (lastBatch) {
+      // Use the last batch and make it more negative
+      lastBatch.quantity = (lastBatch.quantity || 0) - remainingToDeduct;
+    } else {
+      // If no batches exist, create a new one with negative quantity
+      this.batches.push({ 
+        quantity: -remainingToDeduct, 
+        purchasePrice: this.purchasePrice || 0,
+        createdAt: new Date() 
+      });
+    }
   }
 
-  // Remove empty batches
-  this.batches = this.batches.filter(b => (b.quantity || 0) > 0);
+  // Remove empty batches (but keep negative quantity batches)
+  this.batches = this.batches.filter(b => (b.quantity || 0) !== 0);
 
   // CRITICAL FIX: Recalculate stock from batches instead of manual update
   this.stock = this.batches.reduce((sum, batch) => sum + (batch.quantity || 0), 0);

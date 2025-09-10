@@ -78,25 +78,45 @@ export const createSale = async (req, res) => {
       // Use simple stock reduction method
       if (dbItem) {
         try {
-          // Plan FIFO batches to consume for cost capture
-          const plannedBatches = [];
-          let remainingPlan = Number(stockQuantity) || 0;
-          if (!Array.isArray(dbItem.batches)) dbItem.batches = [];
-          for (let i = 0; i < dbItem.batches.length && remainingPlan > 0; i++) {
-            const batch = dbItem.batches[i];
-            const take = Math.min(batch.quantity || 0, remainingPlan);
-            if (take > 0) {
-              plannedBatches.push({ quantity: take, purchasePrice: batch.purchasePrice || dbItem.purchasePrice || 0 });
-              remainingPlan -= take;
-            }
-          }
-
-          // Use the reduceStock method from the items model
+          const originalBatches = JSON.parse(JSON.stringify(dbItem.batches || []));
           await dbItem.reduceStock(stockQuantity);
           
+          const consumedBatches = [];
+          const requestQty = Number(stockQuantity) || 0;
+          let remainingToAllocate = requestQty;
           
-          // Persist consumed batches into sale item
-          const consumedBatches = plannedBatches;
+          for (let i = 0; i < originalBatches.length && remainingToAllocate > 0; i++) {
+            const originalBatch = originalBatches[i];
+            const originalQty = originalBatch.quantity || 0;
+            const currentBatch = dbItem.batches[i] || { quantity: 0 };
+            const currentQty = currentBatch.quantity || 0;
+            
+            const consumedFromBatch = Math.min(originalQty, originalQty - currentQty, remainingToAllocate);
+            
+            if (consumedFromBatch > 0) {
+              consumedBatches.push({
+                quantity: consumedFromBatch,
+                purchasePrice: originalBatch.purchasePrice || dbItem.purchasePrice || 0
+              });
+              remainingToAllocate -= consumedFromBatch;
+            }
+          }
+          
+          if (remainingToAllocate > 0) {
+            const lastBatch = dbItem.batches[dbItem.batches.length - 1];
+            if (lastBatch && lastBatch.quantity < 0) {
+              consumedBatches.push({
+                quantity: remainingToAllocate,
+                purchasePrice: lastBatch.purchasePrice || dbItem.purchasePrice || 0
+              });
+            } else {
+              consumedBatches.push({
+                quantity: remainingToAllocate,
+                purchasePrice: dbItem.purchasePrice || 0
+              });
+            }
+          }
+          
           const totalCost = consumedBatches.reduce((sum, b) => sum + (Number(b.quantity || 0) * Number(b.purchasePrice || 0)), 0);
           saleItem.consumedBatches = consumedBatches;
           saleItem.totalCost = totalCost;

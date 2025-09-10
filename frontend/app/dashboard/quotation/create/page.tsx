@@ -494,7 +494,15 @@ export default function CreateSalesOrderPage() {
       };
       const res = await createQuotation(quotationPayload, token);
       if (res && res.success) {
-        setToast({ message: 'Quotation created successfully!', type: 'success' });
+        // Check if party was auto-created
+        if (res.partyCreated) {
+          setToast({ 
+            message: `Customer "${formData.customer}" was automatically created and quotation saved! Quotation No: ${res.data?.quotationNo || ''}`, 
+            type: 'success' 
+          });
+        } else {
+          setToast({ message: 'Quotation created successfully!', type: 'success' });
+        }
         router.push('/dashboard/quotation');
       } else {
         setError(res?.message || 'Failed to save quotation');

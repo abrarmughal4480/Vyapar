@@ -127,16 +127,41 @@ export const createQuotation = async (req, res) => {
         throw new Error('Failed to generate quotation number');
       }
       
-      // Get customer's current balance before creating quotation
+      // Check if customer exists, if not create it
+      const Party = (await import('../models/parties.js')).default;
+      let customerDoc = await Party.findOne({ name: req.body.customerName, user: userId });
+      let partyCreated = false;
+      
+      if (!customerDoc) {
+        // Create new party with default values
+        customerDoc = new Party({
+          name: req.body.customerName,
+          phone: req.body.customerPhone || '',
+          contactNumber: req.body.customerPhone || '',
+          email: '',
+          address: '',
+          gstNumber: '',
+          openingBalance: 0,
+          firstOpeningBalance: 0,
+          pan: '',
+          city: '',
+          state: '',
+          pincode: '',
+          tags: [],
+          status: 'active',
+          note: 'Auto-created from quotation',
+          user: userId
+        });
+        
+        await customerDoc.save();
+        partyCreated = true;
+        console.log(`Auto-created party from quotation: ${req.body.customerName}`);
+      }
+      
+      // Get customer's current balance
       let customerBalance = 0;
-      try {
-        const Party = (await import('../models/parties.js')).default;
-        const customerDoc = await Party.findOne({ name: req.body.customerName, user: userId });
-        if (customerDoc) {
-          customerBalance = customerDoc.openingBalance || 0;
-        }
-      } catch (err) {
-        console.error('Failed to get customer balance:', err);
+      if (customerDoc) {
+        customerBalance = customerDoc.openingBalance || 0;
       }
 
       const quotation = new Quotation({
@@ -149,7 +174,7 @@ export const createQuotation = async (req, res) => {
         partyBalanceAfterTransaction: customerBalance, // For quotations, balance remains same
       });
       await quotation.save();
-      res.status(201).json({ success: true, data: quotation });
+      res.status(201).json({ success: true, data: quotation, partyCreated });
       return;
     } catch (err) {
       console.error(`Quotation creation error (attempt ${retryCount + 1}):`, err);

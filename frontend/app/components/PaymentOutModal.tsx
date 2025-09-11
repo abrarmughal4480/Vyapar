@@ -17,6 +17,8 @@ interface PaymentOutModalProps {
   purchaseId?: string; // Made optional for party payments
   onSave?: (data: any) => void;
   showDiscount?: boolean; // New prop to control discount field visibility
+  showPartyBalance?: boolean; // New prop to control party balance display
+  showRemainingAmount?: boolean; // New prop to control remaining amount display
 }
 
 const paymentTypeOptions = [
@@ -97,7 +99,7 @@ function PaymentTypeDropdown({ value, onChange }: { value: string; onChange: (va
   );
 }
 
-const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, partyName: initialPartyName, total, dueBalance, purchaseId, onSave, showDiscount = true }) => {
+const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, partyName: initialPartyName, total, dueBalance, purchaseId, onSave, showDiscount = true, showPartyBalance = true, showRemainingAmount = true }) => {
   const [paymentType, setPaymentType] = useState('Cash');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [paidAmount, setPaidAmount] = useState('');
@@ -165,12 +167,19 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
   useEffect(() => {
     if (isOpen) {
       setPartySearch(initialPartyName || '');
-      // Also fetch balance for initial party if provided
+      // If initialPartyName is provided, set it as selected party
       if (initialPartyName) {
+        setSelectedParty({ name: initialPartyName, _id: 'temp' });
         fetchPartyBalance(initialPartyName);
+      } else {
+        setSelectedParty(null);
+      }
+      // Pre-fill paid amount with due balance
+      if (dueBalance && dueBalance > 0) {
+        setPaidAmount(dueBalance.toString());
       }
     }
-  }, [isOpen, initialPartyName]);
+  }, [isOpen, initialPartyName, dueBalance]);
 
   // Fetch supplier parties for suggestions
   useEffect(() => {
@@ -252,21 +261,24 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
       return;
     }
     
+    if (!purchaseId) {
+      setToast({ message: 'Purchase ID is missing', type: 'error' });
+      return;
+    }
+    
     try {
       const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
       
-      // Use bulk payment to party (updates party opening balance directly)
+      // Use individual purchase payment (updates specific purchase and party balance)
       const paymentData = {
-        supplierName: selectedParty.name,
+        purchaseId: purchaseId,
         amount: amount,
-        discount: discountAmount > 0 ? discountAmount : undefined,
-        discountType: discountAmount > 0 ? (discountType === 'percentage' ? '%' : 'PKR') : undefined,
         paymentType,
         description: `Payment for ${selectedParty.name}`,
         imageUrl: imagePreview || ''
       };
       
-      const result = await makeBulkPaymentToParty(paymentData, token);
+      const result = await makePayment(paymentData, token);
       if (result && result.success) {
         let message = `Payment made to ${selectedParty.name}!`;
         if (discountAmount > 0) {
@@ -281,7 +293,8 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
           paidAmount: amount, 
           discount: discountAmount,
           discountType,
-          image
+          image,
+          purchaseId
         });
         onClose();
       } else {
@@ -340,7 +353,7 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
               <div className="mb-4" style={{ position: 'relative' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <label className="block text-gray-700 font-medium">Party</label>
-                  {selectedParty && partyOpeningBalance !== 0 && (
+                  {showPartyBalance && selectedParty && partyOpeningBalance !== 0 && (
                     <div style={{ 
                       fontSize: 14, 
                       fontWeight: 600, 
@@ -357,8 +370,15 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
                 <input
                   ref={partyInputRef}
                   type="text"
-                  value={partySearch}
-                  onChange={e => { setPartySearch(e.target.value); setShowPartyDropdown(true); }}
+                  value={selectedParty ? selectedParty.name : partySearch}
+                  onChange={e => { 
+                    setPartySearch(e.target.value); 
+                    setShowPartyDropdown(true);
+                    // Clear selected party when typing
+                    if (selectedParty && e.target.value !== selectedParty.name) {
+                      setSelectedParty(null);
+                    }
+                  }}
                   onFocus={() => setShowPartyDropdown(true)}
                   onBlur={() => setTimeout(() => setShowPartyDropdown(false), 200)}
                   placeholder="Search or select supplier..."
@@ -468,46 +488,6 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
             </div>
             {/* Right Side */}
             <div style={{ flex: 1, minWidth: 240, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              {showDiscount && (
-                <div>
-                  <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Discount</label>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input 
-                      type="number" 
-                      value={discount} 
-                      onChange={e => setDiscount(e.target.value)} 
-                      style={{ 
-                        flex: 1, 
-                        padding: 12, 
-                        border: '1.5px solid #e2e8f0', 
-                        borderRadius: 8, 
-                        background: '#fff', 
-                        color: '#334155', 
-                        fontSize: 15, 
-                        fontWeight: 500 
-                      }} 
-                      placeholder="Enter discount" 
-                    />
-                    <select 
-                      value={discountType} 
-                      onChange={e => setDiscountType(e.target.value as 'percentage' | 'pkr')}
-                      style={{ 
-                        padding: 12, 
-                        border: '1.5px solid #e2e8f0', 
-                        borderRadius: 8, 
-                        background: '#fff', 
-                        color: '#334155', 
-                        fontSize: 15, 
-                        fontWeight: 500,
-                        minWidth: 80
-                    }}
-                    >
-                      <option value="pkr">PKR</option>
-                      <option value="percentage">%</option>
-                    </select>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
           <div style={{ padding: '0 40px 24px 40px', marginTop: 32 }}>
@@ -515,9 +495,56 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
               {/* Left Side - Empty for spacing */}
               <div style={{ flex: 1, minWidth: 240 }}></div>
               {/* Right Side - Amount field */}
-              <div style={{ flex: 1, minWidth: 240 }}>
-                <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Paid Amount</label>
+              <div style={{ flex: 1, minWidth: 240, marginTop: -48 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label style={{ fontSize: 15, fontWeight: 600, color: '#334155' }}>Paid Amount</label>
+                  {showRemainingAmount && (
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#059669' }}>Remaining: PKR {Math.max(0, (dueBalance || 0) - (parseFloat(paidAmount) || 0))}</span>
+                  )}
+                </div>
                 <input type="number" value={paidAmount} onChange={e => setPaidAmount(e.target.value)} style={{ width: '100%', padding: 12, border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#334155', fontSize: 15, fontWeight: 500 }} placeholder="Enter amount paid" />
+                
+                {/* Discount Field */}
+                {showDiscount && (
+                  <div style={{ marginTop: 8 }}>
+                    <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Discount</label>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input 
+                        type="number" 
+                        value={discount} 
+                        onChange={e => setDiscount(e.target.value)} 
+                        style={{ 
+                          flex: 1, 
+                          padding: 12, 
+                          border: '1.5px solid #e2e8f0', 
+                          borderRadius: 8, 
+                          background: '#fff', 
+                          color: '#334155', 
+                          fontSize: 15, 
+                          fontWeight: 500 
+                        }} 
+                        placeholder="Enter discount" 
+                      />
+                      <select 
+                        value={discountType} 
+                        onChange={e => setDiscountType(e.target.value as 'percentage' | 'pkr')}
+                        style={{ 
+                          padding: 12, 
+                          border: '1.5px solid #e2e8f0', 
+                          borderRadius: 8, 
+                          background: '#fff', 
+                          color: '#334155', 
+                          fontSize: 15, 
+                          fontWeight: 500,
+                          minWidth: 80
+                        }}
+                      >
+                        <option value="pkr">PKR</option>
+                        <option value="percentage">%</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

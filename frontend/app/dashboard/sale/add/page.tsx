@@ -1022,25 +1022,15 @@ const AddSalePageWithSearchParams = () => {
           setToast({ message: `Sale saved! Invoice No: ${result.sale.invoiceNo || ''}`, type: 'success' });
         }
         
-        // Redirect based on whether we're editing or creating
-        if (newSale.editingId) {
-          // If editing, redirect back to sales page
-          setTimeout(() => router.push('/dashboard/sale'), 1500);
-        } else {
-          // If creating new, redirect to invoices page
-          setTimeout(() => router.push(`/dashboard/invoices?saleId=${result.sale._id}&invoiceNo=${result.sale.invoiceNo}`), 1500);
-        }
+        // Redirect to invoice page for printing (both editing and creating)
+        setTimeout(() => router.push(`/dashboard/invoices?saleId=${result.sale._id}&invoiceNo=${result.sale.invoiceNo}`), 1500);
         return;
       }
       if (result.success) {
         setToast({ message: 'Sale saved successfully!', type: 'success' });
         setLoading(false);
-        // Redirect based on whether we're editing or creating
-        if (newSale.editingId) {
-          setTimeout(() => router.push('/dashboard/sale'), 1200);
-        } else {
-          setTimeout(() => router.push('/dashboard/invoices'), 1200);
-        }
+        // Redirect to invoice page for printing (both editing and creating)
+        setTimeout(() => router.push('/dashboard/invoices'), 1200);
       } else {
         setToast({ message: result.message || 'Failed to save sale', type: 'error' });
         setLoading(false);
@@ -1248,11 +1238,20 @@ const AddSalePageWithSearchParams = () => {
       }
       const token =
         (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
+      
+      if (!token) {
+        setPartyBalance(null);
+        return;
+      }
+      
       try {
         const balance = await getPartyBalance(newSale.partyName, token);
-        setPartyBalance(balance);
-      } catch (err) {
+        // Handle case where balance might be null or undefined
+        setPartyBalance(balance || null);
+      } catch (err: any) {
+        console.warn('Could not fetch party balance:', err.message || err);
         setPartyBalance(null);
+        // Don't show error toast for balance fetch failures as it's not critical
       }
     };
     fetchBalance();

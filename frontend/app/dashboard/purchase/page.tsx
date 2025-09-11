@@ -1102,6 +1102,7 @@ export default function PurchaseBillsPage() {
   total={typeof selectedPurchase?.grandTotal === 'number' ? selectedPurchase.grandTotal : 0}
   dueBalance={typeof selectedPurchase?.balance === 'number' ? selectedPurchase.balance : 0}
   purchaseId={selectedPurchase?._id || '0'}
+  showPartyBalance={false}
 />
       <ConfirmDialog
         open={showDeleteDialog}

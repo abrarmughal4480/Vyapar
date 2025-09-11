@@ -68,10 +68,18 @@ export const getCustomerParties = async (token: string) => {
 };
 
 export const getPartyBalance = async (partyId: string, token: string) => {
-  const res = await api.get(`/parties/${partyId}/balance`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  return res.data;
+  try {
+    const res = await api.get(`/parties/${partyId}/balance`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return res.data;
+  } catch (error: any) {
+    // If party doesn't exist or balance endpoint fails, return null
+    if (error.response?.status === 404 || error.response?.status === 500) {
+      return null;
+    }
+    throw error; // Re-throw other errors
+  }
 };
 
 export const getReceivables = async (token: string) => {

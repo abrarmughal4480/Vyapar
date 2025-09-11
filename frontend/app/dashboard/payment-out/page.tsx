@@ -541,6 +541,7 @@ const PaymentOutPageContent = () => {
         dueBalance={typeof selectedTransaction?.balance === 'number' ? selectedTransaction.balance : 0}
         purchaseId={selectedTransaction?.purchaseId}
         showDiscount={false}
+        showRemainingAmount={false}
       />
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />

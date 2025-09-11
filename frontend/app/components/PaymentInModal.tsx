@@ -15,6 +15,7 @@ interface PaymentInModalProps {
   saleId: string;
   onSave?: (data: any) => void;
   showDiscount?: boolean; // New prop to control discount field visibility
+  showRemainingAmount?: boolean; // New prop to control remaining amount display
 }
 
 const paymentTypeOptions = [
@@ -95,7 +96,7 @@ function PaymentTypeDropdown({ value, onChange }: { value: string; onChange: (va
   );
 }
 
-const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyName, total, dueBalance, saleId, onSave, showDiscount = true }) => {
+const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyName, total, dueBalance, saleId, onSave, showDiscount = true, showRemainingAmount = true }) => {
   const [paymentType, setPaymentType] = useState('Cash');
   const [date, setDate] = useState(() => {
     const today = new Date();
@@ -125,8 +126,18 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
   useEffect(() => {
     if (isOpen) {
       setPartySearch(partyName || '');
+      // If partyName is provided, set it as selected party
+      if (partyName) {
+        setSelectedParty({ name: partyName, _id: 'temp' });
+      } else {
+        setSelectedParty(null);
+      }
+      // Pre-fill received amount with due balance
+      if (dueBalance && dueBalance > 0) {
+        setReceivedAmount(dueBalance.toString());
+      }
     }
-  }, [partyName, isOpen]);
+  }, [partyName, isOpen, dueBalance]);
 
   // Prevent background scrolling when modal is open
   useEffect(() => {
@@ -262,17 +273,22 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
       return;
     }
     
+    if (!saleId) {
+      setToast({ message: 'Sale ID is missing', type: 'error' });
+      return;
+    }
+    
     try {
       let result;
       
-      // Use party payment (updates party opening balance directly)
-      result = await receivePartyPayment(
-        selectedParty.name, 
-        amount, 
-        token, 
+      // Use individual sale payment (updates specific sale and party balance)
+      result = await receivePayment(
+        saleId,
+        amount,
+        token,
         discountAmount > 0 ? discountAmount : undefined,
         discountAmount > 0 ? (discountType === 'percentage' ? '%' : 'PKR') : undefined,
-        paymentType, 
+        paymentType,
         date
       );
       
@@ -284,7 +300,8 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
           receivedAmount: amount, 
           discount: discountAmount,
           discountType,
-          image
+          image,
+          saleId
         });
         onClose();
         
@@ -356,8 +373,15 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
               <input
                 ref={partyInputRef}
                 type="text"
-                value={partySearch}
-                onChange={e => { setPartySearch(e.target.value); setShowPartyDropdown(true); }}
+                value={selectedParty ? selectedParty.name : partySearch}
+                onChange={e => { 
+                  setPartySearch(e.target.value); 
+                  setShowPartyDropdown(true);
+                  // Clear selected party when typing
+                  if (selectedParty && e.target.value !== selectedParty.name) {
+                    setSelectedParty(null);
+                  }
+                }}
                 onFocus={() => setShowPartyDropdown(true)}
                 onClick={() => setShowPartyDropdown(true)}
                 onBlur={() => setTimeout(() => setShowPartyDropdown(false), 200)}
@@ -474,46 +498,6 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
           </div>
           {/* Right Side */}
           <div style={{ flex: 1, minWidth: 240, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            {showDiscount && (
-              <div>
-                <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Discount</label>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input 
-                    type="number" 
-                    value={discount} 
-                    onChange={e => setDiscount(e.target.value)} 
-                    style={{ 
-                      flex: 1, 
-                      padding: 12, 
-                      border: '1.5px solid #e2e8f0', 
-                      borderRadius: 8, 
-                      background: '#fff', 
-                      color: '#334155', 
-                      fontSize: 15, 
-                      fontWeight: 500 
-                    }} 
-                    placeholder="Enter discount" 
-                  />
-                  <select 
-                    value={discountType} 
-                    onChange={e => setDiscountType(e.target.value as 'percentage' | 'pkr')}
-                    style={{ 
-                      padding: 12, 
-                      border: '1.5px solid #e2e8f0', 
-                      borderRadius: 8, 
-                      background: '#fff', 
-                      color: '#334155', 
-                      fontSize: 15, 
-                      fontWeight: 500,
-                      minWidth: 80
-                    }}
-                  >
-                    <option value="pkr">PKR</option>
-                    <option value="percentage">%</option>
-                  </select>
-                </div>
-              </div>
-            )}
           </div>
         </div>
         <div style={{ padding: '0 40px 24px 40px', marginTop: 32 }}>
@@ -521,9 +505,56 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
             {/* Left Side - Empty for spacing */}
             <div style={{ flex: 1, minWidth: 240 }}></div>
             {/* Right Side - Amount field */}
-            <div style={{ flex: 1, minWidth: 240 }}>
-              <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Received Amount</label>
+            <div style={{ flex: 1, minWidth: 240, marginTop: -48 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <label style={{ fontSize: 15, fontWeight: 600, color: '#334155' }}>Received Amount</label>
+                {showRemainingAmount && (
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#059669' }}>Remaining: PKR {Math.max(0, (dueBalance || 0) - (parseFloat(receivedAmount) || 0))}</span>
+                )}
+              </div>
               <input type="number" value={receivedAmount} onChange={e => setReceivedAmount(e.target.value)} style={{ width: '100%', padding: 12, border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#334155', fontSize: 15, fontWeight: 500 }} placeholder="Enter amount received" />
+              
+              {/* Discount Field */}
+              {showDiscount && (
+                <div style={{ marginTop: 8 }}>
+                  <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Discount</label>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input 
+                      type="number" 
+                      value={discount} 
+                      onChange={e => setDiscount(e.target.value)} 
+                      style={{ 
+                        flex: 1, 
+                        padding: 12, 
+                        border: '1.5px solid #e2e8f0', 
+                        borderRadius: 8, 
+                        background: '#fff', 
+                        color: '#334155', 
+                        fontSize: 15, 
+                        fontWeight: 500 
+                      }} 
+                      placeholder="Enter discount" 
+                    />
+                    <select 
+                      value={discountType} 
+                      onChange={e => setDiscountType(e.target.value as 'percentage' | 'pkr')}
+                      style={{ 
+                        padding: 12, 
+                        border: '1.5px solid #e2e8f0', 
+                        borderRadius: 8, 
+                        background: '#fff', 
+                        color: '#334155', 
+                        fontSize: 15, 
+                        fontWeight: 500,
+                        minWidth: 80
+                      }}
+                    >
+                      <option value="pkr">PKR</option>
+                      <option value="percentage">%</option>
+                    </select>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

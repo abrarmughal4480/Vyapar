@@ -386,13 +386,9 @@ export default function CreateSalesOrderPage() {
     }));
   };
 
-  // Add new row (only if last row is filled)
+  // Add new row (no validation required)
   const addRow = () => {
-    const lastItem = formData.items[formData.items.length - 1];
-    if (!lastItem.item || !lastItem.qty || !lastItem.price) {
-      setToast({ message: 'Please fill the last row before adding a new one.', type: 'error' });
-      return;
-    }
+    // Removed validation - users can add new rows without filling the last one
     setFormData(prev => ({
       ...prev,
       items: [
@@ -665,7 +661,7 @@ export default function CreateSalesOrderPage() {
               <button
                 type="button"
                 onClick={addRow}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-sm"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-sm hover:shadow-lg transform hover:scale-105"
               >
                 <span className="text-xl">+</span> Add Row
               </button>
@@ -786,8 +782,7 @@ export default function CreateSalesOrderPage() {
                             // If this is the last row and qty is not empty, add a new row
                             if (
                               index === formData.items.length - 1 &&
-                              e.target.value &&
-                              !formData.items.some((row: { qty?: number }, idx: number) => idx > index && !row.qty)
+                              e.target.value
                             ) {
                               // Add a new row
                               addRow();

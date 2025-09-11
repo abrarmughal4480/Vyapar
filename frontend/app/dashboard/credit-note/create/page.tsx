@@ -235,8 +235,7 @@ function ItemRow({
             
             if (
               index === newCreditNote.items.length - 1 &&
-              newQty &&
-              !newCreditNote.items.some((row: { qty?: string }, idx: number) => idx > index && !row.qty)
+              newQty
             ) {
               addNewRow();
             }
@@ -796,15 +795,13 @@ const CreateCreditNotePage = () => {
               <h2 className="text-lg font-semibold text-blue-800 flex items-center gap-2">
                 <span>🛒</span> Items
               </h2>
-              {/*
               <button
                 type="button"
                 onClick={addNewRow}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-sm"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-sm hover:shadow-lg transform hover:scale-105"
               >
                 <span className="text-xl">+</span> Add Row
               </button>
-              */}
             </div>
             <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100">
               <table className="w-full text-sm">

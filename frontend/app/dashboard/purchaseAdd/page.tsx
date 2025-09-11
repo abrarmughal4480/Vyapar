@@ -951,19 +951,7 @@ export default function AddPurchasePage() {
 
   const addNewRow = () => {
     const lastItem = newPurchase.items[newPurchase.items.length - 1];
-    if (isFromExpenses) {
-      // For expenses, only check item and price
-      if (!lastItem.item || !lastItem.price) {
-        setToast({ message: 'Please fill the last row before adding a new one.', type: 'error' });
-        return;
-      }
-    } else {
-      // For purchases, check item, qty, and price
-      if (!lastItem.item || !lastItem.qty || !lastItem.price) {
-        setToast({ message: 'Please fill the last row before adding a new one.', type: 'error' });
-        return;
-      }
-    }
+    // Removed validation - users can add new rows without filling the last one
     setNewPurchase(prev => ({
       ...prev,
       items: [
@@ -1903,15 +1891,13 @@ export default function AddPurchasePage() {
                   <h2 className="text-lg font-semibold text-blue-800 flex items-center gap-2">
                     <span>🛒</span> Items
                   </h2>
-                  {/*
                   <button
                     type="button"
                     onClick={addNewRow}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-sm"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-sm hover:shadow-lg transform hover:scale-105"
                   >
                     <span className="text-xl">+</span> Add Row
                   </button>
-                  */}
                 </div>
                 <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100">
                   <table className="w-full text-sm">
@@ -2130,8 +2116,7 @@ export default function AddPurchasePage() {
                                     // If this is the last row and qty is not empty, add a new row
                                     if (
                                       index === newPurchase.items.length - 1 &&
-                                      e.target.value &&
-                                      !newPurchase.items.some((row: { qty?: string }, idx: number) => idx > index && !row.qty)
+                                      e.target.value
                                     ) {
                                       // Add a new row
                                       addNewRow();
@@ -2251,7 +2236,7 @@ export default function AddPurchasePage() {
                                   if (isFromExpenses && e.target.value) {
                                     const currentItems = newPurchase.items;
                                     const isLastRow = index === currentItems.length - 1;
-                                    if (isLastRow && currentItems[0].item && currentItems[0].price) {
+                                    if (isLastRow) {
                                       // Last row has price, add new row
                                       setTimeout(() => {
                                         setNewPurchase(prev => ({

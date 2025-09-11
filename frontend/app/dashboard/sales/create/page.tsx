@@ -248,8 +248,7 @@ const ItemRow = React.memo(({
             handleItemChange(item.id, 'qty', e.target.value);
             if (
               index === formData.items.length - 1 &&
-              e.target.value &&
-              !formData.items.some((row: { qty?: number }, idx: number) => idx > index && !row.qty)
+              e.target.value
             ) {
               addRow();
             }
@@ -524,11 +523,7 @@ export default function CreateSalesOrderPage() {
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null);
 
   const addRow = useCallback(() => {
-    const lastItem = formData.items[formData.items.length - 1];
-    if (!lastItem.item || !lastItem.qty || !lastItem.price) {
-      setToast({ message: 'Please fill the last row before adding a new one.', type: 'error' });
-      return;
-    }
+    // Removed validation - users can add new rows without filling the last one
     setFormData(prev => ({
       ...prev,
       items: [
@@ -942,6 +937,13 @@ export default function CreateSalesOrderPage() {
               <h2 className="text-lg font-semibold text-blue-800 flex items-center gap-2">
                 <span>🛒</span> Items
               </h2>
+              <button
+                type="button"
+                onClick={addRow}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-sm hover:shadow-lg transform hover:scale-105"
+              >
+                <span className="text-xl">+</span> Add Row
+              </button>
             </div>
             <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100">
               <table className="w-full text-sm">

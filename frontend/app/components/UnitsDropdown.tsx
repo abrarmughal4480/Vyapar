@@ -58,8 +58,6 @@ export function UnitsDropdown({
         }
       });
       
-      // Add custom unit option
-      options.push({ value: 'Custom', label: 'Custom' });
       
       return options;
     }
@@ -193,7 +191,7 @@ export function UnitsDropdown({
             <li
               key={opt.value}
               data-dropdown-index={idx}
-              className={`px-4 py-2 cursor-pointer flex items-center gap-2 bg-white hover:bg-blue-50 transition-colors ${value === opt.value ? 'font-semibold text-gray-700' : 'text-gray-700'} ${dropdownIndex === idx ? 'font-semibold text-gray-700' : ''}`}
+              className={`px-4 py-2 cursor-pointer flex items-center gap-2 transition-colors ${value === opt.value ? 'font-semibold text-gray-700 bg-blue-100' : 'text-gray-700'} ${dropdownIndex === idx ? 'font-semibold text-gray-700 bg-blue-50' : 'bg-white hover:bg-blue-50'}`}
               onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); setDropdownIndex(idx); }}
               tabIndex={0}
               onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { 

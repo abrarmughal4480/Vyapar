@@ -241,7 +241,7 @@ const KeyboardDropdown: React.FC<KeyboardDropdownProps> = ({
                   <li
                     key={getOptionValue(option)}
                     className={`px-4 py-2 cursor-pointer rounded-lg transition-all ${
-                      isFocused ? 'bg-blue-50 text-blue-700' :
+                      isFocused ? 'bg-blue-50 text-blue-700 font-semibold' :
                       isSelected ? 'font-semibold text-blue-600 bg-blue-100' :
                       'text-gray-700 hover:bg-blue-50'
                     }`}

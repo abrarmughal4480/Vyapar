@@ -142,7 +142,7 @@ interface FormData {
   invoiceDate: string;
   customer: string;
   phone: string;
-  items: { id: number; item: string; qty: number; unit: string; customUnit: string; price: number; amount: number; discountPercentage: string; discountAmount: string }[];
+  items: { id: number; item: string; qty: number; unit: string; price: number; amount: number; discountPercentage: string; discountAmount: string }[];
   description: string;
   image: File | null;
   discount: number;
@@ -162,8 +162,8 @@ export default function CreateSalesOrderPage() {
     customer: '',
     phone: '',
     items: [
-      { id: 1, item: '', qty: 0, unit: 'NONE', customUnit: '', price: 0, amount: 0, discountPercentage: '', discountAmount: '' },
-      { id: 2, item: '', qty: 0, unit: 'NONE', customUnit: '', price: 0, amount: 0, discountPercentage: '', discountAmount: '' }
+      { id: 1, item: '', qty: 0, unit: 'NONE', price: 0, amount: 0, discountPercentage: '', discountAmount: '' },
+      { id: 2, item: '', qty: 0, unit: 'NONE', price: 0, amount: 0, discountPercentage: '', discountAmount: '' }
     ],
     description: '',
     image: null,
@@ -349,9 +349,6 @@ export default function CreateSalesOrderPage() {
       items: prev.items.map(item => {
         if (item.id === id) {
           let updated = { ...item, [field]: value };
-          if (field === 'unit' && value !== 'Custom') {
-            updated.customUnit = '';
-          }
           
           // If quantity is changing, recalculate price based on wholesale logic
           if (field === 'qty') {
@@ -393,7 +390,7 @@ export default function CreateSalesOrderPage() {
       ...prev,
       items: [
         ...prev.items,
-        { id: Date.now(), item: '', qty: 0, unit: 'NONE', customUnit: '', price: 0, amount: 0, discountPercentage: '', discountAmount: '' }
+        { id: Date.now(), item: '', qty: 0, unit: 'NONE', price: 0, amount: 0, discountPercentage: '', discountAmount: '' }
       ]
     }));
   };
@@ -472,7 +469,6 @@ export default function CreateSalesOrderPage() {
             item: item.item,
             qty: item.qty,
             unit: item.unit,
-            customUnit: item.customUnit,
             price: item.price,
             amount: item.amount,
             discountPercentage: item.discountPercentage,
@@ -687,7 +683,7 @@ export default function CreateSalesOrderPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {formData.items.map((item: { id: number; item: string; qty: number; unit: string; customUnit: string; price: number; amount: number; discountPercentage: string; discountAmount: string }, index: number) => (
+                  {formData.items.map((item: { id: number; item: string; qty: number; unit: string; price: number; amount: number; discountPercentage: string; discountAmount: string }, index: number) => (
                     <tr key={item.id} className={`border-b border-gray-100 ${index % 2 === 0 ? 'bg-white' : 'bg-blue-50'} hover:bg-blue-100 transition-colors`}>
                       <td className="py-2 px-2 font-medium">{index + 1}</td>
                       <td className="py-2 px-2">
@@ -880,11 +876,11 @@ export default function CreateSalesOrderPage() {
                               if (selectedItem && selectedItem.unit) {
                                 const unit = selectedItem.unit;
                                 if (typeof unit === 'object' && unit.base) {
-                                  return (unit.secondary && unit.secondary !== 'None' ? 2 : 1) + 1; // +1 for Custom option
+                                  return (unit.secondary && unit.secondary !== 'None' ? 2 : 1);
                                 } else if (typeof unit === 'string' && unit.includes(' / ')) {
-                                  return 3; // 2 parts + Custom
+                                  return 2; // 2 parts
                                 } else {
-                                  return 2; // 1 unit + Custom
+                                  return 1; // 1 unit
                                 }
                               }
                             }

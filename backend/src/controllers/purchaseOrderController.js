@@ -189,6 +189,21 @@ export const fixCompletedPurchaseOrders = async (req, res) => {
   }
 };
 
+// Get a purchase order by ID
+export const getPurchaseOrderById = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    const { orderId } = req.params;
+    const order = await PurchaseOrder.findOne({ _id: orderId, userId });
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Purchase order not found or not authorized' });
+    }
+    res.json({ success: true, data: order });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // Delete a purchase order by ID
 export const deletePurchaseOrder = async (req, res) => {
   try {
@@ -212,5 +227,6 @@ export default {
   updatePurchaseOrderTotals,
   updatePurchaseOrder,
   fixCompletedPurchaseOrders,
+  getPurchaseOrderById,
   deletePurchaseOrder,
 }; 

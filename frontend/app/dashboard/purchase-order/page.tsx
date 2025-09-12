@@ -7,7 +7,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import TableActionMenu from '../../components/TableActionMenu';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { getCurrentUserInfo, canEditData, canDeleteData, canAddData } from '../../../lib/roleAccessControl';
-import { useSidebar } from '../../contexts/SidebarContext';
 
 // Purchase Form Page Component
 function PurchaseFormPage({ onClose, onSave }: { onClose: () => void; onSave?: (data: any) => void }) {
@@ -1114,25 +1113,6 @@ export default function PurchaseOrderPage() {
   const [userInfo, setUserInfo] = useState<any>(null);
   const [isClient, setIsClient] = useState(false);
   
-  // Import sidebar context for auto-collapse
-  const { setIsCollapsed } = useSidebar();
-  const [wasSidebarCollapsed, setWasSidebarCollapsed] = useState(false);
-
-  // Auto-collapse sidebar when page opens and restore when closing
-  useEffect(() => {
-    // Store current sidebar state and collapse it
-    const currentSidebarState = document.body.classList.contains('sidebar-collapsed') || 
-                               document.documentElement.classList.contains('sidebar-collapsed');
-    setWasSidebarCollapsed(currentSidebarState);
-    
-    // Collapse sidebar for better form experience
-    setIsCollapsed(true);
-    
-    // Restore sidebar state when component unmounts
-    return () => {
-      setIsCollapsed(wasSidebarCollapsed);
-    };
-  }, [setIsCollapsed, wasSidebarCollapsed]);
 
   // Get current user info for role-based access
   useEffect(() => {
@@ -1273,7 +1253,7 @@ export default function PurchaseOrderPage() {
     // Navigate to purchase add page with data
     const queryParams = new URLSearchParams({
       convertFromOrder: 'true',
-      orderData: JSON.stringify(purchaseData)
+      orderData: encodeURIComponent(JSON.stringify(purchaseData))
     });
     
     router.push(`/dashboard/purchaseAdd?${queryParams.toString()}`);
@@ -1282,11 +1262,12 @@ export default function PurchaseOrderPage() {
   // Get status with overdue logic
   const getOrderStatus = (order: any) => {
     if (order.status === 'Completed') return 'Order Completed';
+    if (order.status === 'Converted') return 'Converted';
     
     if (order.dueDate) {
       const dueDate = new Date(order.dueDate);
       const today = new Date();
-      if (dueDate < today && order.status !== 'Completed') {
+      if (dueDate < today && order.status !== 'Completed' && order.status !== 'Converted') {
         return 'Overdue';
       }
     }
@@ -1747,38 +1728,9 @@ export default function PurchaseOrderPage() {
                             onEdit={canEditData() ? async () => {
                             const token = getToken();
                             const id = order._id || order.id;
-                            if (!id) return;
-                              const result = await getPurchaseOrderById(id, token);
-                            if (result && result.success && result.order) {
-                              // Prepare purchaseData as in handleConvertToPurchase
-                              const purchaseData = {
-                                supplierName: result.order.supplierName || '',
-                                phoneNo: result.order.supplierPhone || result.order.phoneNo || '',
-                                dueDate: result.order.dueDate || '',
-                                items: (result.order.items || []).map((item: any, index: number) => ({
-                                  id: index + 1,
-                                  item: item.item || '',
-                                  qty: item.qty?.toString() || '',
-                                  unit: item.unit || 'NONE',
-                                  customUnit: item.customUnit || '',
-                                  price: item.price?.toString() || '',
-                                  amount: item.amount || 0
-                                })),
-                                discount: result.order.discount?.toString() || '',
-                                discountType: result.order.discountType || '%',
-                                tax: result.order.tax?.toString() || '',
-                                taxType: result.order.taxType || '%',
-                                paymentType: result.order.paymentType || 'Credit',
-                                description: result.order.description || '',
-                                sourceOrderId: result.order._id,
-                                sourceOrderNumber: result.order.orderNumber
-                              };
-                              const queryParams = new URLSearchParams({
-                                convertFromOrder: 'true',
-                                orderData: JSON.stringify(purchaseData)
-                              });
-                              router.push(`/dashboard/purchaseAdd?${queryParams.toString()}`);
-                            }
+                            if (!id || !token) return;
+                            // Redirect to purchaseAdd page for editing purchase order
+                            router.push(`/dashboard/purchaseAdd?id=${id}&from=purchase-order&editMode=true`);
                             } : undefined}
                             onDelete={canDeleteData() ? () => handleDeleteOrder(order) : undefined}
                           // onView={() => ...} // Optional: implement view modal if needed

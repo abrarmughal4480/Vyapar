@@ -8,7 +8,7 @@ import { getToken } from '../../lib/auth';
 import { fetchPartiesByUserId, getPartyBalance, createParty } from '../../../http/parties';
 import { getUserItems } from '../../../http/items';
 import { createPurchase, updatePurchase } from '../../../http/purchases';
-import { createPurchaseOrder, updatePurchaseOrder } from '../../../http/purchaseOrders';
+import { createPurchaseOrder, updatePurchaseOrder, getPurchaseOrderById } from '../../../http/purchaseOrders';
 import { createExpense, getExpenseById, updateExpense } from '../../../http/expenses';
 import { jwtDecode } from 'jwt-decode';
 import { useSearchParams } from 'next/navigation';
@@ -406,6 +406,7 @@ export default function AddPurchasePage() {
       const fromContext = urlParams.get('from');
       const orderDataParam = urlParams.get('orderData');
       const convertFromOrder = urlParams.get('convertFromOrder');
+      const editMode = urlParams.get('editMode');
       
       if (fromContext === 'expenses') {
         setIsFromExpenses(true);
@@ -415,14 +416,32 @@ export default function AddPurchasePage() {
         // Fetch expense items from database for suggestions
         fetchExpenseItemsForSuggestions();
       } else if (fromContext === 'purchase-order') {
-        setPageTitle('Add Purchase Order');
+        if (editMode === 'true') {
+          setPageTitle('Edit Purchase Order');
+        } else {
+          setPageTitle('Add Purchase Order');
+        }
         setPageType('purchase-order');
         setRedirectTo('/dashboard/purchase-order');
         
         // If order data is provided, populate the form
         if (orderDataParam) {
           try {
-            const orderData = JSON.parse(decodeURIComponent(orderDataParam));
+            // First try to decode, if that fails, try parsing directly
+            let orderData;
+            try {
+              orderData = JSON.parse(decodeURIComponent(orderDataParam));
+            } catch (decodeError) {
+              // If decodeURIComponent fails, try parsing the raw parameter
+              try {
+                orderData = JSON.parse(orderDataParam);
+              } catch (parseError) {
+                console.error('Failed to parse order data:', parseError);
+                console.error('Raw orderDataParam:', orderDataParam);
+                // If both fail, use empty data to prevent crash
+                orderData = {};
+              }
+            }
             setOriginalOrderId(orderData._id);
             setOriginalOrderDueDate(orderData.dueDate || null);
             setNewPurchase(prev => ({
@@ -638,6 +657,53 @@ export default function AddPurchasePage() {
           }
         };
         fetchExpenseData();
+      } else if (pageType === 'purchase-order') {
+        setPageTitle('Edit Purchase Order');
+        const fetchPurchaseOrderData = async () => {
+          try {
+            const token = getToken();
+            if (!token) return;
+            const result = await getPurchaseOrderById(editId, token);
+            if (result && result.success && result.order) {
+              const order = result.order;
+              // Map purchase order data to form fields
+              setNewPurchase(prev => ({
+                ...prev,
+                partyName: order.supplierName || '',
+                phoneNo: order.supplierPhone || order.phoneNo || '',
+                billDate: order.orderDate ? new Date(order.orderDate).toISOString().split('T')[0] : '',
+                invoiceDate: order.orderDate ? new Date(order.orderDate).toISOString().split('T')[0] : '',
+                dueDate: order.dueDate ? new Date(order.dueDate).toISOString().split('T')[0] : '',
+                items: (order.items || []).map((item: any, idx: number) => ({
+                  id: idx + 1,
+                  category: item.category || 'ALL',
+                  item: item.item || '',
+                  itemCode: item.itemCode || '',
+                  qty: item.qty?.toString() || '',
+                  unit: item.unit || 'NONE',
+                  customUnit: item.customUnit || '',
+                  price: item.price?.toString() || '',
+                  amount: item.amount || 0,
+                  discountPercentage: item.discountPercentage || '',
+                  discountAmount: item.discountAmount || ''
+                })),
+                discount: order.discount || '',
+                discountAmount: order.discountAmount || '',
+                discountType: order.discountType || '%',
+                tax: order.tax || '',
+                taxAmount: order.taxAmount || '',
+                taxType: order.taxType || '%',
+                paymentType: order.paymentType || 'Credit',
+                paid: order.paid || '',
+                description: order.description || '',
+                editingId: editId
+              }));
+            }
+          } catch (err) {
+            setToast({ message: 'Failed to fetch purchase order for edit', type: 'error' });
+          }
+        };
+        fetchPurchaseOrderData();
       } else {
         setPageTitle('Edit Purchase Bill');
         const fetchEditData = async () => {
@@ -688,7 +754,7 @@ export default function AddPurchasePage() {
         fetchEditData();
       }
     }
-  }, [editId, isFromExpenses]);
+  }, [editId, isFromExpenses, pageType]);
 
 
   // Clear party balance when party name changes
@@ -1306,7 +1372,7 @@ export default function AddPurchasePage() {
         }
         redirectPath = '/dashboard/expenses';
       } else if (pageType === 'purchase-order') {
-        // Create purchase order
+        // Create or update purchase order
         const orderData = {
           ...commonData,
           orderDate: new Date().toISOString().split('T')[0],
@@ -1314,8 +1380,15 @@ export default function AddPurchasePage() {
           status: 'Created'
         };
         
-        response = await createPurchaseOrder(token, orderData);
-        successMessage = 'Purchase order created successfully!';
+        if (isEditMode && editId) {
+          // Update existing purchase order
+          response = await updatePurchaseOrder(token, editId, orderData);
+          successMessage = 'Purchase order updated successfully!';
+        } else {
+          // Create new purchase order
+          response = await createPurchaseOrder(token, orderData);
+          successMessage = 'Purchase order created successfully!';
+        }
         redirectPath = '/dashboard/purchase-order';
       } else {
         // Create or update purchase bill

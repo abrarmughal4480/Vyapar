@@ -8,6 +8,7 @@ import {
   updatePurchaseOrderTotals,
   updatePurchaseOrder,
   fixCompletedPurchaseOrders,
+  getPurchaseOrderById,
   deletePurchaseOrder
 } from '../controllers/purchaseOrderController.js';
 
@@ -21,6 +22,9 @@ router.post('/', createPurchaseOrder);
 
 // Get all purchase orders for the logged-in user
 router.get('/', getPurchaseOrdersByUser);
+
+// Get a specific purchase order by ID
+router.get('/:orderId', getPurchaseOrderById);
 
 // Update purchase order status
 router.patch('/:orderId/status', updatePurchaseOrderStatus);

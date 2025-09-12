@@ -1,4 +1,5 @@
 import Expense from '../models/expense.js';
+import Party from '../models/parties.js';
 import mongoose from 'mongoose';
 import { clearAllCacheForUser } from './dashboardController.js';
 
@@ -15,6 +16,40 @@ export const createExpense = async (req, res) => {
     const userId = req.user && req.user._id;
     if (!userId) {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    // Handle party creation if partyId is not provided
+    let finalPartyId = partyId;
+    if (!finalPartyId && party && party.trim() !== '') {
+      try {
+        // Check if party already exists
+        let existingParty = await Party.findOne({ 
+          name: party, 
+          user: userId 
+        });
+        
+        if (existingParty) {
+          finalPartyId = existingParty._id;
+        } else {
+          // Create new party
+          const newParty = new Party({
+            name: party.trim(),
+            phone: '',
+            partyType: 'supplier',
+            openingBalance: 0,
+            user: userId
+          });
+          
+          const savedParty = await newParty.save();
+          finalPartyId = savedParty._id;
+        }
+      } catch (error) {
+        console.error('Error handling party creation:', error);
+        return res.status(500).json({ 
+          success: false, 
+          message: 'Failed to create or find party' 
+        });
+      }
     }
 
     // Generate expense number
@@ -41,11 +76,9 @@ export const createExpense = async (req, res) => {
     // Get party's current balance and update it
     let partyBalanceAfterTransaction = 0;
     try {
-      const Party = (await import('../models/parties.js')).default;
-      
-      if (partyId) {
+      if (finalPartyId) {
         // Find party by ID
-        const partyDoc = await Party.findById(partyId);
+        const partyDoc = await Party.findById(finalPartyId);
         if (partyDoc) {
           // Only update party balance for Credit payments
           if (paymentType === 'Credit' && creditAmount > 0) {
@@ -53,9 +86,8 @@ export const createExpense = async (req, res) => {
             const currentReceivable = partyDoc.openingBalance || 0;
             const newReceivable = currentReceivable + creditAmount;
             
-            
             // Update party's receivable balance
-            await Party.findByIdAndUpdate(partyId, {
+            await Party.findByIdAndUpdate(finalPartyId, {
               openingBalance: newReceivable
             });
             
@@ -64,30 +96,6 @@ export const createExpense = async (req, res) => {
             // For Cash payments, no balance change needed
             partyBalanceAfterTransaction = partyDoc.openingBalance || 0;
           }
-          
-        } else {
-        }
-      } else if (party) {
-        // Fallback: find party by name
-        const partyDoc = await Party.findOne({ name: party, user: userId });
-        if (partyDoc) {
-          // Only update party balance for Credit payments
-          if (paymentType === 'Credit' && creditAmount > 0) {
-            const currentReceivable = partyDoc.openingBalance || 0;
-            const newReceivable = currentReceivable + creditAmount;
-            
-            
-            await Party.findByIdAndUpdate(partyDoc._id, {
-              openingBalance: newReceivable
-            });
-            
-            partyBalanceAfterTransaction = newReceivable;
-          } else {
-            // For Cash payments, no balance change needed
-            partyBalanceAfterTransaction = partyDoc.openingBalance || 0;
-          }
-          
-        } else {
         }
       }
     } catch (err) {
@@ -98,7 +106,7 @@ export const createExpense = async (req, res) => {
       userId,
       expenseCategory,
       party,
-      partyId,
+      partyId: finalPartyId,
       items,
       totalAmount,
       paymentType,

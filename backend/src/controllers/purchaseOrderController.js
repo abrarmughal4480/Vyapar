@@ -1,4 +1,5 @@
 import PurchaseOrder from '../models/purchaseOrder.js';
+import Party from '../models/parties.js';
 
 // Create a new purchase order
 export const createPurchaseOrder = async (req, res) => {
@@ -6,6 +7,40 @@ export const createPurchaseOrder = async (req, res) => {
     const userId = req.user && req.user._id;
     if (!userId) return res.status(401).json({ success: false, message: 'User not authenticated' });
     const data = req.body;
+
+    // Handle party creation if partyId is not provided
+    let partyId = data.partyId;
+    if (!partyId && data.supplierName) {
+      try {
+        // Check if party already exists
+        let existingParty = await Party.findOne({ 
+          name: data.supplierName, 
+          user: userId 
+        });
+        
+        if (existingParty) {
+          partyId = existingParty._id;
+        } else {
+          // Create new party
+          const newParty = new Party({
+            name: data.supplierName.trim(),
+            phone: data.phoneNo || '',
+            partyType: 'supplier',
+            openingBalance: 0,
+            user: userId
+          });
+          
+          const savedParty = await newParty.save();
+          partyId = savedParty._id;
+        }
+      } catch (error) {
+        console.error('Error handling party creation:', error);
+        return res.status(500).json({ 
+          success: false, 
+          message: 'Failed to create or find supplier' 
+        });
+      }
+    }
 
     // Generate next order number for this user
     const lastOrder = await PurchaseOrder.findOne({ userId }).sort({ createdAt: -1 });
@@ -22,10 +57,11 @@ export const createPurchaseOrder = async (req, res) => {
     // Get supplier's current balance before creating purchase order
     let supplierBalance = 0;
     try {
-      const Party = (await import('../models/parties.js')).default;
-      const supplierDoc = await Party.findOne({ name: data.supplierName, user: userId });
-      if (supplierDoc) {
-        supplierBalance = supplierDoc.openingBalance || 0;
+      if (partyId) {
+        const supplierDoc = await Party.findById(partyId);
+        if (supplierDoc) {
+          supplierBalance = supplierDoc.openingBalance || 0;
+        }
       }
     } catch (err) {
       console.error('Failed to get supplier balance:', err);
@@ -34,6 +70,7 @@ export const createPurchaseOrder = async (req, res) => {
     const purchaseOrder = new PurchaseOrder({
       ...data,
       userId,
+      partyId, // Include the party ID
       orderNumber,
       total: total,
       subtotal: total,

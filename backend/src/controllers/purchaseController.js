@@ -1,6 +1,7 @@
 import Purchase from '../models/purchase.js';
 import Item from '../models/items.js';
 import Payment from '../models/payment.js';
+import Party from '../models/parties.js';
 import mongoose from 'mongoose';
 import { clearAllCacheForUser } from './dashboardController.js';
 
@@ -14,7 +15,40 @@ export const createPurchase = async (req, res) => {
     if (!userId) {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
-    
+
+    // Handle party creation if partyId is not provided
+    let partyId = req.body.partyId;
+    if (!partyId && supplierName) {
+      try {
+        // Check if party already exists
+        let existingParty = await Party.findOne({ 
+          name: supplierName, 
+          user: userId 
+        });
+        
+        if (existingParty) {
+          partyId = existingParty._id;
+        } else {
+          // Create new party
+          const newParty = new Party({
+            name: supplierName.trim(),
+            phone: req.body.phoneNo || '',
+            partyType: 'supplier',
+            openingBalance: 0,
+            user: userId
+          });
+          
+          const savedParty = await newParty.save();
+          partyId = savedParty._id;
+        }
+      } catch (error) {
+        console.error('Error handling party creation:', error);
+        return res.status(500).json({ 
+          success: false, 
+          message: 'Failed to create or find supplier' 
+        });
+      }
+    }
     
     // Increment stock for each item
     for (const purchaseItem of items) {
@@ -141,6 +175,7 @@ export const createPurchase = async (req, res) => {
     const purchase = new Purchase({
       ...req.body,
       userId,
+      partyId, // Include the party ID
       discountValue: totalDiscount, // Use total discount (item + global)
       taxType,
       tax,
@@ -160,8 +195,7 @@ export const createPurchase = async (req, res) => {
     
     // Update supplier openingBalance in DB (only for credit payments)
     try {
-      const Party = (await import('../models/parties.js')).default;
-      const supplierDoc = await Party.findOne({ name: purchase.supplierName, user: userId });
+      const supplierDoc = await Party.findById(partyId);
       if (supplierDoc) {
         // Store supplier's current balance before transaction
         const supplierCurrentBalance = supplierDoc.openingBalance || 0;
@@ -318,19 +352,37 @@ export const makePayment = async (req, res) => {
     // Create payment record only if there's an actual payment
     let payment = null;
     if (amount > 0) {
+      // Calculate discount amount if provided
+      let discountAmount = 0;
+      if (discount && discount > 0 && discountType) {
+        if (discountType === '%') {
+          discountAmount = (amount * discount) / 100;
+        } else if (discountType === 'PKR') {
+          discountAmount = Math.min(discount, amount);
+        }
+      }
+
+      // Calculate final amount after discount
+      const finalAmount = Math.max(0, amount - discountAmount);
+
       payment = new Payment({
         userId,
         purchaseId,
         billNo: purchase.billNo,
         supplierName: purchase.supplierName,
+        partyName: purchase.supplierName, // Unified field
         phoneNo: purchase.phoneNo,
-        amount,
+        amount: finalAmount,
         paymentType,
         paymentDate: new Date(),
         description,
         imageUrl,
         category: 'Purchase Payment',
-        status: purchase.balance === 0 ? 'Paid' : 'Partial'
+        status: purchase.balance === 0 ? 'Paid' : 'Partial',
+        discount: discount || 0,
+        discountType: discountType || 'PKR',
+        discountAmount,
+        finalAmount
       });
       
       await payment.save();

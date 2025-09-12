@@ -261,24 +261,36 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
       return;
     }
     
-    if (!purchaseId) {
-      setToast({ message: 'Purchase ID is missing', type: 'error' });
-      return;
-    }
-    
     try {
       const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
+      let result;
       
-      // Use individual purchase payment (updates specific purchase and party balance)
-      const paymentData = {
-        purchaseId: purchaseId,
-        amount: amount,
-        paymentType,
-        description: `Payment for ${selectedParty.name}`,
-        imageUrl: imagePreview || ''
-      };
+      if (purchaseId) {
+        // Use individual purchase payment (updates specific purchase and party balance)
+        const paymentData = {
+          purchaseId: purchaseId,
+          amount: amount,
+          paymentType,
+          description: `Payment for ${selectedParty.name}`,
+          imageUrl: imagePreview || ''
+        };
+        
+        result = await makePayment(paymentData, token);
+      } else {
+        // Use bulk party payment (updates party balance only)
+        const paymentData = {
+          supplierName: selectedParty.name,
+          amount: amount,
+          discount: discountAmount > 0 ? discountAmount : undefined,
+          discountType: discountAmount > 0 ? (discountType === 'percentage' ? '%' : 'PKR') : undefined,
+          paymentType,
+          description: `Payment for ${selectedParty.name}`,
+          imageUrl: imagePreview || ''
+        };
+        
+        result = await makeBulkPaymentToParty(paymentData, token);
+      }
       
-      const result = await makePayment(paymentData, token);
       if (result && result.success) {
         let message = `Payment made to ${selectedParty.name}!`;
         if (discountAmount > 0) {
@@ -336,7 +348,7 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
                 {purchaseId ? 'Make Payment' : 'Make Party Payment'}
               </h2>
               <p style={{ fontSize: 14, color: '#64748b', marginTop: 4 }}>
-                {purchaseId ? 'Payment for specific purchase' : 'Payment will be distributed across all due purchases'}
+                {purchaseId ? 'Payment for specific purchase' : 'Payment will be applied to party balance'}
               </p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>

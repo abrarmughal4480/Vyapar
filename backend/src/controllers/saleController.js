@@ -1,5 +1,6 @@
 import Sale from '../models/sale.js';
 import Item from '../models/items.js';
+import Payment from '../models/payment.js';
 import mongoose from 'mongoose';
 import { clearAllCacheForUser } from './dashboardController.js';
 
@@ -432,6 +433,39 @@ export const receivePayment = async (req, res) => {
     
     await sale.save();
 
+    // Save payment history for invoice payments
+    if (amount > 0) {
+      try {
+        const paymentRecord = new Payment({
+          userId: sale.userId,
+          saleId: saleId,
+          invoiceNo: sale.invoiceNo,
+          customerName: sale.partyName,
+          partyName: sale.partyName, // Unified field
+          phoneNo: sale.phoneNo || '',
+          amount: amount,
+          total: sale.grandTotal,
+          balance: sale.balance,
+          paymentType: sale.paymentType || 'Cash',
+          paymentDate: new Date(),
+          description: `Payment received for invoice ${sale.invoiceNo}`,
+          imageUrl: '',
+          category: 'Invoice Payment In',
+          status: sale.balance === 0 ? 'Paid' : 'Partial',
+          discount: discount || 0,
+          discountType: discountType || 'PKR',
+          discountAmount: discountValue,
+          finalAmount: amount,
+          partyBalanceAfterTransaction: 0 // Will be updated below
+        });
+        
+        await paymentRecord.save();
+      } catch (paymentErr) {
+        console.error('Failed to save invoice payment history:', paymentErr);
+        // Don't fail the entire operation if payment history save fails
+      }
+    }
+
     // Update party openingBalance
     try {
       const Party = (await import('../models/parties.js')).default;
@@ -448,6 +482,18 @@ export const receivePayment = async (req, res) => {
         }
         
         await partyDoc.save();
+        
+        // Update payment record with party balance after transaction
+        if (amount > 0) {
+          try {
+            await Payment.findOneAndUpdate(
+              { saleId: saleId, amount: amount },
+              { partyBalanceAfterTransaction: partyDoc.openingBalance }
+            );
+          } catch (updateErr) {
+            console.error('Failed to update payment record with party balance:', updateErr);
+          }
+        }
       }
     } catch (err) {
       console.error('Failed to update party openingBalance on payment:', err);
@@ -478,7 +524,7 @@ export const receivePayment = async (req, res) => {
 // Receive payment for party (updates multiple sales starting from oldest)
 export const receivePartyPayment = async (req, res) => {
   try {
-    const { partyName, amount, discount, discountType } = req.body;
+    const { partyName, amount, discount, discountType, paymentType = 'Cash', description = '', imageUrl = '' } = req.body;
     const userId = req.user && (req.user._id || req.user.id);
     
     if (!partyName || (typeof amount !== 'number' && amount !== 0) || amount < 0) {
@@ -510,6 +556,37 @@ export const receivePartyPayment = async (req, res) => {
       // Subtract the final amount from party's opening balance (reducing their debt)
       partyDoc.openingBalance = (partyDoc.openingBalance || 0) - finalAmount;
       await partyDoc.save();
+
+      // Save payment history
+      try {
+        const paymentRecord = new Payment({
+          userId,
+          saleId: null, // No specific sale for party payments
+          invoiceNo: null, // No specific invoice for party payments
+          customerName: partyName,
+          partyName: partyName, // Unified field
+          phoneNo: partyDoc.phoneNo || partyDoc.contactNumber || '',
+          amount: finalAmount,
+          total: null, // No specific total for party payments
+          balance: 0, // No specific balance for party payments
+          paymentType,
+          paymentDate: new Date(),
+          description: description || `Party payment received from ${partyName}`,
+          imageUrl,
+          category: 'Party Payment In',
+          status: 'Paid',
+          discount: discount || 0,
+          discountType: discountType || 'PKR',
+          discountAmount,
+          finalAmount,
+          partyBalanceAfterTransaction: partyDoc.openingBalance
+        });
+        
+        await paymentRecord.save();
+      } catch (paymentErr) {
+        console.error('Failed to save payment history:', paymentErr);
+        // Don't fail the entire operation if payment history save fails
+      }
 
       res.json({ 
         success: true, 
@@ -1179,6 +1256,35 @@ export const getItemPurchasePrices = async (req, res) => {
   }
 };
 
+// Get payment records for payment-in page
+export const getPaymentRecords = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
+    
+    // Get all payment records where category is 'Party Payment In' or 'Invoice Payment In' or has saleId
+    const payments = await Payment.find({ 
+      userId,
+      $or: [
+        { category: 'Party Payment In' },
+        { category: 'Invoice Payment In' },
+        { saleId: { $exists: true, $ne: null } }
+      ]
+    })
+      .sort({ paymentDate: -1 })
+      .populate({
+        path: 'saleId',
+        select: 'invoiceNo customerName grandTotal',
+        options: { strictPopulate: false }
+      });
+    
+    res.json({ success: true, paymentIns: payments });
+  } catch (err) {
+    console.error('Get payment records error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 export default {
   createSale,
   getSalesByUser,
@@ -1189,4 +1295,5 @@ export default {
   updateSale,
   getBillWiseProfit,
   getItemPurchasePrices,
+  getPaymentRecords,
 }; 

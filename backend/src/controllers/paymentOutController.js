@@ -1,4 +1,4 @@
-import PaymentOut from '../models/payment-out.js';
+import Payment from '../models/payment.js';
 import Purchase from '../models/purchase.js';
 import mongoose from 'mongoose';
 import { clearAllCacheForUser } from './dashboardController.js';
@@ -117,11 +117,21 @@ export const getPaymentOutsByUser = async (req, res) => {
     const { userId } = req.params;
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
     
-    const paymentOuts = await PaymentOut.find({ userId })
+    // Get all payment records (both purchase and party payments)
+    const payments = await Payment.find({ userId })
       .sort({ paymentDate: -1 })
-      .populate('purchaseId', 'billNo supplierName grandTotal');
+      .populate({
+        path: 'purchaseId',
+        select: 'billNo supplierName grandTotal',
+        options: { strictPopulate: false }
+      })
+      .populate({
+        path: 'saleId',
+        select: 'invoiceNo customerName grandTotal',
+        options: { strictPopulate: false }
+      });
     
-    res.json({ success: true, paymentOuts });
+    res.json({ success: true, paymentOuts: payments });
   } catch (err) {
     console.error('Get payment outs error:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -341,6 +351,37 @@ export const makeBulkPaymentToParty = async (req, res) => {
       // Add the final amount to supplier's opening balance
       supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + finalAmount;
       await supplierDoc.save();
+
+      // Save payment history
+      try {
+        const paymentRecord = new Payment({
+          userId,
+          purchaseId: null, // No specific purchase for party payments
+          billNo: null, // No specific bill for party payments
+          supplierName: supplierName,
+          partyName: supplierName, // Unified field
+          phoneNo: supplierDoc.phoneNo || supplierDoc.contactNumber || '',
+          amount: finalAmount,
+          total: null, // No specific total for party payments
+          balance: 0, // No specific balance for party payments
+          paymentType,
+          paymentDate: new Date(),
+          description: description || `Party payment made to ${supplierName}`,
+          imageUrl,
+          category: 'Party Payment Out',
+          status: 'Paid',
+          discount: discount || 0,
+          discountType: discountType || 'PKR',
+          discountAmount,
+          finalAmount,
+          partyBalanceAfterTransaction: supplierDoc.openingBalance
+        });
+        
+        await paymentRecord.save();
+      } catch (paymentErr) {
+        console.error('Failed to save payment history:', paymentErr);
+        // Don't fail the entire operation if payment history save fails
+      }
 
       res.json({ 
         success: true, 

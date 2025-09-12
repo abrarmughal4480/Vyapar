@@ -437,13 +437,13 @@ const PaymentOutPageContent = () => {
                             : '-'}
                       </td>
                       <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">
-                        {transaction.billNo || '-'}
+                        {transaction.billNo || (transaction.category === 'Party Payment Out' ? 'Party Payment' : '-')}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{transaction.supplierName || '-'}</td>
                       <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap text-center">{transaction.category || 'Purchase'}</td>
                       <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap text-center">{transaction.paymentType || '-'}</td>
                       <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">
-                        PKR {typeof transaction.total === 'number' ? transaction.total.toLocaleString() : '0'}
+                        PKR {typeof transaction.total === 'number' ? transaction.total.toLocaleString() : (transaction.category === 'Party Payment Out' ? transaction.amount.toLocaleString() : '0')}
                       </td>
                       <td className="px-6 py-4 text-sm font-semibold text-red-700 whitespace-nowrap text-center">
                         PKR {typeof transaction.amount === 'number' ? transaction.amount.toLocaleString() : '0'}

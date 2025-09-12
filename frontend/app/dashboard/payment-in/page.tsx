@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef, Suspense } from "react";
-import { getSalesByUser, getSaleById } from "@/http/sales";
+import { getPaymentRecords, getSaleById } from "@/http/sales";
 import { jwtDecode } from "jwt-decode";
 import Toast from "../../components/Toast";
 import PaymentInModal from "../../components/PaymentInModal";
@@ -74,9 +74,9 @@ const PaymentInPageContent = () => {
           setLoading(false);
           return;
         }
-        const result = await getSalesByUser(userId, token);
-        if (result && result.success && Array.isArray(result.sales)) {
-          setTransactions(result.sales.filter((sale: any) => sale.received && sale.received > 0));
+        const result = await getPaymentRecords(userId, token);
+        if (result && result.success && Array.isArray(result.paymentIns)) {
+          setTransactions(result.paymentIns);
         } else {
           setTransactions([]);
         }
@@ -441,14 +441,14 @@ const PaymentInPageContent = () => {
                   return (
                     <tr key={transaction._id || transaction.id || idx} className={`hover:bg-blue-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                       <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">
-                        {transaction.date
-                          ? new Date(transaction.date).toLocaleDateString('en-GB')
+                        {transaction.paymentDate
+                          ? new Date(transaction.paymentDate).toLocaleDateString('en-GB')
                           : transaction.createdAt
                             ? new Date(transaction.createdAt).toLocaleDateString('en-GB')
                             : '-'}
                       </td>
                       <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">
-                        {transaction.invoiceNo || '-'}
+                        {transaction.invoiceNo || (transaction.category === 'Party Payment In' ? 'Party Payment' : '-')}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{transaction.partyName}</td>
                       <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap text-center">{transaction.category || '-'}</td>
@@ -457,13 +457,13 @@ const PaymentInPageContent = () => {
                         PKR {typeof transaction.grandTotal === 'number' ? transaction.grandTotal.toLocaleString() : (transaction.amount ? transaction.amount.toLocaleString() : '0')}
                       </td>
                       <td className="px-6 py-4 text-sm font-semibold text-green-700 whitespace-nowrap text-center">
-                        PKR {typeof transaction.received === 'number' ? transaction.received.toLocaleString() : '0'}
+                        PKR {typeof transaction.amount === 'number' ? transaction.amount.toLocaleString() : '0'}
                       </td>
                       <td className="px-6 py-4 text-sm font-semibold text-orange-600 whitespace-nowrap text-center">
                         PKR {typeof transaction.balance === 'number' ? transaction.balance.toLocaleString() : '0'}
                       </td>
                       <td className="px-6 py-4 text-sm font-semibold text-center">
-                        <PaymentStatusBadge status={paymentStatus} />
+                        <PaymentStatusBadge status={transaction.status || 'Paid'} />
                       </td>
                       <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
                         <button
@@ -526,7 +526,7 @@ const PaymentInPageContent = () => {
               setToast({ message: 'Payment received successfully!', type: 'success' });
               return;
             }
-            const result = await getSalesByUser(userId, token);
+            const result = await getPaymentRecords(userId, token);
             if (result && result.success && Array.isArray(result.sales)) {
               setTransactions(result.sales.filter((sale: any) => sale.received && sale.received > 0));
             }

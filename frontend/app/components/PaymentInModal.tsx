@@ -12,7 +12,7 @@ interface PaymentInModalProps {
   partyName: string;
   total: number;
   dueBalance: number;
-  saleId: string;
+  saleId?: string; // Made optional for party payments
   onSave?: (data: any) => void;
   showDiscount?: boolean; // New prop to control discount field visibility
   showRemainingAmount?: boolean; // New prop to control remaining amount display
@@ -273,24 +273,32 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
       return;
     }
     
-    if (!saleId) {
-      setToast({ message: 'Sale ID is missing', type: 'error' });
-      return;
-    }
-    
     try {
       let result;
       
-      // Use individual sale payment (updates specific sale and party balance)
-      result = await receivePayment(
-        saleId,
-        amount,
-        token,
-        discountAmount > 0 ? discountAmount : undefined,
-        discountAmount > 0 ? (discountType === 'percentage' ? '%' : 'PKR') : undefined,
-        paymentType,
-        date
-      );
+      if (saleId) {
+        // Use individual sale payment (updates specific sale and party balance)
+        result = await receivePayment(
+          saleId,
+          amount,
+          token,
+          discountAmount > 0 ? discountAmount : undefined,
+          discountAmount > 0 ? (discountType === 'percentage' ? '%' : 'PKR') : undefined,
+          paymentType,
+          date
+        );
+      } else {
+        // Use party payment (updates party balance only)
+        result = await receivePartyPayment(
+          selectedParty.name,
+          amount,
+          token,
+          discountAmount > 0 ? discountAmount : undefined,
+          discountAmount > 0 ? (discountType === 'percentage' ? '%' : 'PKR') : undefined,
+          paymentType,
+          date
+        );
+      }
       
       if (result && result.success) {
         if (onSave) onSave({ 
@@ -346,7 +354,14 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
         position: 'relative',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '32px 40px 0 40px' }}>
-          <h2 style={{ fontSize: 26, fontWeight: 700, color: '#1e293b', letterSpacing: '-0.5px' }}>Receive Payment</h2>
+          <div>
+            <h2 style={{ fontSize: 26, fontWeight: 700, color: '#1e293b', letterSpacing: '-0.5px' }}>
+              {saleId ? 'Receive Payment' : 'Receive Party Payment'}
+            </h2>
+            <p style={{ fontSize: 14, color: '#64748b', marginTop: 4 }}>
+              {saleId ? 'Payment for specific sale' : 'Payment will be applied to party balance'}
+            </p>
+          </div>
           <button onClick={onClose} style={{ fontSize: 28, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>✕</button>
         </div>
         <div style={{ display: 'flex', gap: 48, flexWrap: 'wrap', padding: '32px 40px 0 40px' }}>

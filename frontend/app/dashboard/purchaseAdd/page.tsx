@@ -5,7 +5,7 @@ import ReactDOM from 'react-dom';
 import Toast from '../../components/Toast';
 import { Plus, ChevronDown, Calendar, Info, Camera } from 'lucide-react';
 import { getToken } from '../../lib/auth';
-import { fetchPartiesByUserId, getPartyBalance, createParty } from '../../../http/parties';
+import { fetchPartiesByUserId, getPartyBalance } from '../../../http/parties';
 import { getUserItems } from '../../../http/items';
 import { createPurchase, updatePurchase } from '../../../http/purchases';
 import { createPurchaseOrder, updatePurchaseOrder, getPurchaseOrderById } from '../../../http/purchaseOrders';
@@ -1246,59 +1246,6 @@ export default function AddPurchasePage() {
         throw new Error('Authentication token not found');
       }
 
-      // Create party if it doesn't exist and no partyId is set
-      // Skip party creation if we're in expense mode and party field is empty
-      if (newPurchase.partyName && !newPurchase.partyId && !(isFromExpenses && (!newPurchase.partyName || newPurchase.partyName.trim() === ''))) {
-        try {
-          // Check if party already exists
-          const existingParty = parties.find(p => 
-            p.name.toLowerCase() === newPurchase.partyName.toLowerCase()
-          );
-          
-          if (existingParty) {
-            // Party exists, use it
-            setNewPurchase(prev => ({ 
-              ...prev, 
-              partyId: existingParty._id,
-              phoneNo: existingParty.phone || prev.phoneNo
-            }));
-          } else {
-            // Create new party
-            const newPartyData = {
-              name: newPurchase.partyName.trim(),
-              phone: newPurchase.phoneNo || '',
-              partyType: 'supplier', // Default to supplier for purchases
-              openingBalance: 0
-            };
-            
-            const partyResponse = await createParty(newPartyData, token);
-            
-            if (partyResponse.success) {
-              // Update the party ID
-              setNewPurchase(prev => ({ 
-                ...prev, 
-                partyId: partyResponse.data._id 
-              }));
-              
-              // Refresh parties list
-              await fetchPartySuggestions();
-              
-              setToast({ 
-                message: `Supplier "${partyResponse.data.name}" created successfully!`, 
-                type: 'success' 
-              });
-            }
-          }
-        } catch (error) {
-          console.error('Error creating party:', error);
-          setToast({ 
-            message: 'Failed to create supplier. Please try again.', 
-            type: 'error' 
-          });
-          setLoading(false);
-          return;
-        }
-      }
 
       const paidValue = newPurchase.paymentType === 'Cash'
         ? grandTotal

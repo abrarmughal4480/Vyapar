@@ -119,4 +119,19 @@ export const debugPurchases = async (token: string) => {
     headers: { Authorization: `Bearer ${token}` }
   });
   return data;
+};
+
+// Get payment records for payment-in page
+export const getPaymentRecords = async (userId: string, token: string) => {
+  try {
+    const { data } = await api.get(`/api/sales/${userId}/payments`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return data;
+  } catch (error) {
+    console.error('Error fetching payment records:', error);
+    return { success: false, paymentIns: [] };
+  }
 }; 

@@ -4,8 +4,9 @@ import Purchase from '../models/purchase.js';
 import CreditNote from '../models/creditNote.js';
 import Expense from '../models/expense.js';
 import mongoose from 'mongoose';
+import { invalidateDashboardCache } from './dashboardController.js';
 
-// Get cash in hand summary with all related data
+// Get cash in hand summary
 export const getCashInHandSummary = async (req, res) => {
   try {
     const userId = req.user && req.user._id;
@@ -13,38 +14,30 @@ export const getCashInHandSummary = async (req, res) => {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
 
-    // Get current cash balance - look for the most recent transaction to get current balance
     let cashInHand = 0;
-    const latestTransaction = await CashBank.findOne({ userId }).sort({ createdAt: -1 });
-    if (latestTransaction) {
-      cashInHand = latestTransaction.cashInHand;
-    }
 
-    // Get sales data
+    // Fetch transaction data
     const sales = await Sale.find({ userId })
       .select('invoiceNo partyName grandTotal received balance paymentType createdAt')
       .sort({ createdAt: -1 })
       .limit(50);
 
-    // Get purchases data
     const purchases = await Purchase.find({ userId })
       .select('billNo supplierName grandTotal paid balance paymentType createdAt')
       .sort({ createdAt: -1 })
       .limit(50);
 
-    // Get credit notes data
     const creditNotes = await CreditNote.find({ userId })
       .select('creditNoteNo partyName amount type createdAt')
       .sort({ createdAt: -1 })
       .limit(50);
 
-    // Get expenses data
     const expenses = await Expense.find({ userId })
       .select('expenseNumber party totalAmount paymentType expenseDate createdAt')
       .sort({ createdAt: -1 })
       .limit(50);
 
-    // Calculate totals
+    // Calculate transaction totals
     const totalSales = sales.reduce((sum, sale) => sum + (sale.grandTotal || 0), 0);
     const totalReceived = sales.reduce((sum, sale) => sum + (sale.received || 0), 0);
     const totalSalesBalance = sales.reduce((sum, sale) => sum + (sale.balance || 0), 0);
@@ -57,52 +50,46 @@ export const getCashInHandSummary = async (req, res) => {
 
     const totalCreditNotes = creditNotes.reduce((sum, note) => {
       const amount = Number(note.amount) || 0;
-      if (isNaN(amount)) return sum; // Skip invalid amounts
+      if (isNaN(amount)) return sum;
       
       if (note.type === 'Sale') {
-        return sum + amount; // Reduce from sales (credit note reduces sales)
+        return sum + amount;
       } else {
-        return sum - amount; // Add to purchases (credit note reduces purchases)
+        return sum - amount;
       }
     }, 0);
 
-    // Calculate net cash flow - this represents the actual cash available
-    // Net Cash Flow = Total Received - Total Expenses + Credit Notes (if they add cash)
-    const netCashFlow = totalReceived - totalExpenses + totalCreditNotes;
+    // Fetch cash adjustments
+    const cashAdjustments = await CashBank.find({ userId }).sort({ createdAt: 1 });
+    const totalCashAdjustments = cashAdjustments.reduce((sum, adjustment) => {
+      if (adjustment.type === 'Income') {
+        return sum + adjustment.amount;
+      } else if (adjustment.type === 'Expense') {
+        return sum - adjustment.amount;
+      }
+      return sum;
+    }, 0);
+
+    // Calculate net cash flow
+    const netCashFlow = totalReceived - totalPaid - totalExpenses + totalCreditNotes;
     
     // Calculate final cash in hand
-    // Cash in Hand = Net Cash Flow + Cash Adjustments
-    let totalCashAdjustments = 0;
-    if (latestTransaction) {
-      // Get all cash adjustments and sum them up
-      const allCashAdjustments = await CashBank.find({ userId }).sort({ createdAt: 1 });
-      totalCashAdjustments = allCashAdjustments.reduce((sum, adjustment) => {
-        if (adjustment.type === 'Income') {
-          return sum + adjustment.amount;
-        } else if (adjustment.type === 'Expense') {
-          return sum - adjustment.amount;
-        }
-        return sum;
-      }, 0);
-    }
-    
-    // Final cash in hand = Business net cash flow + total cash adjustments
     cashInHand = netCashFlow + totalCashAdjustments;
 
     res.status(200).json({
       success: true,
       data: {
-        cashInHand: cashInHand, // Current cash balance (from adjustments or calculated from net cash flow)
+        cashInHand,
         summary: {
-          totalSales,           // Total sales amount
-          totalReceived,         // Total cash received from sales
-          totalSalesBalance,     // Outstanding sales balance
-          totalPurchases,        // Total purchases amount
-          totalPaid,            // Total cash paid for purchases
-          totalPurchaseBalance,  // Outstanding purchase balance
-          totalExpenses,        // Total expenses paid
-          totalCreditNotes,     // Net effect of credit notes
-          netCashFlow           // Net cash flow = Total Received - Total Expenses + Credit Notes
+          totalSales,
+          totalReceived,
+          totalSalesBalance,
+          totalPurchases,
+          totalPaid,
+          totalPurchaseBalance,
+          totalExpenses,
+          totalCreditNotes,
+          netCashFlow
         },
         recentTransactions: {
           sales: sales.slice(0, 10),
@@ -123,7 +110,7 @@ export const getCashInHandSummary = async (req, res) => {
   }
 };
 
-// Get detailed cash flow for a date range
+// Get detailed cash flow
 export const getCashFlowDetails = async (req, res) => {
   try {
     const userId = req.user && req.user._id;
@@ -148,27 +135,24 @@ export const getCashFlowDetails = async (req, res) => {
       typeQuery = { type };
     }
 
-    // Get sales in date range
+    // Fetch transactions by date range
     const sales = await Sale.find({ userId, ...dateQuery })
       .select('invoiceNo partyName grandTotal received balance paymentType createdAt')
       .sort({ createdAt: -1 });
 
-    // Get purchases in date range
     const purchases = await Purchase.find({ userId, ...dateQuery })
       .select('billNo supplierName grandTotal paid balance paymentType createdAt')
       .sort({ createdAt: -1 });
 
-    // Get credit notes in date range
     const creditNotes = await CreditNote.find({ userId, ...dateQuery })
       .select('creditNoteNo partyName amount type createdAt')
       .sort({ createdAt: -1 });
 
-    // Get expenses in date range
     const expenses = await Expense.find({ userId, ...dateQuery })
       .select('expenseNumber party totalAmount paymentType expenseDate createdAt')
       .sort({ createdAt: -1 });
 
-    // Combine all transactions
+    // Format and combine transactions
     const allTransactions = [
       ...sales.map(sale => ({
         type: 'Sale',
@@ -227,7 +211,7 @@ export const getCashFlowDetails = async (req, res) => {
   }
 };
 
-// Add cash adjustment transaction
+// Add cash adjustment
 export const addCashAdjustment = async (req, res) => {
   try {
     const userId = req.user && req.user._id;
@@ -241,35 +225,32 @@ export const addCashAdjustment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
-    // Calculate current cash balance
-    // First, get the net cash flow from business operations
-    const [sales, purchases, creditNotes, expenses] = await Promise.all([
+    // Calculate current balance
+    const [sales, purchases, creditNotes, expenses, existingCashAdjustments] = await Promise.all([
       Sale.find({ userId }).select('grandTotal received'),
       Purchase.find({ userId }).select('grandTotal paid'),
       CreditNote.find({ userId }).select('amount type'),
-      Expense.find({ userId }).select('totalAmount')
+      Expense.find({ userId }).select('totalAmount'),
+      CashBank.find({ userId }).sort({ createdAt: 1 })
     ]);
 
-    // Calculate net cash flow from business operations
+    // Calculate business cash flow
     const totalReceived = sales.reduce((sum, sale) => sum + (sale.received || 0), 0);
+    const totalPaid = purchases.reduce((sum, purchase) => sum + (purchase.paid || 0), 0);
     const totalExpenses = expenses.reduce((sum, expense) => sum + (expense.totalAmount || 0), 0);
     const totalCreditNotes = creditNotes.reduce((sum, note) => {
       const amount = Number(note.amount) || 0;
       if (isNaN(amount)) return sum;
       if (note.type === 'Sale') {
-        return sum + amount; // Credit note reduces sales
+        return sum + amount;
       } else {
-        return sum - amount; // Credit note reduces purchases
+        return sum - amount;
       }
     }, 0);
 
-    const businessNetCashFlow = totalReceived - totalExpenses + totalCreditNotes;
+    const businessNetCashFlow = totalReceived - totalPaid - totalExpenses + totalCreditNotes;
 
-    // Calculate current balance from business operations + existing cash adjustments
-    let currentBalance = businessNetCashFlow;
-    
-    // Get all existing cash adjustments and add them to business net cash flow
-    const existingCashAdjustments = await CashBank.find({ userId }).sort({ createdAt: 1 });
+    // Calculate existing adjustments
     const totalExistingAdjustments = existingCashAdjustments.reduce((sum, adjustment) => {
       if (adjustment.type === 'Income') {
         return sum + adjustment.amount;
@@ -279,9 +260,10 @@ export const addCashAdjustment = async (req, res) => {
       return sum;
     }, 0);
     
-    currentBalance = businessNetCashFlow + totalExistingAdjustments;
+    // Calculate current balance
+    const currentBalance = businessNetCashFlow + totalExistingAdjustments;
 
-    // Calculate new balance
+    // Apply new adjustment
     let newBalance = currentBalance;
     if (type === 'Income') {
       newBalance += Number(amount);
@@ -289,7 +271,7 @@ export const addCashAdjustment = async (req, res) => {
       newBalance -= Number(amount);
     }
 
-    // Add transaction with updated balance
+    // Save new transaction
     const newTransaction = new CashBank({
       userId,
       type,
@@ -300,6 +282,9 @@ export const addCashAdjustment = async (req, res) => {
     });
 
     await newTransaction.save();
+
+    // Invalidate dashboard cache to show updated cash in hand immediately
+    invalidateDashboardCache(userId);
 
     res.status(201).json({
       success: true,
@@ -320,7 +305,7 @@ export const addCashAdjustment = async (req, res) => {
   }
 };
 
-// Get cash bank transactions
+// Get all transactions
 export const getCashBankTransactions = async (req, res) => {
   try {
     const userId = req.user && req.user._id;
@@ -332,7 +317,7 @@ export const getCashBankTransactions = async (req, res) => {
     
     const skip = (page - 1) * limit;
     
-    // Get all types of transactions
+    // Fetch all transaction types
     const [sales, purchases, creditNotes, expenses, cashAdjustments] = await Promise.all([
       Sale.find({ userId })
         .select('invoiceNo partyName grandTotal received balance paymentType createdAt')
@@ -360,13 +345,13 @@ export const getCashBankTransactions = async (req, res) => {
         .limit(parseInt(limit))
     ]);
 
-    // Combine all transactions
+    // Format and combine transactions
     const allTransactions = [
       ...sales.map(sale => ({
         id: sale._id.toString(),
         type: 'Sale',
         reference: sale.invoiceNo,
-        party: sale.partyName,
+        party: (sale.partyName && sale.partyName !== 'Unknown' && sale.partyName !== 'unknown') ? sale.partyName : '',
         amount: sale.grandTotal,
         received: sale.received,
         balance: sale.balance,
@@ -378,7 +363,7 @@ export const getCashBankTransactions = async (req, res) => {
         id: purchase._id.toString(),
         type: 'Purchase',
         reference: purchase.billNo,
-        party: purchase.supplierName,
+        party: (purchase.supplierName && purchase.supplierName !== 'Unknown' && purchase.supplierName !== 'unknown') ? purchase.supplierName : '',
         amount: purchase.grandTotal,
         paid: purchase.paid,
         balance: purchase.balance,
@@ -390,7 +375,7 @@ export const getCashBankTransactions = async (req, res) => {
         id: note._id.toString(),
         type: 'Credit Note',
         reference: note.creditNoteNo,
-        party: note.partyName,
+        party: (note.partyName && note.partyName !== 'Unknown' && note.partyName !== 'unknown') ? note.partyName : '',
         amount: Number(note.amount) || 0,
         noteType: note.type,
         date: note.createdAt,
@@ -400,7 +385,7 @@ export const getCashBankTransactions = async (req, res) => {
         id: expense._id.toString(),
         type: 'Expense',
         reference: expense.expenseNumber,
-        party: expense.party,
+        party: (expense.party && expense.party !== 'Unknown' && expense.party !== 'unknown') ? expense.party : '',
         amount: expense.totalAmount,
         paymentType: expense.paymentType,
         date: expense.expenseDate,
@@ -410,7 +395,7 @@ export const getCashBankTransactions = async (req, res) => {
         id: adjustment._id.toString(),
         type: adjustment.type,
         reference: `Cash Adjustment`,
-        party: '-',
+        party: '',
         amount: adjustment.amount,
         description: adjustment.description,
         date: adjustment.date,
@@ -418,7 +403,7 @@ export const getCashBankTransactions = async (req, res) => {
       }))
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // Get total count for pagination
+    // Calculate pagination totals
     const [salesCount, purchasesCount, creditNotesCount, expensesCount, cashAdjustmentsCount] = await Promise.all([
       Sale.countDocuments({ userId }),
       Purchase.countDocuments({ userId }),
@@ -442,6 +427,147 @@ export const getCashBankTransactions = async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching cash bank transactions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+// Update cash adjustment
+export const updateCashAdjustment = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const { id } = req.params;
+    const { type, amount, description, date } = req.body;
+    
+    if (!type || !amount || !date) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+
+    // Find the existing transaction
+    const existingTransaction = await CashBank.findById(id);
+    if (!existingTransaction || existingTransaction.userId.toString() !== userId.toString()) {
+      return res.status(404).json({ success: false, message: 'Cash adjustment not found' });
+    }
+
+    // Calculate current cash balance using the same logic as getCashInHandSummary
+    const [sales, purchases, creditNotes, expenses, existingCashAdjustments] = await Promise.all([
+      Sale.find({ userId }).select('grandTotal received'),
+      Purchase.find({ userId }).select('grandTotal paid'),
+      CreditNote.find({ userId }).select('amount type'),
+      Expense.find({ userId }).select('totalAmount'),
+      CashBank.find({ userId }).sort({ createdAt: 1 })
+    ]);
+
+    // Calculate business cash flow
+    const totalReceived = sales.reduce((sum, sale) => sum + (sale.received || 0), 0);
+    const totalPaid = purchases.reduce((sum, purchase) => sum + (purchase.paid || 0), 0);
+    const totalExpenses = expenses.reduce((sum, expense) => sum + (expense.totalAmount || 0), 0);
+    const totalCreditNotes = creditNotes.reduce((sum, note) => {
+      const amount = Number(note.amount) || 0;
+      if (isNaN(amount)) return sum;
+      if (note.type === 'Sale') {
+        return sum + amount;
+      } else {
+        return sum - amount;
+      }
+    }, 0);
+
+    const businessNetCashFlow = totalReceived - totalPaid - totalExpenses + totalCreditNotes;
+
+    // Calculate existing adjustments (excluding the one being updated)
+    const totalExistingAdjustments = existingCashAdjustments
+      .filter(adj => adj._id.toString() !== id)
+      .reduce((sum, adjustment) => {
+        if (adjustment.type === 'Income') {
+          return sum + adjustment.amount;
+        } else if (adjustment.type === 'Expense') {
+          return sum - adjustment.amount;
+        }
+        return sum;
+      }, 0);
+    
+    // Calculate current balance
+    const currentBalance = businessNetCashFlow + totalExistingAdjustments;
+
+    // Apply new adjustment
+    let newBalance = currentBalance;
+    if (type === 'Income') {
+      newBalance += Number(amount);
+    } else if (type === 'Expense') {
+      newBalance -= Number(amount);
+    }
+
+    // Update the transaction
+    const updatedTransaction = await CashBank.findByIdAndUpdate(
+      id,
+      {
+        type,
+        amount: Number(amount),
+        description,
+        date: new Date(date),
+        cashInHand: newBalance
+      },
+      { new: true }
+    );
+
+    // Invalidate dashboard cache
+    invalidateDashboardCache(userId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Cash adjustment updated successfully',
+      data: {
+        transaction: updatedTransaction,
+        newBalance: newBalance
+      }
+    });
+
+  } catch (error) {
+    console.error('Error updating cash adjustment:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+// Delete cash adjustment
+export const deleteCashAdjustment = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const { id } = req.params;
+
+    // Find the existing transaction
+    const existingTransaction = await CashBank.findById(id);
+    if (!existingTransaction || existingTransaction.userId.toString() !== userId.toString()) {
+      return res.status(404).json({ success: false, message: 'Cash adjustment not found' });
+    }
+
+    // Delete the transaction
+    await CashBank.findByIdAndDelete(id);
+
+    // Invalidate dashboard cache
+    invalidateDashboardCache(userId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Cash adjustment deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Error deleting cash adjustment:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',

@@ -100,5 +100,40 @@ export const cashBankAPI = {
     }
     
     return response.json();
+  },
+
+  // Update cash adjustment
+  updateAdjustment: async (token: string, id: string, adjustment: CashAdjustment) => {
+    const response = await fetch(`${CASH_BANK_API}/adjustment/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(adjustment)
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to update cash adjustment');
+    }
+    
+    return response.json();
+  },
+
+  // Delete cash adjustment
+  deleteAdjustment: async (token: string, id: string) => {
+    const response = await fetch(`${CASH_BANK_API}/adjustment/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to delete cash adjustment');
+    }
+    
+    return response.json();
   }
 };

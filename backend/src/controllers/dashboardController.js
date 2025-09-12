@@ -211,6 +211,7 @@ const _getCashInHandForUser = async (userId) => {
     ]).allowDiskUse(true);
 
     const totalReceived = cashFlowData[0]?.totalReceived || 0;
+    const totalPaid = purchaseData[0]?.totalPaid || 0;
     const totalExpenses = expenseData[0]?.total || 0;
     
     let totalCreditNotes = 0;
@@ -233,8 +234,9 @@ const _getCashInHandForUser = async (userId) => {
       }
     });
     
-    const netCashFlow = totalReceived - totalExpenses + totalCreditNotes;
+    const netCashFlow = totalReceived - totalPaid - totalExpenses + totalCreditNotes;
     
+    // Final cash in hand = Business net cash flow + cash adjustments
     const finalCashInHand = netCashFlow + totalCashAdjustments;
 
     return finalCashInHand;
@@ -401,23 +403,13 @@ export const getDashboardStats = async (req, res) => {
     const parties = await Party.find({ user: objectUserId }).select('name _id openingBalance firstOpeningBalance').lean();
     
     for (const party of parties) {
-      const partyName = party.name;
       const firstOpeningBalance = party.firstOpeningBalance || 0;
       
-      const { totalReceivable: partyReceivable, totalPayable: partyPayable } = 
-        await _calculatePartyOutstandingBalances(userId, partyName);
-      
-      let finalReceivable = partyReceivable;
-      let finalPayable = partyPayable;
-      
       if (firstOpeningBalance > 0) {
-        finalReceivable += firstOpeningBalance;
+        totalReceivable += firstOpeningBalance;
       } else if (firstOpeningBalance < 0) {
-        finalPayable += Math.abs(firstOpeningBalance);
+        totalPayable += Math.abs(firstOpeningBalance);
       }
-      
-      totalReceivable += Math.max(0, finalReceivable - finalPayable);
-      totalPayable += Math.max(0, finalPayable - finalReceivable);
     }
 
     const totalSales = sales && sales.length > 0 ? sales[0].total || 0 : 0;
@@ -846,29 +838,13 @@ export const getReceivablesList = async (req, res) => {
     const receivables = [];
     
     for (const party of parties) {
-      const partyName = party.name;
       const firstOpeningBalance = party.firstOpeningBalance || 0;
       
-      const { totalReceivable, totalPayable } = 
-        await _calculatePartyOutstandingBalances(userId, partyName);
-      
-      let finalReceivable = totalReceivable;
-      let finalPayable = totalPayable;
-      
       if (firstOpeningBalance > 0) {
-        finalReceivable += firstOpeningBalance;
-      } else if (firstOpeningBalance < 0) {
-        finalPayable += Math.abs(firstOpeningBalance);
-      }
-      
-      const netReceivable = finalReceivable - finalPayable;
-      if (netReceivable > 0) {
         receivables.push({
-          name: partyName,
+          name: party.name,
           _id: party._id,
-          amount: netReceivable,
-          totalReceivable: finalReceivable,
-          totalPayable: finalPayable,
+          amount: firstOpeningBalance,
           firstOpeningBalance: firstOpeningBalance
         });
       }
@@ -910,29 +886,13 @@ export const getPayablesList = async (req, res) => {
     const payables = [];
     
     for (const party of parties) {
-      const partyName = party.name;
       const firstOpeningBalance = party.firstOpeningBalance || 0;
       
-      const { totalReceivable, totalPayable } = 
-        await _calculatePartyOutstandingBalances(userId, partyName);
-      
-      let finalReceivable = totalReceivable;
-      let finalPayable = totalPayable;
-      
-      if (firstOpeningBalance > 0) {
-        finalReceivable += firstOpeningBalance;
-      } else if (firstOpeningBalance < 0) {
-        finalPayable += Math.abs(firstOpeningBalance);
-      }
-      
-      const netPayable = finalPayable - finalReceivable;
-      if (netPayable > 0) {
+      if (firstOpeningBalance < 0) {
         payables.push({
-          name: partyName,
+          name: party.name,
           _id: party._id,
-          amount: netPayable,
-          totalReceivable: finalReceivable,
-          totalPayable: finalPayable,
+          amount: Math.abs(firstOpeningBalance),
           firstOpeningBalance: firstOpeningBalance
         });
       }
@@ -1283,96 +1243,28 @@ export const getPartyBalances = async (req, res) => {
     
     const parties = await Party.find({ user: objectUserId }).select('name _id firstOpeningBalance').lean();
     
-    const partyBalances = await Promise.all(parties.map(async (party) => {
-      const partyName = party.name;
+    const partyBalances = parties.map((party) => {
       const firstOpeningBalance = party.firstOpeningBalance || 0;
-      
-      const sales = await Sale.find({ 
-        userId: objectUserId, 
-        partyName: partyName 
-      }).select('grandTotal received balance').lean();
-      
-      const purchases = await Purchase.find({ 
-        userId: objectUserId, 
-        supplierName: partyName 
-      }).select('grandTotal paid balance').lean();
-      
-      const paymentsIn = await Sale.find({ 
-        userId: objectUserId, 
-        partyName: partyName,
-        received: { $gt: 0 }
-      }).select('received').lean();
-      
-      const paymentsOut = await Purchase.find({ 
-        userId: objectUserId, 
-        supplierName: partyName,
-        paid: { $gt: 0 }
-      }).select('paid').lean();
-      
-      const creditNotes = await CreditNote.find({ 
-        userId: objectUserId, 
-        partyName: partyName 
-      }).select('grandTotal type').lean();
-      
-      let totalReceivable = 0;
-      let totalPayable = 0;
-      
-      sales.forEach(sale => {
-        const outstanding = (sale.grandTotal || 0) - (sale.received || 0);
-        totalReceivable += outstanding;
-      });
-      
-      purchases.forEach(purchase => {
-        const outstanding = (purchase.grandTotal || 0) - (purchase.paid || 0);
-        totalPayable += outstanding;
-      });
-      
-      paymentsIn.forEach(payment => {
-        totalReceivable -= (payment.received || 0);
-      });
-      
-      paymentsOut.forEach(payment => {
-        totalPayable -= (payment.paid || 0);
-      });
-      
-      creditNotes.forEach(note => {
-        if (note.type === 'Sale') {
-          totalReceivable += (note.grandTotal || 0);
-        } else {
-          totalPayable += (note.grandTotal || 0);
-        }
-      });
-      
-      if (firstOpeningBalance > 0) {
-        totalReceivable += firstOpeningBalance;
-      } else if (firstOpeningBalance < 0) {
-        totalPayable += Math.abs(firstOpeningBalance);
-      }
       
       let category = 'neutral';
       let amount = 0;
       
-      if (totalReceivable > totalPayable) {
+      if (firstOpeningBalance > 0) {
         category = 'receivable';
-        amount = totalReceivable - totalPayable;
-      } else if (totalPayable > totalReceivable) {
+        amount = firstOpeningBalance;
+      } else if (firstOpeningBalance < 0) {
         category = 'payable';
-        amount = totalPayable - totalReceivable;
+        amount = Math.abs(firstOpeningBalance);
       }
       
       return {
         _id: party._id,
         name: party.name,
         firstOpeningBalance: firstOpeningBalance,
-        salesOutstanding: totalReceivable,
-        purchasesOutstanding: totalPayable,
-        netBalance: totalReceivable - totalPayable,
         category: category,
-        amount: amount,
-        totalReceivable: totalReceivable,
-        totalPayable: totalPayable
+        amount: amount
       };
-    }));
+    });
     
     const payables = partyBalances.filter(p => p.category === 'payable');
     const receivables = partyBalances.filter(p => p.category === 'receivable');
@@ -1385,7 +1277,7 @@ export const getPartyBalances = async (req, res) => {
         totalPayable: payables.reduce((sum, p) => sum + p.amount, 0),
         totalReceivable: receivables.reduce((sum, p) => sum + p.amount, 0),
         totalParties: parties.length,
-        calculationMethod: 'transaction_based'
+        calculationMethod: 'opening_balance_only'
       }
     };
     

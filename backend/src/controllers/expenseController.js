@@ -1,5 +1,6 @@
 import Expense from '../models/expense.js';
 import mongoose from 'mongoose';
+import { clearAllCacheForUser } from './dashboardController.js';
 
 // Create new expense
 export const createExpense = async (req, res) => {
@@ -110,6 +111,9 @@ export const createExpense = async (req, res) => {
     });
 
     await newExpense.save();
+
+    // Invalidate dashboard cache to show updated cash in hand immediately
+    clearAllCacheForUser(userId);
 
     res.status(201).json({
       success: true,

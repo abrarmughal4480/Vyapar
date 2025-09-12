@@ -830,6 +830,13 @@ export default function AddPurchasePage() {
     }
   }, [isFromExpenses, newPurchase.partyName, tacEnabled]);
 
+  // Auto-switch to Cash when tax is disabled in expense mode
+  useEffect(() => {
+    if (isFromExpenses && !tacEnabled && newPurchase.paymentType === 'Credit') {
+      setNewPurchase(prev => ({ ...prev, paymentType: 'Cash', paid: '' }));
+    }
+  }, [isFromExpenses, tacEnabled, newPurchase.paymentType]);
+
   useEffect(() => {
     if (!newPurchase.partyName || !parties.length) return;
     const matchedParty = parties.find(
@@ -1240,7 +1247,8 @@ export default function AddPurchasePage() {
       }
 
       // Create party if it doesn't exist and no partyId is set
-      if (newPurchase.partyName && !newPurchase.partyId) {
+      // Skip party creation if we're in expense mode and party field is empty
+      if (newPurchase.partyName && !newPurchase.partyId && !(isFromExpenses && (!newPurchase.partyName || newPurchase.partyName.trim() === ''))) {
         try {
           // Check if party already exists
           const existingParty = parties.find(p => 
@@ -2587,7 +2595,8 @@ export default function AddPurchasePage() {
                       </label>
                       <CustomDropdown
                         options={[
-                          { value: 'Credit', label: 'Credit' },
+                          // Only show Credit option if not in expense mode or if tax is enabled
+                          ...(isFromExpenses && !tacEnabled ? [] : [{ value: 'Credit', label: 'Credit' }]),
                           { value: 'Cash', label: 'Cash' },
                           { value: 'Card', label: 'Card' },
                           { value: 'UPI', label: 'UPI' },
@@ -2598,7 +2607,7 @@ export default function AddPurchasePage() {
                         className="mb-1 w-full"
                         dropdownIndex={paymentTypeDropdownIndex}
                         setDropdownIndex={setPaymentTypeDropdownIndex}
-                        optionsCount={5}
+                        optionsCount={isFromExpenses && !tacEnabled ? 4 : 5}
                       />
                       
                       {/* Paid Amount Field for Credit Purchases/Orders */}

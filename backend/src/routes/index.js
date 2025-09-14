@@ -19,6 +19,7 @@ import cashBankRoutes from './cashBank.js';
 import { getDashboardStats, getSalesOverview, getRecentActivity, getProfile, updateProfile, getReceivablesList, getPayablesList, getDashboardPerformanceStats, testStockValue, getStockSummary, createDashboardIndexes, getPartyBalances } from '../controllers/dashboardController.js';
 import sessionCheckRoutes from './sessionCheck.js';
 import { sendUserInvite, getUserInvites, getInvitesForMe, respondToInvite, deleteUserInvite, updateUserInvite, updateUserCompanyContext } from '../controllers/userInviteController.js';
+import { openFile } from '../tauri-integration.js';
 
 const router = express.Router();
 
@@ -111,6 +112,22 @@ router.get('/api/invites/for-me', authMiddleware, getInvitesForMe);
 router.post('/api/invites/respond', authMiddleware, respondToInvite);
 // Update user company context when joining a company
 router.post('/api/invites/update-company-context', authMiddleware, updateUserCompanyContext);
+
+// Tauri file operations
+router.post('/api/tauri/open-file', authMiddleware, async (req, res) => {
+  try {
+    const { path } = req.body;
+    if (!path) {
+      return res.status(400).json({ success: false, message: 'File path is required' });
+    }
+    
+    const result = await openFile(path);
+    res.json(result);
+  } catch (error) {
+    console.error('Error opening file:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 router.get('/', (req, res) => {
   res.send('Hello from Express backend!');

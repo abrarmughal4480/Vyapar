@@ -149,6 +149,34 @@ export class TauriIntegration {
       }
     }
   }
+
+  // Open file with default application
+  async openFile(filePath) {
+    if (this.isTauriEnv) {
+      const platform = process.platform;
+      
+      try {
+        switch (platform) {
+          case 'win32':
+            await execAsync(`start "" "${filePath}"`);
+            break;
+          case 'darwin':
+            await execAsync(`open "${filePath}"`);
+            break;
+          case 'linux':
+            await execAsync(`xdg-open "${filePath}"`);
+            break;
+          default:
+            console.log('Unsupported platform for opening files');
+        }
+        return { success: true };
+      } catch (error) {
+        console.error('Error opening file:', error);
+        return { success: false, error: error.message };
+      }
+    }
+    return { success: false, error: 'Not in Tauri environment' };
+  }
 }
 
 // Export singleton instance
@@ -167,4 +195,5 @@ export const getSystemInfo = () => tauriIntegration.getSystemInfo();
 export const backupData = (data) => tauriIntegration.backupData(data);
 export const restoreData = (backupFile) => tauriIntegration.restoreData(backupFile);
 export const getAvailableBackups = () => tauriIntegration.getAvailableBackups();
-export const cleanOldBackups = () => tauriIntegration.cleanOldBackups(); 
+export const cleanOldBackups = () => tauriIntegration.cleanOldBackups();
+export const openFile = (filePath) => tauriIntegration.openFile(filePath); 

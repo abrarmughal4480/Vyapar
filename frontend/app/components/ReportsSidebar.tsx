@@ -60,6 +60,12 @@ const partyReportTabs = [
     description: 'Profit/loss by party',
     path: '/dashboard/reports/party-wise-profit-and-loss'
   },
+  {
+    id: 'sale-summary',
+    name: 'Sale Summary',
+    description: 'Daily sales summary by party',
+    path: '/dashboard/reports/sale-summary'
+  },
 ];
 
 const ReportsSidebar: React.FC<ReportsSidebarProps> = ({ activeTab, onTabChange }) => {

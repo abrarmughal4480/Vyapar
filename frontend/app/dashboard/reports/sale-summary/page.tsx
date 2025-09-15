@@ -141,81 +141,76 @@ export default function SaleSummaryPage() {
   };
 
   const handleWebPrint = () => {
-    if (printRef.current) {
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        const currentDate = new Date().toLocaleDateString();
-        
-        // Group sales by party
-        const salesByParty = filteredData.reduce((acc, sale) => {
-          if (!acc[sale.partyName]) {
-            acc[sale.partyName] = [];
-          }
-          acc[sale.partyName].push(sale);
-          return acc;
-        }, {} as Record<string, SaleEntry[]>);
-
-        const printContent = `
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Daily Sales List - ${currentDate}</title>
-              <style>
-                body { font-family: Arial, sans-serif; margin: 20px; font-size: 14px; }
-                .party-name { font-weight: bold; font-size: 16px; margin: 20px 0 10px 0; }
-                .invoice { font-size: 12px; color: #666; margin: 5px 0; }
-                table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-                th, td { border: 1px solid #333; padding: 8px; text-align: left; }
-                th { background-color: #f0f0f0; font-weight: bold; }
-                .text-center { text-align: center; }
-                .text-right { text-align: right; }
-              </style>
-            </head>
-            <body>
-              ${Object.entries(salesByParty).map(([partyName, sales]) => `
-                <div class="party-name">${partyName}</div>
-                ${sales.map(sale => `
-                  <div class="invoice">Invoice: ${sale.invoiceNo}</div>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Item Name</th>
-                        <th class="text-center">Qty</th>
-                        <th class="text-center">Unit</th>
-                        <th class="text-right">Rate</th>
-                        <th class="text-right">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${sale.items && sale.items.length > 0 ? sale.items.map((item: any) => {
-                        // Try multiple possible field names for item name
-                        const itemName = item.itemName || item.name || item.item || item.itemName || item.productName || 'Unknown Item';
-                        return `
-                        <tr>
-                          <td>${itemName}</td>
-                          <td class="text-center">${item.qty || 0}</td>
-                          <td class="text-center">${item.unit || 'N/A'}</td>
-                          <td class="text-right">PKR ${(item.price || 0).toLocaleString()}</td>
-                          <td class="text-right">PKR ${((item.qty || 0) * (item.price || 0)).toLocaleString()}</td>
-                        </tr>
-                      `;
-                      }).join('') : `
-                        <tr>
-                          <td colspan="5" class="text-center">No items details available</td>
-                        </tr>
-                      `}
-                    </tbody>
-                  </table>
-                `).join('')}
-              `).join('')}
-            </body>
-          </html>
-        `;
-        printWindow.document.write(printContent);
-        printWindow.document.close();
-        printWindow.print();
+    // Create a hidden div with print content
+    const printDiv = document.createElement('div');
+    printDiv.style.position = 'absolute';
+    printDiv.style.left = '-9999px';
+    printDiv.style.top = '-9999px';
+    printDiv.style.width = '210mm'; // A4 width
+    printDiv.style.fontSize = '12px';
+    printDiv.style.fontFamily = 'Arial, sans-serif';
+    
+    const currentDate = new Date().toLocaleDateString();
+    
+    // Group sales by party
+    const salesByParty = filteredData.reduce((acc, sale) => {
+      if (!acc[sale.partyName]) {
+        acc[sale.partyName] = [];
       }
-    }
+      acc[sale.partyName].push(sale);
+      return acc;
+    }, {} as Record<string, SaleEntry[]>);
+
+    const printContent = `
+      <div style="padding: 20px;">
+        ${Object.entries(salesByParty).map(([partyName, sales]) => `
+          <div style="font-weight: bold; font-size: 16px; margin: 20px 0 10px 0;">${partyName}</div>
+          ${sales.map(sale => `
+            <div style="font-size: 12px; color: #666; margin: 5px 0;">Invoice: ${sale.invoiceNo}</div>
+            <table style="width: 100%; border-collapse: collapse; margin: 10px 0;">
+              <thead>
+                <tr>
+                  <th style="border: 1px solid #333; padding: 8px; text-align: left; background-color: #f0f0f0; font-weight: bold;">Item Name</th>
+                  <th style="border: 1px solid #333; padding: 8px; text-align: center; background-color: #f0f0f0; font-weight: bold;">Qty</th>
+                  <th style="border: 1px solid #333; padding: 8px; text-align: center; background-color: #f0f0f0; font-weight: bold;">Unit</th>
+                  <th style="border: 1px solid #333; padding: 8px; text-align: right; background-color: #f0f0f0; font-weight: bold;">Rate</th>
+                  <th style="border: 1px solid #333; padding: 8px; text-align: right; background-color: #f0f0f0; font-weight: bold;">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${sale.items && sale.items.length > 0 ? sale.items.map((item: any) => {
+                  const itemName = item.itemName || item.name || item.item || item.itemName || item.productName || 'Unknown Item';
+                  return `
+                  <tr>
+                    <td style="border: 1px solid #333; padding: 8px; text-align: left;">${itemName}</td>
+                    <td style="border: 1px solid #333; padding: 8px; text-align: center;">${item.qty || 0}</td>
+                    <td style="border: 1px solid #333; padding: 8px; text-align: center;">${item.unit || 'N/A'}</td>
+                    <td style="border: 1px solid #333; padding: 8px; text-align: right;">PKR ${(item.price || 0).toLocaleString()}</td>
+                    <td style="border: 1px solid #333; padding: 8px; text-align: right;">PKR ${((item.qty || 0) * (item.price || 0)).toLocaleString()}</td>
+                  </tr>
+                `;
+                }).join('') : `
+                  <tr>
+                    <td colspan="5" style="border: 1px solid #333; padding: 8px; text-align: center;">No items details available</td>
+                  </tr>
+                `}
+              </tbody>
+            </table>
+          `).join('')}
+        `).join('')}
+      </div>
+    `;
+    
+    printDiv.innerHTML = printContent;
+    document.body.appendChild(printDiv);
+    
+    // Print the content
+    window.print();
+    
+    // Remove the print div after printing
+    setTimeout(() => {
+      document.body.removeChild(printDiv);
+    }, 1000);
   };
 
   const handleTauriPrint = async () => {

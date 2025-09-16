@@ -538,6 +538,32 @@ const CreateCreditNotePage = () => {
     setNewCreditNote(prev => ({ ...prev, items: prev.items.filter(item => item.id !== id) }));
   };
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey && event.key === 'N') {
+        event.preventDefault();
+        addNewRow();
+      }
+      else if (event.ctrlKey && (event.key === '+' || event.key === '=')) {
+        event.preventDefault();
+        addNewRow();
+      }
+      else if (event.ctrlKey && event.key === '-') {
+        event.preventDefault();
+        if (newCreditNote.items.length > 1) {
+          const lastItem = newCreditNote.items[newCreditNote.items.length - 1];
+          deleteRow(lastItem.id);
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [newCreditNote.items]);
+
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {

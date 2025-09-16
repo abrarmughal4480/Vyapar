@@ -405,6 +405,32 @@ export default function CreateSalesOrderPage() {
     }
   };
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey && event.key === 'N') {
+        event.preventDefault();
+        addRow();
+      }
+      else if (event.ctrlKey && (event.key === '+' || event.key === '=')) {
+        event.preventDefault();
+        addRow();
+      }
+      else if (event.ctrlKey && event.key === '-') {
+        event.preventDefault();
+        if (formData.items.length > 1) {
+          const lastItem = formData.items[formData.items.length - 1];
+          removeRow(lastItem.id);
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [formData.items]);
+
   // Handle customer selection
   const handleCustomerSelect = (customer: string) => {
     const [name, phone] = customer.split(' - ')

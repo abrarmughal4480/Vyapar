@@ -593,6 +593,32 @@ const AddSalePageWithSearchParams = () => {
     };
   }, [setIsCollapsed, wasSidebarCollapsed]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey && event.key === 'N') {
+        event.preventDefault();
+        addNewRow();
+      }
+      else if (event.ctrlKey && (event.key === '+' || event.key === '=')) {
+        event.preventDefault();
+        addNewRow();
+      }
+      else if (event.ctrlKey && event.key === '-') {
+        event.preventDefault();
+        if (newSale.items.length > 1) {
+          const lastItem = newSale.items[newSale.items.length - 1];
+          deleteRow(lastItem.id);
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [newSale.items]);
+
   // Fetch items on component mount
   useEffect(() => {
     const initializeData = async () => {

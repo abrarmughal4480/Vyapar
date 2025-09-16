@@ -538,6 +538,32 @@ export default function CreateSalesOrderPage() {
     setFormData(prev => ({ ...prev, items: prev.items.filter(item => item.id !== id) }));
   }, [formData.items.length]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey && event.key === 'N') {
+        event.preventDefault();
+        addRow();
+      }
+      else if (event.ctrlKey && (event.key === '+' || event.key === '=')) {
+        event.preventDefault();
+        addRow();
+      }
+      else if (event.ctrlKey && event.key === '-') {
+        event.preventDefault();
+        if (formData.items.length > 1) {
+          const lastItem = formData.items[formData.items.length - 1];
+          removeRow(lastItem.id);
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [formData.items, addRow, removeRow]);
+
   const fetchCustomerSuggestions = async () => {
     const token = getToken();
     if (!token) return;

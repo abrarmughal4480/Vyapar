@@ -1039,6 +1039,32 @@ export default function AddPurchasePage() {
     setNewPurchase(prev => ({ ...prev, items: prev.items.filter(item => item.id !== id) }));
   };
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey && event.key === 'N') {
+        event.preventDefault();
+        addNewRow();
+      }
+      else if (event.ctrlKey && (event.key === '+' || event.key === '=')) {
+        event.preventDefault();
+        addNewRow();
+      }
+      else if (event.ctrlKey && event.key === '-') {
+        event.preventDefault();
+        if (newPurchase.items.length > 1) {
+          const lastItem = newPurchase.items[newPurchase.items.length - 1];
+          deleteRow(lastItem.id);
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [newPurchase.items]);
+
   // Fetch parties from API (stale-while-revalidate)
   const fetchPartySuggestions = async () => {
     try {

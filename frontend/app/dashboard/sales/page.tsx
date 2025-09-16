@@ -404,8 +404,13 @@ export default function SalesOrderPage() {
     alert('Edit Sale: ' + (order?.id || order?._id));
   }
   function handleViewSale(order: any) {
-    // Implement navigation to view page or open modal
-    alert('View Sale: ' + (order?.id || order?._id));
+    // Navigate to invoice view page
+    const saleId = order?.id || order?._id;
+    if (saleId) {
+      router.push(`/dashboard/invoices?saleId=${saleId}`);
+    } else {
+      alert('Sale ID not found');
+    }
   }
 
   return (

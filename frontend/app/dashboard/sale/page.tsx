@@ -1297,7 +1297,20 @@ Your Business Name`;
                           </td>
                           <td className="px-6 py-4 text-sm text-blue-700 font-bold whitespace-nowrap text-center">
                             {transaction.invoiceNo ? (
-                              <a href={`/dashboard/sale/invoice/${transaction._id}`} className="underline hover:text-blue-900">{transaction.invoiceNo}</a>
+                              <button 
+                                onClick={() => {
+                                  const saleId = transaction._id || transaction.id;
+                                  if (saleId) {
+                                    router.push(`/dashboard/invoices?saleId=${saleId}`);
+                                  } else {
+                                    setToast({ message: 'Invoice ID not found', type: 'error' });
+                                  }
+                                }}
+                                className="underline hover:text-blue-900 hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+                                title="View Invoice"
+                              >
+                                {transaction.invoiceNo}
+                              </button>
                             ) : (
                               <span className="text-gray-400">-</span>
                             )}
@@ -1318,9 +1331,17 @@ Your Business Name`;
                             <div className="flex justify-center gap-2 relative">
                               {/* View button outside dropdown */}
                               <button
-                                onClick={() => setToast({ message: 'View invoice feature coming soon!', type: 'success' })}
-                                className="px-2 py-1 text-sm text-black"
+                                onClick={() => {
+                                  const saleId = transaction._id || transaction.id;
+                                  if (saleId) {
+                                    router.push(`/dashboard/invoices?saleId=${saleId}`);
+                                  } else {
+                                    setToast({ message: 'Invoice ID not found', type: 'error' });
+                                  }
+                                }}
+                                className="px-2 py-1 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
                                 style={{ minWidth: '40px', fontSize: '13px', background: 'none', border: 'none', boxShadow: 'none' }}
+                                title="View Invoice"
                               >
                                 View
                               </button>

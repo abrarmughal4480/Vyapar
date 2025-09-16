@@ -47,7 +47,7 @@ export default function CashBankPage() {
   const [error, setError] = useState<string | null>(null);
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [adjustmentAmount, setAdjustmentAmount] = useState('');
-  const [adjustmentDate, setAdjustmentDate] = useState('');
+  const [adjustmentDate, setAdjustmentDate] = useState(new Date().toISOString().slice(0, 10));
   const [adjustmentType, setAdjustmentType] = useState<'Income' | 'Expense'>('Income');
   const [adjustmentDescription, setAdjustmentDescription] = useState('');
   const [savingAdjustment, setSavingAdjustment] = useState(false);
@@ -96,7 +96,24 @@ export default function CashBankPage() {
 
       const response = await cashBankAPI.getTransactions(token, { page, limit: 20 });
       if (response.success) {
-        setTransactions(response.data);
+        // Sort transactions by date and time (latest first)
+        const sortedTransactions = (response.data || []).sort((a: Transaction, b: Transaction) => {
+          const dateA = new Date(a.date);
+          const dateB = new Date(b.date);
+          
+          // First sort by date
+          const dateComparison = dateB.getTime() - dateA.getTime();
+          if (dateComparison !== 0) {
+            return dateComparison;
+          }
+          
+          // If dates are the same, sort by ID (assuming higher ID = newer record)
+          // This ensures cash adjustments created on the same day appear in creation order
+          const idA = parseInt(a.id) || 0;
+          const idB = parseInt(b.id) || 0;
+          return idB - idA;
+        });
+        setTransactions(sortedTransactions);
       } else {
         setError(response.message || 'Failed to fetch transactions');
         setToast({ message: response.message || 'Failed to fetch transactions', type: 'error' });
@@ -168,7 +185,7 @@ export default function CashBankPage() {
         
         // Reset form and close modal
         setAdjustmentAmount('');
-        setAdjustmentDate('');
+        setAdjustmentDate(new Date().toISOString().slice(0, 10));
         setAdjustmentType('Income');
         setAdjustmentDescription('');
         setShowAdjustModal(false);
@@ -193,7 +210,7 @@ export default function CashBankPage() {
   const closeModal = () => {
     setShowAdjustModal(false);
     setAdjustmentAmount('');
-    setAdjustmentDate('');
+    setAdjustmentDate(new Date().toISOString().slice(0, 10));
     setAdjustmentType('Income');
     setAdjustmentDescription('');
   };
@@ -276,7 +293,7 @@ export default function CashBankPage() {
     setShowEditModal(false);
     setEditingTransaction(null);
     setAdjustmentAmount('');
-    setAdjustmentDate('');
+    setAdjustmentDate(new Date().toISOString().slice(0, 10));
     setAdjustmentType('Income');
     setAdjustmentDescription('');
   };

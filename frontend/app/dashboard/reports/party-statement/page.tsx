@@ -897,6 +897,16 @@ const PartyStatementPage = () => {
       {/* Balance Summary */}
       {selectedParty && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <div className="bg-gradient-to-br from-blue-100 to-blue-50 p-4 rounded-xl shadow group hover:shadow-md transition-all flex flex-col items-start">
+            <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-blue-500 text-white mb-2 text-lg">💰</div>
+            <div className={`text-lg font-bold ${(summaryTotals.totalReceivable - summaryTotals.totalPayable) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+              {formatCurrency(summaryTotals.totalReceivable - summaryTotals.totalPayable)}
+            </div>
+            <div className="text-xs text-gray-500">Total Balance</div>
+            <div className="text-xs text-gray-400 mt-1">
+              {(summaryTotals.totalReceivable - summaryTotals.totalPayable) >= 0 ? 'Net Receivable' : 'Net Payable'}
+            </div>
+          </div>
           <div className="bg-gradient-to-br from-orange-100 to-orange-50 p-4 rounded-xl shadow group hover:shadow-md transition-all flex flex-col items-start">
             <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-orange-500 text-white mb-2 text-lg">📋</div>
             <div className={`text-lg font-bold ${summaryTotals.totalReceivable >= 0 ? 'text-orange-700' : 'text-red-700'}`}>
@@ -916,13 +926,6 @@ const PartyStatementPage = () => {
             <div className="text-xs text-gray-400 mt-1">
               {summaryTotals.totalPayable >= 0 ? 'You are owed' : 'You owe'}
             </div>
-          </div>
-          <div className="bg-gradient-to-br from-purple-100 to-purple-50 p-4 rounded-xl shadow group hover:shadow-md transition-all flex flex-col items-start">
-            <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-purple-500 text-white mb-2 text-lg">📊</div>
-            <div className="text-lg font-bold text-purple-700">
-              {filteredTransactions.length}
-            </div>
-            <div className="text-xs text-gray-500">Total Transactions</div>
           </div>
         </div>
       )}

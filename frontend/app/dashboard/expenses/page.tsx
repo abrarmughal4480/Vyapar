@@ -29,9 +29,16 @@ export default function ExpensesPage() {
           getExpenseStats()
         ]);
         
-        setExpenses(expensesResponse.data || []);
+        // Sort expenses by date and time (latest first)
+        const sortedExpenses = (expensesResponse.data || []).sort((a: any, b: any) => {
+          const dateA = new Date(a.expenseDate);
+          const dateB = new Date(b.expenseDate);
+          return dateB.getTime() - dateA.getTime();
+        });
+        
+        setExpenses(sortedExpenses);
         setExpenseStats(statsResponse.data || { byCategory: [], byItem: [] });
-        setFilteredExpenses(expensesResponse.data || []);
+        setFilteredExpenses(sortedExpenses);
         
         // Set default selection - first category by default (using merged data)
         if (statsResponse.data?.byCategory && statsResponse.data.byCategory.length > 0) {
@@ -80,7 +87,13 @@ export default function ExpensesPage() {
   // Function to filter expenses based on selection
   const filterExpenses = (type: 'category' | 'item', value: string) => {
     if (!value.trim()) {
-      setFilteredExpenses(expenses);
+      // Sort by date and time (latest first)
+      const sorted = [...expenses].sort((a, b) => {
+        const dateA = new Date(a.expenseDate);
+        const dateB = new Date(b.expenseDate);
+        return dateB.getTime() - dateA.getTime();
+      });
+      setFilteredExpenses(sorted);
       return;
     }
 
@@ -98,7 +111,14 @@ export default function ExpensesPage() {
       );
     }
     
-    setFilteredExpenses(filtered);
+    // Sort by date and time (latest first)
+    const sorted = filtered.sort((a, b) => {
+      const dateA = new Date(a.expenseDate);
+      const dateB = new Date(b.expenseDate);
+      return dateB.getTime() - dateA.getTime();
+    });
+    
+    setFilteredExpenses(sorted);
   };
 
   // Function to handle edit expense
@@ -144,16 +164,34 @@ export default function ExpensesPage() {
             const filtered = expensesResponse.data.filter((expense: any) => 
               expense.expenseCategory && expense.expenseCategory.toLowerCase() === selectedCategory.toLowerCase()
             );
-            setFilteredExpenses(filtered);
+            // Sort by date and time (latest first)
+            const sorted = filtered.sort((a: any, b: any) => {
+              const dateA = new Date(a.expenseDate);
+              const dateB = new Date(b.expenseDate);
+              return dateB.getTime() - dateA.getTime();
+            });
+            setFilteredExpenses(sorted);
           } else if (selectedItem) {
             const filtered = expensesResponse.data.filter((expense: any) => 
               expense.items && expense.items.some((item: any) => 
                 item.item && item.item.toLowerCase() === selectedItem.toLowerCase()
               )
             );
-            setFilteredExpenses(filtered);
+            // Sort by date and time (latest first)
+            const sorted = filtered.sort((a: any, b: any) => {
+              const dateA = new Date(a.expenseDate);
+              const dateB = new Date(b.expenseDate);
+              return dateB.getTime() - dateA.getTime();
+            });
+            setFilteredExpenses(sorted);
           } else {
-            setFilteredExpenses(expensesResponse.data || []);
+            // Sort by date and time (latest first)
+            const sorted = (expensesResponse.data || []).sort((a: any, b: any) => {
+              const dateA = new Date(a.expenseDate);
+              const dateB = new Date(b.expenseDate);
+              return dateB.getTime() - dateA.getTime();
+            });
+            setFilteredExpenses(sorted);
           }
         } catch (error) {
           console.error('Error refreshing data:', error);
@@ -214,16 +252,34 @@ export default function ExpensesPage() {
                   const filtered = expenses.filter((expense: any) => 
                     expense.expenseCategory && expense.expenseCategory.toLowerCase() === firstCategory.toLowerCase()
                   );
-                  setFilteredExpenses(filtered);
+                  // Sort by date and time (latest first)
+                  const sorted = filtered.sort((a: any, b: any) => {
+                    const dateA = new Date(a.expenseDate);
+                    const dateB = new Date(b.expenseDate);
+                    return dateB.getTime() - dateA.getTime();
+                  });
+                  setFilteredExpenses(sorted);
                 } else {
                   setSelectedCategory('');
                   setSelectedItem('');
-                  setFilteredExpenses(expenses);
+                  // Sort by date and time (latest first)
+                  const sorted = [...expenses].sort((a: any, b: any) => {
+                    const dateA = new Date(a.expenseDate);
+                    const dateB = new Date(b.expenseDate);
+                    return dateB.getTime() - dateA.getTime();
+                  });
+                  setFilteredExpenses(sorted);
                 }
               } else {
                 setSelectedCategory('');
                 setSelectedItem('');
-                setFilteredExpenses(expenses);
+                // Sort by date and time (latest first)
+                const sorted = [...expenses].sort((a: any, b: any) => {
+                  const dateA = new Date(a.expenseDate);
+                  const dateB = new Date(b.expenseDate);
+                  return dateB.getTime() - dateA.getTime();
+                });
+                setFilteredExpenses(sorted);
               }
             }}
             className={`flex-1 py-2 px-4 text-center font-medium transition-colors relative ${
@@ -257,11 +313,23 @@ export default function ExpensesPage() {
                     item.item && item.item.toLowerCase() === firstItem.toLowerCase()
                   )
                 );
-                setFilteredExpenses(filtered);
+                // Sort by date and time (latest first)
+                const sorted = filtered.sort((a: any, b: any) => {
+                  const dateA = new Date(a.expenseDate);
+                  const dateB = new Date(b.expenseDate);
+                  return dateB.getTime() - dateA.getTime();
+                });
+                setFilteredExpenses(sorted);
               } else {
                 setSelectedItem('');
                 setSelectedCategory('');
-                setFilteredExpenses(expenses);
+                // Sort by date and time (latest first)
+                const sorted = [...expenses].sort((a: any, b: any) => {
+                  const dateA = new Date(a.expenseDate);
+                  const dateB = new Date(b.expenseDate);
+                  return dateB.getTime() - dateA.getTime();
+                });
+                setFilteredExpenses(sorted);
               }
             }}
             className={`flex-1 py-2 px-4 text-center font-medium transition-colors relative ${

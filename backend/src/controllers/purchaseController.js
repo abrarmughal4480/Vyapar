@@ -3,7 +3,6 @@ import Item from '../models/items.js';
 import Payment from '../models/payment.js';
 import Party from '../models/parties.js';
 import mongoose from 'mongoose';
-import { clearAllCacheForUser } from './dashboardController.js';
 
 export const createPurchase = async (req, res) => {
   try {
@@ -223,7 +222,6 @@ export const createPurchase = async (req, res) => {
     }
     
     res.status(201).json({ success: true, purchase });
-    clearAllCacheForUser(userId);
   } catch (err) {
     console.error('Purchase creation error:', err);
     console.error('Request body:', req.body);
@@ -414,7 +412,6 @@ export const makePayment = async (req, res) => {
       newBalance: purchase.balance,
       paymentProcessed: amount > 0
     });
-    clearAllCacheForUser(userId);
   } catch (err) {
     console.error('Payment error:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -529,7 +526,6 @@ export const deletePurchase = async (req, res) => {
     await Purchase.findByIdAndDelete(purchaseId);
     
     res.json({ success: true, message: 'Purchase deleted successfully' });
-    clearAllCacheForUser(userId);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -757,7 +753,6 @@ export const updatePurchase = async (req, res) => {
       message: 'Purchase updated successfully'
     });
     
-    clearAllCacheForUser(userId);
   } catch (err) {
     console.error('Purchase update error:', err);
     res.status(500).json({ success: false, message: err.message });

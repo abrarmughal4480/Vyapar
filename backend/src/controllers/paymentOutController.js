@@ -1,7 +1,6 @@
 import Payment from '../models/payment.js';
 import Purchase from '../models/purchase.js';
 import mongoose from 'mongoose';
-import { clearAllCacheForUser } from './dashboardController.js';
 
 // Create a new payment out record
 export const createPaymentOut = async (req, res) => {
@@ -104,7 +103,6 @@ export const createPaymentOut = async (req, res) => {
       excessAmount: excessAmount > 0 ? excessAmount : 0,
       openingBalanceSet: excessAmount > 0
     });
-    clearAllCacheForUser(userId);
   } catch (err) {
     console.error('Payment out creation error:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -227,7 +225,6 @@ export const updatePaymentOut = async (req, res) => {
     await paymentOut.save();
     
     res.json({ success: true, paymentOut });
-    clearAllCacheForUser(userId);
   } catch (err) {
     console.error('Update payment out error:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -269,7 +266,6 @@ export const deletePaymentOut = async (req, res) => {
     await PaymentOut.findByIdAndDelete(paymentOutId);
     
     res.json({ success: true, message: 'Payment out deleted successfully' });
-    clearAllCacheForUser(userId);
   } catch (err) {
     console.error('Delete payment out error:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -392,7 +388,6 @@ export const makeBulkPaymentToParty = async (req, res) => {
         newOpeningBalance: supplierDoc.openingBalance
       });
       
-      clearAllCacheForUser(userId);
     } catch (err) {
       console.error('Failed to update supplier opening balance:', err);
       return res.status(500).json({ success: false, message: 'Failed to update supplier balance' });

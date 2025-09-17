@@ -23,12 +23,12 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 }) => {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeinup">
-      <div className="bg-white/90 rounded-2xl shadow-2xl w-full max-w-md animate-scalein">
-        <div className="p-6 border-b border-gray-200">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeinup overflow-y-auto">
+      <div className="bg-white/90 rounded-2xl shadow-2xl w-full max-w-md animate-scalein max-h-[90vh] flex flex-col">
+        <div className="p-6 border-b border-gray-200 flex-shrink-0">
           <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
         </div>
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto flex-1">
           <p className="text-gray-700 mb-4">{description}</p>
           <div className="flex justify-end space-x-3">
             <button

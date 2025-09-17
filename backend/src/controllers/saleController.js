@@ -2,7 +2,6 @@ import Sale from '../models/sale.js';
 import Item from '../models/items.js';
 import Payment from '../models/payment.js';
 import mongoose from 'mongoose';
-import { clearAllCacheForUser } from './dashboardController.js';
 
 function getUnitDisplay(unit) {
   if (!unit) return '';
@@ -326,7 +325,6 @@ export const createSale = async (req, res) => {
       console.error('Failed to update party openingBalance:', err);
     }
     
-    clearAllCacheForUser(userId); // Invalidate all related caches
     res.status(201).json({ success: true, sale: saleObj, partyCreated });
   } catch (err) {
     console.error('Sale creation error:', err);
@@ -511,10 +509,6 @@ export const receivePayment = async (req, res) => {
       openingBalanceSet: excessAmount > 0
     });
     
-    // Only clear cache if user context exists
-    if (sale.userId) {
-      clearAllCacheForUser(sale.userId);
-    }
   } catch (err) {
     console.error('Payment error:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -597,7 +591,6 @@ export const receivePartyPayment = async (req, res) => {
         newOpeningBalance: partyDoc.openingBalance
       });
       
-      clearAllCacheForUser(userId);
     } catch (err) {
       console.error('Failed to update party opening balance:', err);
       return res.status(500).json({ success: false, message: 'Failed to update party balance' });
@@ -729,7 +722,6 @@ export const deleteSale = async (req, res) => {
     
     await Sale.deleteOne({ _id: saleId });
     res.json({ success: true, message: 'Sale deleted successfully' });
-    clearAllCacheForUser(userId); // Invalidate all related caches
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -1089,7 +1081,6 @@ export const updateSale = async (req, res) => {
       }));
     }
 
-    clearAllCacheForUser(userId); // Invalidate all related caches
     
     res.json({ success: true, sale: saleObj, partyCreated });
   } catch (err) {

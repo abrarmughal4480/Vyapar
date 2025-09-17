@@ -159,8 +159,8 @@ function ViewQuotationModal({
 }) {
   if (!open || !quotation) return null
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto flex flex-col">
         <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-8 py-6 rounded-t-2xl flex justify-between items-center">
           <div>
             <h2 className="text-2xl font-bold text-white">Quotation #{quotation.number}</h2>
@@ -173,7 +173,7 @@ function ViewQuotationModal({
             ✕
           </button>
         </div>
-        <div className="p-8">
+        <div className="p-8 overflow-y-auto flex-1">
           <div className="mb-4">
             <div className="flex justify-between">
               <div>

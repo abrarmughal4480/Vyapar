@@ -3,7 +3,6 @@ import Item from '../models/items.js';
 import User from '../models/user.js';
 import Party from '../models/parties.js';
 import mongoose from 'mongoose';
-import { clearAllCacheForUser } from './dashboardController.js';
 
 export const createCreditNote = async (req, res) => {
   try {
@@ -135,8 +134,6 @@ export const createCreditNote = async (req, res) => {
         const allParties = await Party.find({ user: userId });
       }
       
-      // Clear all cache for this user after balance updates
-      clearAllCacheForUser(userId);
     } catch (err) {
       console.error('Failed to update balances:', err);
     }

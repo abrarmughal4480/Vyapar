@@ -88,14 +88,14 @@ function ProfessionalModal({
 
   return (
     <div 
-      className="fixed inset-0 bg-black/60 backdrop-blur-lg flex items-center justify-center z-50 p-4 animate-fadeIn"
+      className="fixed inset-0 bg-black/60 backdrop-blur-lg flex items-center justify-center z-50 p-4 animate-fadeIn overflow-y-auto"
       onClick={(e) => e.target === e.currentTarget && onClose()}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
-      <div className={`bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 w-full ${sizeClasses[size]} transform animate-modalSlideIn`}>
-        <div className={`${typeStyles[type]} px-8 py-6 rounded-t-3xl relative overflow-hidden`}>
+      <div className={`bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 w-full ${sizeClasses[size]} transform animate-modalSlideIn max-h-[90vh] flex flex-col`}>
+        <div className={`${typeStyles[type]} px-8 py-6 rounded-t-3xl relative overflow-hidden flex-shrink-0`}>
           <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent"></div>
           <div className="relative flex justify-between items-center">
             <div>
@@ -111,7 +111,7 @@ function ProfessionalModal({
             </button>
           </div>
         </div>
-        <div className="p-8">{children}</div>
+        <div className="p-8 overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   );

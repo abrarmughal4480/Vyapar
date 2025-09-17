@@ -4,7 +4,6 @@ import Purchase from '../models/purchase.js';
 import CreditNote from '../models/creditNote.js';
 import Expense from '../models/expense.js';
 import mongoose from 'mongoose';
-import { invalidateDashboardCache } from './dashboardController.js';
 
 // Get cash in hand summary
 export const getCashInHandSummary = async (req, res) => {
@@ -283,8 +282,6 @@ export const addCashAdjustment = async (req, res) => {
 
     await newTransaction.save();
 
-    // Invalidate dashboard cache to show updated cash in hand immediately
-    invalidateDashboardCache(userId);
 
     res.status(201).json({
       success: true,
@@ -517,8 +514,6 @@ export const updateCashAdjustment = async (req, res) => {
       { new: true }
     );
 
-    // Invalidate dashboard cache
-    invalidateDashboardCache(userId);
 
     res.status(200).json({
       success: true,
@@ -558,8 +553,6 @@ export const deleteCashAdjustment = async (req, res) => {
     // Delete the transaction
     await CashBank.findByIdAndDelete(id);
 
-    // Invalidate dashboard cache
-    invalidateDashboardCache(userId);
 
     res.status(200).json({
       success: true,

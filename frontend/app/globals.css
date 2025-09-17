@@ -415,3 +415,23 @@ input[type="checkbox"]:focus-visible {
   box-shadow: 0 0 0 3px rgba(99,102,241,0.25) !important;
 }
 
+/* Modal responsive improvements */
+.modal-content {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile modal adjustments */
+@media (max-height: 600px) {
+  .modal-content {
+    max-height: 95vh !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .modal-content {
+    margin: 1rem;
+    max-width: calc(100vw - 2rem);
+  }
+}
+

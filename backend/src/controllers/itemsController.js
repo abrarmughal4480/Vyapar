@@ -1,11 +1,5 @@
 import Item from '../models/items.js';
 
-// Simple in-memory cache for items
-const itemsCache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-// Import dashboard cache invalidation function
-import { invalidateDashboardCache } from './dashboardController.js';
 
 // Add this helper at the top after imports
 function getUnitDisplay(unit) {
@@ -196,8 +190,6 @@ export const addItem = async (req, res) => {
     await item.save();
     const itemObj = item.toObject();
     
-    // Invalidate dashboard cache to ensure stats update immediately
-    invalidateDashboardCache(userId);
     
     // Keep the original unit object structure for frontend price conversion
     res.status(201).json({ success: true, data: itemObj });
@@ -357,8 +349,6 @@ export const bulkImportItems = async (req, res) => {
     const endTime = Date.now();
     const processingTime = endTime - startTime;
     
-    // Invalidate dashboard cache to ensure stats update immediately after bulk import
-    invalidateDashboardCache(userId);
     
 
     res.status(200).json({
@@ -425,8 +415,6 @@ export const deleteItem = async (req, res) => {
     const { userId, itemId } = req.params;
     await Item.deleteOne({ userId, itemId });
     
-    // Invalidate dashboard cache to ensure stats update immediately
-    invalidateDashboardCache(userId);
     
     res.json({ success: true });
   } catch (err) {
@@ -537,8 +525,6 @@ export const updateItem = async (req, res) => {
     const updated = await Item.findOneAndUpdate({ userId, itemId }, processedData, { new: true });
     const updatedObj = updated.toObject();
     
-    // Invalidate dashboard cache to ensure stats update immediately
-    invalidateDashboardCache(userId);
     
     // Keep the original unit object structure for frontend price conversion
     res.json({ success: true, data: updatedObj });
@@ -549,7 +535,7 @@ export const updateItem = async (req, res) => {
 
 export const getItemsPerformanceStats = async (req, res) => {
   try {
-    // Example: return cache stats or any performance info you want
+    // Example: return performance info
     res.json({ success: true, data: { message: 'Items performance stats endpoint working!' } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

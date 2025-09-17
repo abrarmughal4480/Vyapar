@@ -13,11 +13,11 @@ export default function EnhancedModal({ isOpen, onClose, title, children }: Enha
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 transition-all duration-300">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 transition-all duration-300 overflow-y-auto">
       <div
-        className="bg-white rounded-2xl shadow-2xl max-w-4xl min-w-[320px] md:min-w-[650px] max-h-[60vh] overflow-y-auto border border-gray-200 transition-all duration-300"
+        className="bg-white rounded-2xl shadow-2xl max-w-4xl min-w-[320px] md:min-w-[650px] max-h-[90vh] overflow-hidden border border-gray-200 transition-all duration-300 flex flex-col"
       >
-        <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white rounded-t-2xl">
+        <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white rounded-t-2xl flex-shrink-0">
           <h2 className="text-2xl font-bold text-gray-900 tracking-tight">{title}</h2>
           <button
             onClick={onClose}
@@ -27,7 +27,7 @@ export default function EnhancedModal({ isOpen, onClose, title, children }: Enha
             ×
           </button>
         </div>
-        <div className="p-6 relative bg-white rounded-b-2xl">
+        <div className="p-6 relative bg-white rounded-b-2xl overflow-y-auto flex-1">
           {children}
         </div>
       </div>

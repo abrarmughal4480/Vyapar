@@ -328,7 +328,7 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
       justifyContent: 'center',
       zIndex: 9999,
       padding: 32,
-      overflow: 'visible',
+      overflow: 'auto',
     }}>
       <div style={{
         background: 'white',
@@ -336,10 +336,12 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
         boxShadow: '0 10px 40px rgba(0,0,0,0.18)',
         width: 900,
         maxWidth: '100%',
+        maxHeight: '90vh',
         padding: 0,
-        overflow: 'visible',
+        overflow: 'hidden',
         position: 'relative',
         display: 'flex',
+        flexDirection: 'column',
       }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '32px 40px 0 40px' }}>
@@ -358,7 +360,7 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
               <button onClick={onClose} style={{ fontSize: 28, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 48, flexWrap: 'wrap', padding: '32px 40px 0 40px' }}>
+          <div style={{ display: 'flex', gap: 48, flexWrap: 'wrap', padding: '32px 40px 0 40px', overflowY: 'auto', flex: 1 }}>
             {/* Left Side */}
             <div style={{ flex: 1, minWidth: 240 }}>
               {/* Party selection field with live suggestions */}

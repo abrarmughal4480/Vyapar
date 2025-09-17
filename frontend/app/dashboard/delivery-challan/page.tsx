@@ -644,8 +644,8 @@ export default function DeliveryChallanPage() {
 
       {/* Enhanced Preview Modal */}
       {showPreview && selectedChallan && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto flex flex-col">
             <div className="bg-gradient-to-r from-gray-800 to-gray-900 p-8 rounded-t-2xl">
               <div className="flex justify-between items-center">
                 <div>
@@ -661,7 +661,7 @@ export default function DeliveryChallanPage() {
               </div>
             </div>
             
-            <div className="p-8">
+            <div className="p-8 overflow-y-auto flex-1">
               {/* Delivery Challan Preview Content */}
               <div className="border-2 border-gray-200 rounded-xl p-8 bg-white">
                 <div className="text-center mb-8">

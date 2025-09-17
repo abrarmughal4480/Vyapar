@@ -831,8 +831,8 @@ function PartiesPageContent() {
 
       {/* Add/Edit Party Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeinup">
-          <div className="bg-white/90 rounded-2xl shadow-2xl w-full max-w-4xl max-h-screen overflow-y-auto animate-scalein">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeinup overflow-y-auto">
+          <div className="bg-white/90 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto animate-scalein flex flex-col">
             <div className="p-6 border-b border-gray-200">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-semibold text-gray-900">
@@ -851,7 +851,7 @@ function PartiesPageContent() {
             </div>
 
             {/* Party Name and Phone */}
-            <div className="p-6 border-b border-gray-200 bg-gray-50">
+            <div className="p-6 border-b border-gray-200 bg-gray-50 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Party Name *</label>

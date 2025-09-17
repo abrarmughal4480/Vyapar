@@ -2,7 +2,6 @@ import User from '../models/user.js';
 import UserInvite from '../models/userInvite.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { clearAllCacheForUser } from './dashboardController.js';
 import { sendEmail } from '../services/emailService.js';
 import crypto from 'crypto';
 import config from '../config/config.js';
@@ -191,7 +190,6 @@ const authController = {
       // Clear the current token from user document
       if (req.user && req.user.id) {
         await User.findByIdAndUpdate(req.user.id, { currentToken: null });
-        clearAllCacheForUser(req.user.id);
       }
       return res.json({ success: true, message: 'Logged out successfully' });
     } catch (err) {

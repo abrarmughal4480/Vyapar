@@ -11,68 +11,6 @@ import { uploadProfileImage } from '../services/cloudinaryService.js';
 import formidable from 'formidable';
 import fs from 'fs';
 
-if (!global.dashboardCache) {
-  global.dashboardCache = new Map();
-}
-const dashboardCache = global.dashboardCache;
-
-const MAX_CACHE_SIZE = 1000;
-const CACHE_TTL = 5 * 60 * 1000;
-
-const cleanupCache = () => {
-  const now = Date.now();
-  const keysToDelete = [];
-  
-  for (const [key, value] of dashboardCache.entries()) {
-    if (value.timestamp && (now - value.timestamp) > CACHE_TTL) {
-      keysToDelete.push(key);
-    }
-  }
-  
-  keysToDelete.forEach(key => dashboardCache.delete(key));
-  
-  if (dashboardCache.size > MAX_CACHE_SIZE) {
-    const entries = Array.from(dashboardCache.entries());
-    entries.sort((a, b) => (a[1].timestamp || 0) - (b[1].timestamp || 0));
-    
-    const toRemove = entries.slice(0, dashboardCache.size - MAX_CACHE_SIZE);
-    toRemove.forEach(([key]) => dashboardCache.delete(key));
-  }
-};
-
-setInterval(cleanupCache, 2 * 60 * 1000);
-
-const _clearUserDashboardCache = (userId) => {
-  const cacheKeys = Array.from(dashboardCache.keys()).filter(key => key.startsWith(`dashboard_${userId}`));
-  cacheKeys.forEach(key => dashboardCache.delete(key));
-};
-
-const _getDashboardCacheKey = (userId, type) => {
-  return `dashboard_${userId}_${type}`;
-};
-
-const _invalidateSpecificCache = (userId, cacheType) => {
-  const cacheKey = _getDashboardCacheKey(userId, cacheType);
-  dashboardCache.delete(cacheKey);
-};
-
-const _getCachedData = (key) => {
-  const cached = dashboardCache.get(key);
-  if (cached && cached.timestamp && (Date.now() - cached.timestamp) < CACHE_TTL) {
-    return cached.data;
-  }
-  if (cached) {
-    dashboardCache.delete(key);
-  }
-  return null;
-};
-
-const _setCachedData = (key, data) => {
-  dashboardCache.set(key, {
-    data,
-    timestamp: Date.now()
-  });
-};
 
 const _getExpenseStatsForUser = async (userId) => {
   try {
@@ -248,12 +186,6 @@ export const getDashboardStats = async (req, res) => {
 
     const user = await User.findById(userId).select('role name email');
 
-    const cacheKey = _getDashboardCacheKey(userId, 'stats');
-    const cachedResult = dashboardCache.get(cacheKey);
-    
-    if (cachedResult) {
-      return res.json(cachedResult.data);
-    }
 
     const objectUserId = new mongoose.Types.ObjectId(userId);
 
@@ -496,15 +428,6 @@ export const getDashboardStats = async (req, res) => {
       }
     };
 
-    dashboardCache.set(cacheKey, {
-      data: result,
-      timestamp: new Date().toISOString(),
-      userId: userId
-    });
-
-    _invalidateSpecificCache(userId, 'party_balances');
-    _invalidateSpecificCache(userId, 'receivables');
-    _invalidateSpecificCache(userId, 'payables');
 
     return res.json(result);
   } catch (err) {
@@ -517,12 +440,6 @@ export const getSalesOverview = async (req, res) => {
     const userId = req.params.userId || (req.user && (req.user._id || req.user.id));
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
     
-    const cacheKey = _getDashboardCacheKey(userId, 'sales_overview');
-    const cachedResult = dashboardCache.get(cacheKey);
-    
-    if (cachedResult) {
-      return res.json(cachedResult.data);
-    }
     
     let objectUserId;
     try {
@@ -601,10 +518,6 @@ export const getSalesOverview = async (req, res) => {
       .sort((a, b) => new Date(a.date) - new Date(b.date));
 
     const result = { success: true, overview: formatted };
-    
-    dashboardCache.set(cacheKey, {
-      data: result,
-    });
 
     return res.json(result);
   } catch (err) {
@@ -617,12 +530,6 @@ export const getRecentActivity = async (req, res) => {
     const userId = req.params.userId || (req.user && (req.user._id || req.user.id));
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
     
-    const cacheKey = _getDashboardCacheKey(userId, 'recent_activity');
-    const cachedResult = dashboardCache.get(cacheKey);
-    
-    if (cachedResult) {
-      return res.json(cachedResult.data);
-    }
     
     let objectUserId;
     try {
@@ -737,10 +644,6 @@ export const getRecentActivity = async (req, res) => {
       .slice(0, 3);
 
     const result = { success: true, activities: sorted };
-    
-    dashboardCache.set(cacheKey, {
-      data: result,
-    });
 
     return res.json(result);
   } catch (err) {
@@ -842,12 +745,6 @@ export const getReceivablesList = async (req, res) => {
     const userId = req.user && (req.user._id || req.user.id);
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
     
-    const cacheKey = _getDashboardCacheKey(userId, 'receivables');
-    const cachedResult = dashboardCache.get(cacheKey);
-    
-    if (cachedResult) {
-      return res.json(cachedResult.data);
-    }
     
     if (mongoose.connection.readyState !== 1) {
       return res.status(503).json({ 
@@ -880,12 +777,6 @@ export const getReceivablesList = async (req, res) => {
     
     const response = { success: true, data: receivables };
     
-    dashboardCache.set(cacheKey, {
-      data: response,
-      timestamp: new Date().toISOString(),
-      userId: userId
-    });
-    
     return res.json(response);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -897,12 +788,6 @@ export const getPayablesList = async (req, res) => {
     const userId = req.user && (req.user._id || req.user.id);
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
     
-    const cacheKey = _getDashboardCacheKey(userId, 'payables');
-    const cachedResult = dashboardCache.get(cacheKey);
-    
-    if (cachedResult) {
-      return res.json(cachedResult.data);
-    }
     
     if (mongoose.connection.readyState !== 1) {
       return res.status(503).json({ 
@@ -935,76 +820,16 @@ export const getPayablesList = async (req, res) => {
     
     const response = { success: true, data: payables };
     
-    dashboardCache.set(cacheKey, {
-      data: response,
-      timestamp: new Date().toISOString(),
-      userId: userId
-    });
-    
     return res.json(response);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 }; 
 
-export const invalidateDashboardCache = (userId) => {
-  _invalidateSpecificCache(userId, 'stats');
-};
-
-export const invalidatePartyBalancesCache = (userId) => {
-  _invalidateSpecificCache(userId, 'party_balances');
-};
-
-export const invalidateAllDashboardCaches = (userId) => {
-  _invalidateSpecificCache(userId, 'stats');
-  _invalidateSpecificCache(userId, 'party_balances');
-  _invalidateSpecificCache(userId, 'receivables');
-  _invalidateSpecificCache(userId, 'payables');
-  
-  if (global.dashboardCache) {
-    const allKeys = Array.from(global.dashboardCache.keys());
-    const userKeys = allKeys.filter(key => key.includes(userId.toString()));
-    userKeys.forEach(key => {
-      global.dashboardCache.delete(key);
-    });
-  }
-  
-};
-
-export const clearAllCacheForUser = (userId) => {
-  if (global.partiesCache) {
-    const partiesCacheKeys = Array.from(global.partiesCache.keys()).filter(key => key.startsWith(`user_${userId}`));
-    partiesCacheKeys.forEach(key => global.partiesCache.delete(key));
-  }
-  
-  if (global.itemsCache) {
-    const itemsCacheKeys = Array.from(global.itemsCache.keys()).filter(key => key.startsWith(`user_${userId}`));
-    itemsCacheKeys.forEach(key => global.itemsCache.delete(key));
-  }
-  
-  if (global.dashboardCache) {
-    const dashboardCacheKeys = Array.from(global.dashboardCache.keys()).filter(key => key.startsWith(`dashboard_${userId}`));
-    dashboardCacheKeys.forEach(key => {
-      global.dashboardCache.delete(key);
-    });
-  }
-  
-  if (global.dashboardCache) {
-    const allKeys = Array.from(global.dashboardCache.keys());
-    const userKeys = allKeys.filter(key => key.includes(userId.toString()));
-    userKeys.forEach(key => {
-      global.dashboardCache.delete(key);
-    });
-  }
-  
-};
 
 export const getDashboardPerformanceStats = async (req, res) => {
   try {
     const stats = {
-      cacheSize: dashboardCache.size,
-      cacheKeys: Array.from(dashboardCache.keys()),
-      cacheHitRate: 0,
       timestamp: new Date().toISOString(),
       parallelProcessing: {
         enabled: true,
@@ -1074,107 +899,6 @@ export const getParallelProcessingDemo = async (req, res) => {
   }
 };
 
-export const forceRefreshDashboard = async (req, res) => {
-  try {
-    const userId = req.user && (req.user._id || req.user.id);
-    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
-    
-    if (global.dashboardCache) {
-      const allKeys = Array.from(global.dashboardCache.keys());
-      const userKeys = allKeys.filter(key => key.includes(userId.toString()));
-      userKeys.forEach(key => {
-        global.dashboardCache.delete(key);
-      });
-    }
-    
-    const freshData = await getDashboardStats(req, res);
-    
-    return res.json({ success: true, message: 'Dashboard refreshed successfully' });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to refresh dashboard', error: err.message });
-  }
-};
-
-export const clearUserCache = async (req, res) => {
-  try {
-    const userId = req.user && (req.user._id || req.user.id);
-    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
-    
-    clearAllCacheForUser(userId);
-    
-    return res.json({ 
-      success: true, 
-      message: 'Cache cleared successfully',
-      userId: userId,
-      timestamp: new Date().toISOString()
-    });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to clear cache', error: err.message });
-  }
-};
-
-export const debugCache = async (req, res) => {
-  try {
-    const userId = req.user && (req.user._id || req.user.id);
-    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
-    
-    const cacheInfo = {
-      totalCacheSize: dashboardCache.size,
-      userCacheKeys: [],
-      allCacheKeys: Array.from(dashboardCache.keys()),
-      timestamp: new Date().toISOString()
-    };
-    
-    if (global.dashboardCache) {
-      const allKeys = Array.from(global.dashboardCache.keys());
-      cacheInfo.userCacheKeys = allKeys.filter(key => key.includes(userId.toString()));
-      
-      cacheInfo.userCacheData = {};
-      cacheInfo.userCacheKeys.forEach(key => {
-        const cached = global.dashboardCache.get(key);
-        cacheInfo.userCacheData[key] = {
-          hasData: !!cached,
-          timestamp: cached?.timestamp || 'N/A',
-          userId: cached?.userId || 'N/A'
-        };
-      });
-    }
-    
-    return res.json({ 
-      success: true, 
-      message: 'Cache debug info',
-      userId: userId,
-      cacheInfo: cacheInfo
-    });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to debug cache', error: err.message });
-  }
-};
-
-export const refreshSpecificCache = async (req, res) => {
-  try {
-    const userId = req.user && (req.user._id || req.user.id);
-    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
-    
-    const { cacheType } = req.params;
-    
-    if (!cacheType) {
-      return res.status(400).json({ success: false, message: 'Cache type is required' });
-    }
-    
-    _invalidateSpecificCache(userId, cacheType);
-    
-    return res.json({ 
-      success: true, 
-      message: `Cache ${cacheType} refreshed successfully`,
-      userId: userId,
-      cacheType: cacheType,
-      timestamp: new Date().toISOString()
-    });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to refresh cache', error: err.message });
-  }
-};
 
 export const createDashboardIndexes = async (req, res) => {
   try {
@@ -1319,12 +1043,6 @@ export const getPartyBalances = async (req, res) => {
     const userId = req.user && (req.user._id || req.user.id);
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
     
-    const cacheKey = _getDashboardCacheKey(userId, 'party_balances');
-    const cachedResult = dashboardCache.get(cacheKey);
-    
-    if (cachedResult) {
-      return res.json(cachedResult.data);
-    }
     
     if (mongoose.connection.readyState !== 1) {
       return res.status(503).json({ 
@@ -1405,11 +1123,6 @@ export const getPartyBalances = async (req, res) => {
       }
     };
     
-    dashboardCache.set(cacheKey, {
-      data: result,
-      timestamp: new Date().toISOString(),
-      userId: userId
-    });
     
     return res.json(result);
   } catch (err) {

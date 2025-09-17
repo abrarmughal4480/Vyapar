@@ -172,6 +172,8 @@ export default function Dashboard() {
   const [showSalesOverview, setShowSalesOverview] = useState(true);
   const [isCheckingAccess, setIsCheckingAccess] = useState(true);
   const [showSupportModal, setShowSupportModal] = useState(false);
+  const [showRevenueBreakdownModal, setShowRevenueBreakdownModal] = useState(false);
+  const [revenueBreakdown, setRevenueBreakdown] = useState<any>(null);
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -206,6 +208,10 @@ export default function Dashboard() {
             ...prev,
             ...result.data,
           }));
+          // Store revenue breakdown for popup
+          if (result.data.revenueBreakdown) {
+            setRevenueBreakdown(result.data.revenueBreakdown);
+          }
         }
         const user = JSON.parse(localStorage.getItem('user') || '{}');
         if (user && user._id) {
@@ -460,6 +466,11 @@ export default function Dashboard() {
     setLoadingStockSummary(false);
   };
 
+  const openRevenueBreakdownModal = () => {
+    setShowRevenueBreakdownModal(true);
+    document.body.style.overflow = 'hidden';
+  };
+
   // Enhanced stats array with modern styling
   const dashboardStats = [
     {
@@ -470,7 +481,8 @@ export default function Dashboard() {
       color: businessStats.revenueChange !== undefined ? (businessStats.revenueChange >= 0 ? 'text-emerald-600' : 'text-red-600') : 'text-emerald-600',
       bgGradient: 'from-emerald-500 to-teal-600',
       bgLight: 'bg-emerald-50',
-      trend: businessStats.revenueChange !== undefined ? (businessStats.revenueChange >= 0 ? 'up' : 'down') : 'up'
+      trend: businessStats.revenueChange !== undefined ? (businessStats.revenueChange >= 0 ? 'up' : 'down') : 'up',
+      onClick: openRevenueBreakdownModal
     },
     {
       title: 'Stock Value',
@@ -715,7 +727,7 @@ export default function Dashboard() {
           {dashboardStats.map((stat, index) => (
             <div
               key={index}
-              className={`group relative bg-white/70 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg border border-white/20 p-4 sm:p-6 hover:shadow-2xl hover:-translate-y-1 sm:hover:-translate-y-2 transition-all duration-300 ${stat.onClick ? 'cursor-pointer' : ''}`}
+              className={`group relative bg-white/70 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg border border-white/20 p-4 sm:p-6 hover:shadow-2xl hover:-translate-y-1 sm:hover:-translate-y-2 transition-all duration-300 ${stat.onClick !== undefined ? 'cursor-pointer' : ''}`}
               onClick={stat.onClick}
             >
               <div className="flex items-start justify-between">
@@ -1102,6 +1114,145 @@ export default function Dashboard() {
                 })}
               </ul>
             )}
+          </div>
+        )}
+      </EnhancedModal>
+
+      {/* Revenue Breakdown Modal */}
+      <EnhancedModal
+        isOpen={showRevenueBreakdownModal}
+        onClose={() => {
+          setShowRevenueBreakdownModal(false);
+          document.body.style.overflow = 'auto';
+        }}
+        title="Revenue Breakdown & Calculations"
+      >
+        {revenueBreakdown ? (
+          <div className="space-y-6">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-gradient-to-br from-emerald-50 to-teal-50 p-4 rounded-xl border border-emerald-200">
+                <h3 className="font-semibold text-emerald-800 mb-2">Total Sales</h3>
+                <p className="text-2xl font-bold text-emerald-600">PKR {revenueBreakdown.totalSales?.toLocaleString() || '0'}</p>
+              </div>
+              <div className="bg-gradient-to-br from-red-50 to-pink-50 p-4 rounded-xl border border-red-200">
+                <h3 className="font-semibold text-red-800 mb-2">Credit Notes</h3>
+                <p className="text-2xl font-bold text-red-600">PKR {revenueBreakdown.totalCreditNotes?.toLocaleString() || '0'}</p>
+              </div>
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-200">
+                <h3 className="font-semibold text-blue-800 mb-2">Net Revenue</h3>
+                <p className="text-2xl font-bold text-blue-600">PKR {revenueBreakdown.netRevenue?.toLocaleString() || '0'}</p>
+              </div>
+              <div className="bg-gradient-to-br from-purple-50 to-violet-50 p-4 rounded-xl border border-purple-200">
+                <h3 className="font-semibold text-purple-800 mb-2">Revenue Change</h3>
+                <p className={`text-2xl font-bold ${revenueBreakdown.revenueChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {revenueBreakdown.revenueChange >= 0 ? '+' : ''}{revenueBreakdown.revenueChange?.toFixed(2) || '0'}%
+                </p>
+              </div>
+            </div>
+
+            {/* Revenue Formula */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-2">Revenue Formula</h3>
+              
+              <div className="bg-gradient-to-br from-emerald-50 to-teal-50 p-6 rounded-xl border border-emerald-200">
+                <div className="text-center">
+                  <h4 className="text-2xl font-bold text-emerald-800 mb-2">Revenue = Total Sales - Credit Notes</h4>
+                  <p className="text-emerald-600">This is how your revenue is calculated</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Sales List */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-2">Sales List (Used for Revenue Calculation)</h3>
+              
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {revenueBreakdown.salesList?.length > 0 ? (
+                  revenueBreakdown.salesList.map((sale: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                          {index + 1}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{sale.partyName || 'Unknown Customer'}</p>
+                          <p className="text-sm text-gray-500">Invoice: {sale.invoiceNo || 'N/A'}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-blue-600">PKR {sale.grandTotal?.toLocaleString() || '0'}</p>
+                        <p className="text-xs text-gray-400">
+                          {sale.createdAt ? new Date(sale.createdAt).toLocaleDateString() : 'Unknown Date'}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-4 text-gray-500">No sales data available</div>
+                )}
+              </div>
+            </div>
+
+            {/* Credit Notes List */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-2">Credit Notes List (Deducted from Revenue)</h3>
+              
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {revenueBreakdown.creditNotesList?.length > 0 ? (
+                  revenueBreakdown.creditNotesList.map((creditNote: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-gradient-to-br from-red-500 to-pink-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                          {index + 1}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{creditNote.partyName || 'Unknown Customer'}</p>
+                          <p className="text-sm text-gray-500">Credit Note: {creditNote.creditNoteNo || 'N/A'}</p>
+                          <p className="text-xs text-gray-500">Type: {creditNote.type || 'N/A'}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-red-600">PKR {creditNote.grandTotal?.toLocaleString() || '0'}</p>
+                        <p className="text-xs text-gray-400">
+                          {creditNote.createdAt ? new Date(creditNote.createdAt).toLocaleDateString() : 'Unknown Date'}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-4 text-gray-500">No credit notes available</div>
+                )}
+              </div>
+            </div>
+
+            {/* Revenue Calculations */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-2">Revenue Calculations</h3>
+              
+              <div className="space-y-3">
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <p className="text-lg font-semibold text-blue-800">{revenueBreakdown.calculations?.salesBreakdown}</p>
+                </div>
+                <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                  <p className="text-lg font-semibold text-red-800">{revenueBreakdown.calculations?.creditNotesBreakdown}</p>
+                </div>
+                <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-200">
+                  <p className="text-lg font-semibold text-emerald-800">{revenueBreakdown.calculations?.netRevenueBreakdown}</p>
+                </div>
+                <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                  <p className="text-lg font-semibold text-purple-800">{revenueBreakdown.calculations?.revenueChangePercentage}</p>
+                </div>
+                <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                  <p className="text-lg font-semibold text-amber-800">{revenueBreakdown.calculations?.monthlyComparison}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-500">Loading revenue breakdown...</p>
           </div>
         )}
       </EnhancedModal>

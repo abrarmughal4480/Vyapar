@@ -403,6 +403,57 @@ export const getDashboardStats = async (req, res) => {
     
     const sampleItems = await Item.find({ userId: userId }).select('name stock purchasePrice').limit(5).lean();
 
+    // Get sales list for revenue calculation
+    const salesList = await Sale.find({ userId: objectUserId })
+      .select('partyName grandTotal invoiceNo createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Get credit notes list for revenue calculation
+    const creditNotesList = await CreditNote.find({ userId: objectUserId })
+      .select('partyName grandTotal creditNoteNo type createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Get revenue-related calculations only
+    const revenueCalculations = {
+      totalSales: totalSales,
+      totalCreditNotes: totalCreditNotes,
+      netRevenue: netRevenue,
+      thisMonthRevenue: thisMonthRevenue,
+      lastMonthRevenue: lastMonthRevenue,
+      revenueChange: revenueChange,
+      totalPurchases: purchases && purchases.length > 0 ? purchases[0].total || 0 : 0,
+      totalExpenses: totalExpenses,
+      cashInHand: cashInHand,
+      totalReceivable: totalReceivable,
+      totalPayable: totalPayable,
+      totalStockValue: totalStockValue
+    };
+
+    // Revenue breakdown for detailed analysis - ONLY REVENUE RELATED
+    const revenueBreakdown = {
+      totalSales: totalSales,
+      totalCreditNotes: totalCreditNotes,
+      netRevenue: netRevenue,
+      thisMonthRevenue: thisMonthRevenue,
+      lastMonthRevenue: lastMonthRevenue,
+      revenueChange: revenueChange,
+      salesList: salesList,
+      creditNotesList: creditNotesList,
+      calculations: {
+        salesCalculation: `Total Sales: PKR ${totalSales.toLocaleString()}`,
+        creditNotesCalculation: `Credit Notes: PKR ${totalCreditNotes.toLocaleString()}`,
+        netRevenueCalculation: `Net Revenue = Sales - Credit Notes = PKR ${netRevenue.toLocaleString()}`,
+        monthlyComparison: `This Month: PKR ${thisMonthRevenue.toLocaleString()} vs Last Month: PKR ${lastMonthRevenue.toLocaleString()}`,
+        revenueChangePercentage: `Revenue Change: ${revenueChange >= 0 ? '+' : ''}${revenueChange.toFixed(2)}%`,
+        revenueFormula: `Revenue = Total Sales - Credit Notes`,
+        salesBreakdown: `Sales: PKR ${totalSales.toLocaleString()}`,
+        creditNotesBreakdown: `Credit Notes: PKR ${totalCreditNotes.toLocaleString()}`,
+        netRevenueBreakdown: `Net Revenue: PKR ${netRevenue.toLocaleString()}`
+      }
+    };
+
     const result = {
       success: true,
       data: {
@@ -425,6 +476,7 @@ export const getDashboardStats = async (req, res) => {
         negativeStockItems: 0,
         totalExpenses: totalExpenses,
         cashInHand: cashInHand,
+        revenueBreakdown: revenueBreakdown
       }
     };
 

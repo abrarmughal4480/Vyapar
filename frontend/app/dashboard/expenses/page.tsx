@@ -17,6 +17,7 @@ export default function ExpensesPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [expenseToDelete, setExpenseToDelete] = useState<any>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [totalExpense, setTotalExpense] = useState(0);
   const router = useRouter();
 
   // Fetch expenses and stats when component mounts
@@ -39,6 +40,10 @@ export default function ExpensesPage() {
         setExpenses(sortedExpenses);
         setExpenseStats(statsResponse.data || { byCategory: [], byItem: [] });
         setFilteredExpenses(sortedExpenses);
+        
+        // Calculate total expense amount
+        const total = sortedExpenses.reduce((sum: number, expense: any) => sum + (expense.totalAmount || 0), 0);
+        setTotalExpense(total);
         
         // Set default selection - first category by default (using merged data)
         if (statsResponse.data?.byCategory && statsResponse.data.byCategory.length > 0) {
@@ -159,6 +164,10 @@ export default function ExpensesPage() {
           setExpenses(expensesResponse.data || []);
           setExpenseStats(statsResponse.data || { byCategory: [], byItem: [] });
           
+          // Calculate total expense amount
+          const total = (expensesResponse.data || []).reduce((sum: number, expense: any) => sum + (expense.totalAmount || 0), 0);
+          setTotalExpense(total);
+          
           // Reapply current filter
           if (selectedCategory) {
             const filtered = expensesResponse.data.filter((expense: any) => 
@@ -213,7 +222,14 @@ export default function ExpensesPage() {
       <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg p-4 md:p-6 mb-6 sticky top-0 z-30 border border-gray-100">
         <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
           <div className="text-center md:text-left">
-            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Expenses</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl md:text-2xl font-bold text-gray-900">Expenses</h1>
+              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-1">
+                <span className="text-sm font-semibold text-red-600">
+                  Total: PKR {totalExpense.toLocaleString()}
+                </span>
+              </div>
+            </div>
             <p className="text-sm text-gray-500 mt-1">Manage your business expenses and costs</p>
           </div>
           <div className="flex flex-col md:flex-row gap-2 md:gap-4">

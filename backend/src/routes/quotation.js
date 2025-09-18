@@ -25,6 +25,7 @@ router.post('/fix-indexes', async (req, res) => {
   }
 });
 
+router.get('/:id', authMiddleware, quotationController.getQuotationById);
 router.put('/update/:quotationId', authMiddleware, quotationController.updateQuotation);
 
 export default router; 

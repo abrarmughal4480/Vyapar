@@ -11,7 +11,9 @@ import Toast from '../../../components/Toast'
 import { CustomDropdown, type DropdownOption } from '../../../components/CustomDropdown'
 import { ItemsDropdown } from '../../../components/ItemsDropdown'
 import { UnitsDropdown } from '../../../components/UnitsDropdown'
+import { PaymentMethodDropdown } from '../../../components/PaymentMethodDropdown'
 import { useSidebar } from '../../../contexts/SidebarContext'
+import { useBankAccounts } from '../../../hooks/useBankAccounts'
 
 const getUnitDisplay = (unit: any) => {
   if (!unit) return 'NONE';
@@ -401,12 +403,18 @@ export default function CreateSalesOrderPage() {
     tax: '',
     taxType: '%',
     taxAmount: 0,
-    paymentType: 'Credit',
+    paymentMethod: 'Cash',
+    bankAccountId: null as string | null,
+    bankAccountName: '',
   })
 
   const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([])
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false)
   const [quotationId, setQuotationId] = useState<string | null>(null)
+  
+  // Bank accounts and payment method dropdown state
+  const { bankAccounts, loading: bankAccountsLoading } = useBankAccounts()
+  const [paymentMethodDropdownIndex, setPaymentMethodDropdownIndex] = useState(0)
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
@@ -677,6 +685,12 @@ export default function CreateSalesOrderPage() {
     setError('')
 
     try {
+      // Convert payment method for backend
+      let actualPaymentMethod = formData.paymentMethod;
+      if (formData.paymentMethod.startsWith('bank_')) {
+        actualPaymentMethod = 'Bank Transfer';
+      }
+
       const orderPayload = {
         customerName: formData.customer,
         customerPhone: formData.phone,
@@ -688,7 +702,10 @@ export default function CreateSalesOrderPage() {
         orderDate: formData.invoiceDate,
         dueDate: formData.dueDate,
         discount: discountAmount,
-        description: formData.description
+        description: formData.description,
+        paymentMethod: actualPaymentMethod,
+        bankAccountId: formData.bankAccountId,
+        bankAccountName: formData.bankAccountName
       };
 
       const token = getToken();
@@ -1144,20 +1161,53 @@ export default function CreateSalesOrderPage() {
               </div>
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                  <span>💳</span> Payment Type
+                  <span>💳</span> Payment Method
                 </label>
                 <div className="flex flex-col">
-                  <CustomDropdown
-                    options={[
-                      { value: 'Credit', label: 'Credit' },
-                      { value: 'Cash', label: 'Cash' },
-                    ]}
-                    value={formData.paymentType}
-                    onChange={e => setFormData(prev => ({ ...prev, paymentType: e }))}
-                    className="mb-1 border-2 border-blue-100 rounded-lg h-11"
-                    dropdownIndex={0}
-                    setDropdownIndex={() => { }}
-                    optionsCount={2}
+                  <PaymentMethodDropdown
+                    value={formData.paymentMethod}
+                    onChange={(val) => {
+                      if (val === 'Cash' || val === 'Cheque') {
+                        setFormData(prev => ({ 
+                          ...prev, 
+                          paymentMethod: val,
+                          bankAccountId: null as string | null,
+                          bankAccountName: ''
+                        }));
+                      } else if (val.startsWith('bank_')) {
+                        const accountId = val.replace('bank_', '');
+                        const account = bankAccounts.find(acc => acc._id === accountId);
+                        if (account) {
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            paymentMethod: val,
+                            bankAccountId: account._id as string | null,
+                            bankAccountName: account.accountDisplayName
+                          }));
+                        }
+                      } else {
+                        const account = bankAccounts.find(acc => acc.accountDisplayName === val);
+                        if (account) {
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            paymentMethod: `bank_${account._id}`,
+                            bankAccountId: account._id as string | null,
+                            bankAccountName: account.accountDisplayName
+                          }));
+                        } else {
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            paymentMethod: val,
+                            bankAccountId: null as string | null,
+                            bankAccountName: ''
+                          }));
+                        }
+                      }
+                    }}
+                    bankAccounts={bankAccounts}
+                    className="mb-1"
+                    dropdownIndex={paymentMethodDropdownIndex}
+                    setDropdownIndex={setPaymentMethodDropdownIndex}
                   />
                   <div className="text-xs text-gray-500 min-h-[24px] mt-1"></div>
                 </div>

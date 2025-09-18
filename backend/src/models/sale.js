@@ -30,7 +30,22 @@ const SaleSchema = new mongoose.Schema({
   taxValue: { type: Number, default: 0 },
   grandTotal: { type: Number, default: 0 },
   invoiceNo: { type: String, required: true },
-  paymentType: { type: String, default: 'Credit' },
+  paymentType: { 
+    type: String, 
+    enum: ['Cash', 'Credit'], 
+    default: 'Credit' 
+  },
+  paymentMethod: { 
+    type: String, 
+    enum: ['Cash', 'Cheque', 'Bank Transfer'], 
+    default: 'Cash' 
+  },
+  bankAccountId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'BankAccount', 
+    default: null 
+  },
+  bankAccountName: { type: String, default: '' },
   description: { type: String },
   imageUrl: { type: String },
   createdAt: { type: Date, default: Date.now },

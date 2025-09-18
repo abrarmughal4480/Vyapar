@@ -617,10 +617,10 @@ function PartiesPageContent() {
 
       {/* Filters and Tabs - modern underline, color */}
       <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow mb-6 border border-gray-100">
-        <div className="p-4 md:p-6 border-b border-gray-100">
+        <div className="p-4 md:p-6">
           <div className="flex flex-col space-y-4 lg:flex-row lg:items-center lg:justify-between lg:space-y-0">
+            {/* Search Bar - Left Side */}
             <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-4">
-              {/* Enhanced Search Bar */}
               <div className="relative w-full sm:w-72">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-lg">🔍</span>
                 <input
@@ -633,35 +633,34 @@ function PartiesPageContent() {
                   autoComplete="off"
                 />
               </div>
+            </div>
 
+            {/* Status Tabs - Right Side */}
+            <div className="overflow-x-auto">
+              <nav className="flex space-x-4 md:space-x-8 min-w-max">
+                {statusTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      setSearchTerm('');
+                    }}
+                    className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 transition-colors whitespace-nowrap ${
+                      activeTab === tab.id
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <span className="hidden sm:inline">{tab.fullName}</span>
+                    <span className="sm:hidden">{tab.name}</span>
+                    <span className="bg-gray-200 text-gray-600 px-2 py-1 rounded-full text-xs">
+                      {tab.count}
+                    </span>
+                  </button>
+                ))}
+              </nav>
             </div>
           </div>
-        </div>
-
-        {/* Responsive Status Tabs */}
-        <div className="border-b border-gray-100 overflow-x-auto">
-          <nav className="flex space-x-4 md:space-x-8 px-4 md:px-6 min-w-max">
-            {statusTabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  setActiveTab(tab.id);
-                  setSearchTerm('');
-                }}
-                className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 transition-colors whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <span className="hidden sm:inline">{tab.fullName}</span>
-                <span className="sm:hidden">{tab.name}</span>
-                <span className="bg-gray-200 text-gray-600 px-2 py-1 rounded-full text-xs">
-                  {tab.count}
-                </span>
-              </button>
-            ))}
-          </nav>
         </div>
       </div>
 

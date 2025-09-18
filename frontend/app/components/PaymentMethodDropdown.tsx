@@ -2,8 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 
-export type DropdownOption = { value: string; label: string };
-
 export interface BankAccount {
   _id: string;
   accountDisplayName: string;
@@ -12,52 +10,42 @@ export interface BankAccount {
   accountNumber?: string;
 }
 
-export interface CustomDropdownProps {
-  options: DropdownOption[];
+export interface PaymentMethodDropdownProps {
   value: string;
   onChange: (val: string) => void;
+  bankAccounts: BankAccount[];
   className?: string;
-  placeholder?: string;
-  disabled?: boolean;
   dropdownIndex: number;
   setDropdownIndex: React.Dispatch<React.SetStateAction<number>>;
-  optionsCount: number;
-  bankAccounts?: BankAccount[];
-  includeBankAccounts?: boolean;
 }
 
-export function CustomDropdown({ 
-  options, 
+export function PaymentMethodDropdown({ 
   value, 
   onChange, 
-  className = '', 
-  placeholder = 'Select', 
-  disabled = false, 
-  dropdownIndex, 
-  setDropdownIndex, 
-  optionsCount,
   bankAccounts = [],
-  includeBankAccounts = false
-}: CustomDropdownProps) {
+  className = '',
+  dropdownIndex,
+  setDropdownIndex
+}: PaymentMethodDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
 
-  // Combine regular options with bank accounts if requested
-  const allOptions = React.useMemo(() => {
-    let combinedOptions = [...options];
+  // Create options for payment methods
+  const options = React.useMemo(() => {
+    const baseOptions = [
+      { value: 'Cash', label: 'Cash' },
+      { value: 'Cheque', label: 'Cheque' }
+    ];
     
-    if (includeBankAccounts && bankAccounts.length > 0) {
-      const bankOptions = bankAccounts.map(account => ({
-        value: account.accountDisplayName,
-        label: `${account.accountDisplayName}${account.bankName ? ` (${account.bankName})` : ''}`
-      }));
-      combinedOptions = [...combinedOptions, ...bankOptions];
-    }
+    const bankOptions = bankAccounts.map((account, index) => ({
+      value: `bank_${account._id || index}`,
+      label: account.accountDisplayName
+    }));
     
-    return combinedOptions;
-  }, [options, bankAccounts, includeBankAccounts]);
+    return [...baseOptions, ...bankOptions];
+  }, [bankAccounts]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -73,18 +61,15 @@ export function CustomDropdown({
     if (open && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
       const viewportHeight = window.innerHeight;
-      const dropdownHeight = Math.min(12 * 16, allOptions.length * 40); // 12rem max, or items * 40px
+      const dropdownHeight = Math.min(12 * 16, options.length * 40);
       
-      // Check if dropdown would go below viewport
       const spaceBelow = viewportHeight - rect.bottom;
       const spaceAbove = rect.top;
       
       let top: number;
       if (spaceBelow >= dropdownHeight || spaceBelow >= spaceAbove) {
-        // Position below input
         top = rect.bottom + window.scrollY + 6;
       } else {
-        // Position above input with more space
         top = rect.top + window.scrollY - dropdownHeight - 12;
       }
       
@@ -102,10 +87,7 @@ export function CustomDropdown({
   }, [open, options.length]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (disabled) return;
-    
     if (!open) {
-      // When dropdown is closed, open it with Space, Enter, or ArrowDown
       if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowDown') {
         e.preventDefault();
         setOpen(true);
@@ -114,18 +96,16 @@ export function CustomDropdown({
       return;
     }
 
-    // When dropdown is open, handle navigation
     if (["ArrowDown", "ArrowUp", "Enter", "Escape", " "].includes(e.key)) {
       e.preventDefault();
       e.stopPropagation();
     }
 
     if (e.key === 'ArrowDown') {
-      const newIndex = Math.min(dropdownIndex + 1, allOptions.length - 1);
+      const newIndex = Math.min(dropdownIndex + 1, options.length - 1);
       setDropdownIndex(newIndex);
-      // Scroll to show highlighted item
       setTimeout(() => {
-        const highlightedElement = document.querySelector(`[data-dropdown-index="${newIndex}"]`) as HTMLElement;
+        const highlightedElement = document.querySelector(`[data-payment-method-index="${newIndex}"]`) as HTMLElement;
         if (highlightedElement) {
           highlightedElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
@@ -133,16 +113,22 @@ export function CustomDropdown({
     } else if (e.key === 'ArrowUp') {
       const newIndex = Math.max(dropdownIndex - 1, 0);
       setDropdownIndex(newIndex);
-      // Scroll to show highlighted item
       setTimeout(() => {
-        const highlightedElement = document.querySelector(`[data-dropdown-index="${newIndex}"]`) as HTMLElement;
+        const highlightedElement = document.querySelector(`[data-payment-method-index="${newIndex}"]`) as HTMLElement;
         if (highlightedElement) {
           highlightedElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
       }, 0);
     } else if (e.key === 'Enter' || e.key === ' ') {
-      if (dropdownIndex >= 0 && dropdownIndex < allOptions.length) {
-        onChange(allOptions[dropdownIndex].value);
+      if (dropdownIndex >= 0 && dropdownIndex < options.length) {
+        const selectedValue = options[dropdownIndex].value;
+        if (selectedValue.startsWith('bank_')) {
+          const accountId = selectedValue.replace('bank_', '');
+          const account = bankAccounts.find(acc => acc._id === accountId || acc.accountDisplayName === accountId);
+          onChange(account?.accountDisplayName || selectedValue);
+        } else {
+          onChange(selectedValue);
+        }
         setOpen(false);
       }
     } else if (e.key === 'Escape') {
@@ -150,8 +136,17 @@ export function CustomDropdown({
     }
   };
 
+  const getDisplayValue = () => {
+    if (value.startsWith('bank_')) {
+      const accountId = value.replace('bank_', '');
+      const account = bankAccounts.find(acc => acc._id === accountId || acc.accountDisplayName === accountId);
+      return account?.accountDisplayName || value;
+    }
+    return value;
+  };
+
   return (
-    <div ref={ref} className={`relative ${disabled ? 'opacity-60 pointer-events-none' : ''} ${className}`}> 
+    <div ref={ref} className={`relative ${className}`}> 
       <button
         ref={btnRef}
         type="button"
@@ -159,16 +154,14 @@ export function CustomDropdown({
         onClick={() => setOpen((v) => !v)}
         onKeyDown={handleKeyDown}
         onBlur={() => {
-          // Close dropdown when button loses focus (moving to another field)
           setTimeout(() => setOpen(false), 150);
         }}
-        disabled={disabled}
         tabIndex={0}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={placeholder}
+        aria-label="Payment Method"
       >
-        <span className="truncate text-left">{allOptions.find((o: DropdownOption) => o.value === value)?.label || placeholder}</span>
+        <span className="truncate text-left">{getDisplayValue()}</span>
         <span className={`ml-2 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}>
           <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
         </span>
@@ -179,26 +172,42 @@ export function CustomDropdown({
           className="bg-white border-2 border-blue-100 rounded-lg shadow-lg animate-fadeinup custom-dropdown-scrollbar"
           onMouseDown={e => e.preventDefault()}
           role="listbox"
-          aria-label={placeholder}
+          aria-label="Payment Method"
         >
-          {allOptions.map((opt: DropdownOption, idx: number) => (
+          {options.map((opt, idx) => (
             <li
               key={opt.value}
-              data-dropdown-index={idx}
+              data-payment-method-index={idx}
               className={`px-4 py-2 cursor-pointer flex items-center gap-2 transition-colors ${value === opt.value ? 'font-semibold text-gray-700 bg-blue-100' : 'text-gray-700'} ${dropdownIndex === idx ? 'font-semibold text-gray-700 bg-blue-50' : 'bg-white hover:bg-blue-50'}`}
-              onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); setDropdownIndex(idx); }}
+              onMouseDown={e => { 
+                e.preventDefault(); 
+                if (opt.value.startsWith('bank_')) {
+                  const accountId = opt.value.replace('bank_', '');
+                  const account = bankAccounts.find(acc => acc._id === accountId || acc.accountDisplayName === accountId);
+                  onChange(account?.accountDisplayName || opt.value);
+                } else {
+                  onChange(opt.value);
+                }
+                setOpen(false); 
+                setDropdownIndex(idx); 
+              }}
               tabIndex={0}
               onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { 
                 if (e.key === 'Enter' || e.key === ' ') { 
                   e.preventDefault();
-                  onChange(opt.value); 
+                  if (opt.value.startsWith('bank_')) {
+                    const accountId = opt.value.replace('bank_', '');
+                    const account = bankAccounts.find(acc => acc._id === accountId || acc.accountDisplayName === accountId);
+                    onChange(account?.accountDisplayName || opt.value);
+                  } else {
+                    onChange(opt.value);
+                  }
                   setOpen(false); 
                   setDropdownIndex(idx); 
                 }
               }}
               aria-selected={value === opt.value}
               role="option"
-
             >
               {opt.label}
             </li>

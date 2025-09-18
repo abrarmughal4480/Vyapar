@@ -43,4 +43,18 @@ export const deleteQuotation = async (id: string, token: string) => {
     headers: { Authorization: `Bearer ${token}` }
   });
   return res.data;
+};
+
+export const getQuotationById = async (id: string, token: string) => {
+  const res = await api.get(`/quotations/${id}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return res.data;
+};
+
+export const updateQuotation = async (id: string, quotation: any, token: string) => {
+  const res = await api.put(`/quotations/update/${id}`, quotation, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return res.data;
 }; 

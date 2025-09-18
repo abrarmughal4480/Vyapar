@@ -1,14 +1,14 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Toast from '../../../components/Toast'
 import React, { useRef } from 'react'
 import ReactDOM from 'react-dom'
 import { getCustomerParties, getPartyBalance } from '../../../../http/parties'
 import { getToken } from '../../../lib/auth'
 import { getUserItems } from '../../../../http/items'
-import { createQuotation } from '../../../../http/quotations'
+import { createQuotation, getQuotationById, updateQuotation } from '../../../../http/quotations'
 import { useSidebar } from '../../../contexts/SidebarContext'
 import { UnitsDropdown } from '../../../components/UnitsDropdown';
 import { ItemsDropdown } from '../../../components/ItemsDropdown';
@@ -149,13 +149,15 @@ interface FormData {
   discountType: string;
   tax: string;
   taxType: string;
-  paymentType: string;
 }
 
 type DropdownOption = { value: string; label: string };
 
 export default function CreateSalesOrderPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [quotationId, setQuotationId] = useState<string | null>(null)
   const [formData, setFormData] = useState<FormData>({
     refNo: '1',
     invoiceDate: new Date().toISOString().split('T')[0],
@@ -170,8 +172,7 @@ export default function CreateSalesOrderPage() {
     discount: 0,
     discountType: '%',
     tax: '0',
-    taxType: '%',
-    paymentType: 'cash'
+    taxType: '%'
   })
   
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false)
@@ -276,6 +277,68 @@ export default function CreateSalesOrderPage() {
     };
     initializeData();
   }, []);
+
+  // Handle edit mode - load quotation data if ID is provided
+  useEffect(() => {
+    const loadQuotationForEdit = async () => {
+      const id = searchParams.get('id');
+      if (id) {
+        setIsEditMode(true);
+        setQuotationId(id);
+        
+        const token = getToken();
+        if (!token) return;
+        
+        try {
+          const response = await getQuotationById(id, token);
+          if (response.success && response.data) {
+            const quotation = response.data;
+            console.log('Quotation data received:', quotation);
+            
+            // Map quotation data to form data
+            setFormData({
+              refNo: quotation.refNo || '1',
+              invoiceDate: quotation.date || new Date().toISOString().split('T')[0],
+              customer: quotation.customerName || '',
+              phone: quotation.customerPhone || '',
+              items: quotation.items?.map((item: any, index: number) => ({
+                id: index + 1,
+                item: item.item || '',
+                qty: item.qty || 0,
+                unit: item.unit || 'NONE',
+                price: item.price || 0,
+                amount: item.amount || 0,
+                discountPercentage: item.discountPercentage || '',
+                discountAmount: item.discountAmount || ''
+              })) || [
+                { id: 1, item: '', qty: 0, unit: 'NONE', price: 0, amount: 0, discountPercentage: '', discountAmount: '' },
+                { id: 2, item: '', qty: 0, unit: 'NONE', price: 0, amount: 0, discountPercentage: '', discountAmount: '' }
+              ],
+              description: quotation.description || '',
+              image: null,
+              discount: quotation.discount || 0,
+              discountType: quotation.discountType || '%',
+              tax: quotation.tax?.toString() || '0',
+              taxType: quotation.taxType || '%'
+            });
+            
+            setToast({ 
+              message: 'Quotation data loaded successfully!', 
+              type: 'success' 
+            });
+          }
+        } catch (error) {
+          console.error('Error loading quotation:', error);
+          setToast({ 
+            message: 'Error loading quotation data. Please try again.', 
+            type: 'error' 
+          });
+        }
+      }
+    };
+    
+    loadQuotationForEdit();
+  }, [searchParams]);
 
 
 
@@ -486,6 +549,7 @@ export default function CreateSalesOrderPage() {
     try {
       const token = getToken();
       if (!token) throw new Error('Not logged in');
+      
       const quotationPayload = {
         customerName: formData.customer,
         customerPhone: formData.phone,
@@ -510,23 +574,37 @@ export default function CreateSalesOrderPage() {
         description: formData.description,
         customerBalance: grandTotal
       };
-      const res = await createQuotation(quotationPayload, token);
-      if (res && res.success) {
-        // Check if party was auto-created
-        if (res.partyCreated) {
-          setToast({ 
-            message: `Customer "${formData.customer}" was automatically created and quotation saved! Quotation No: ${res.data?.quotationNo || ''}`, 
-            type: 'success' 
-          });
+
+      let res;
+      if (isEditMode && quotationId) {
+        // Update existing quotation
+        res = await updateQuotation(quotationId, quotationPayload, token);
+        if (res && res.success) {
+          setToast({ message: 'Quotation updated successfully!', type: 'success' });
+          router.push('/dashboard/quotation');
         } else {
-          setToast({ message: 'Quotation created successfully!', type: 'success' });
+          setError(res?.message || 'Failed to update quotation');
         }
-        router.push('/dashboard/quotation');
       } else {
-        setError(res?.message || 'Failed to save quotation');
+        // Create new quotation
+        res = await createQuotation(quotationPayload, token);
+        if (res && res.success) {
+          // Check if party was auto-created
+          if (res.partyCreated) {
+            setToast({ 
+              message: `Customer "${formData.customer}" was automatically created and quotation saved! Quotation No: ${res.data?.quotationNo || ''}`, 
+              type: 'success' 
+            });
+          } else {
+            setToast({ message: 'Quotation created successfully!', type: 'success' });
+          }
+          router.push('/dashboard/quotation');
+        } else {
+          setError(res?.message || 'Failed to save quotation');
+        }
       }
     } catch (error: any) {
-      setError(error.message || 'Failed to save quotation')
+      setError(error.message || `Failed to ${isEditMode ? 'update' : 'save'} quotation`)
       console.error(error)
     } finally {
       setIsLoading(false)
@@ -576,7 +654,9 @@ export default function CreateSalesOrderPage() {
       <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-6">
         {/* Sticky Header */}
         <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 flex justify-between items-center px-6 py-4">
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Add Quotation</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">
+            {isEditMode ? 'Edit Quotation' : 'Add Quotation'}
+          </h1>
           <button
             type="button"
             onClick={() => router.push('/dashboard/quotation')}
@@ -1235,31 +1315,10 @@ export default function CreateSalesOrderPage() {
                 </div>
               </div>
 
-              {/* Payment Type */}
-              <div>
-                <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                  <span>💳</span> Payment Type
-                </label>
-                <div className="flex flex-col">
-                  <CustomDropdown
-                    options={[
-                      { value: 'Credit', label: 'Credit' },
-                      { value: 'Cash', label: 'Cash' },
-                    ]}
-                    value={formData.paymentType}
-                    onChange={val => setFormData(prev => ({ ...prev, paymentType: val }))}
-                    className="mb-1 border-2 border-blue-100 rounded-lg h-11"
-                    dropdownIndex={dropdownIndex}
-                    setDropdownIndex={setDropdownIndex}
-                    optionsCount={2}
-                  />
-                  <div className="text-xs text-gray-500 min-h-[24px] mt-1"></div>
-                </div>
-              </div>
 
               {/* Totals */}
-              <div className="md:col-span-1 flex flex-col items-end gap-2">
-                <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full min-w-[220px]">
+              <div>
+                <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-6 py-4 text-right shadow w-full min-w-[200px]">
                   <div className="flex flex-col gap-1">
                     <div className="flex justify-between text-xs text-gray-600">
                       <span>Sub Total</span>
@@ -1307,11 +1366,11 @@ export default function CreateSalesOrderPage() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <span>Saving...</span>
+                <span>{isEditMode ? 'Updating...' : 'Saving...'}</span>
               </>
             ) : (
               <>
-                <span>Save</span>
+                <span>{isEditMode ? 'Update' : 'Save'}</span>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>

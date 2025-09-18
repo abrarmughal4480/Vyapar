@@ -1,9 +1,579 @@
 import CashBank from '../models/cashBank.js';
+import BankAccount from '../models/bankAccount.js';
+import BankTransaction from '../models/bankTransaction.js';
 import Sale from '../models/sale.js';
 import Purchase from '../models/purchase.js';
 import CreditNote from '../models/creditNote.js';
 import Expense from '../models/expense.js';
 import mongoose from 'mongoose';
+
+// ==================== BANK ACCOUNT MANAGEMENT ====================
+
+// Create a new bank account
+export const createBankAccount = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const {
+      accountDisplayName,
+      openingBalance = 0,
+      asOfDate,
+      accountNumber = '',
+      ifscCode = '',
+      upiId = '',
+      bankName = '',
+      accountHolderName = '',
+      printBankDetails = false
+    } = req.body;
+
+    if (!accountDisplayName) {
+      return res.status(400).json({ success: false, message: 'Account display name is required' });
+    }
+
+    // Create new bank account
+    const newAccount = new BankAccount({
+      userId,
+      accountDisplayName,
+      openingBalance: Number(openingBalance),
+      asOfDate: asOfDate ? new Date(asOfDate) : new Date(),
+      accountNumber,
+      ifscCode,
+      upiId,
+      bankName,
+      accountHolderName,
+      printBankDetails,
+      currentBalance: Number(openingBalance)
+    });
+
+    await newAccount.save();
+
+    // Opening balance is stored in account, not as a separate transaction
+
+    res.status(201).json({
+      success: true,
+      message: 'Bank account created successfully',
+      data: newAccount
+    });
+
+  } catch (error) {
+    console.error('Error creating bank account:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+// Get all bank accounts for a user
+export const getBankAccounts = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const accounts = await BankAccount.find({ userId, isActive: true })
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: accounts
+    });
+
+  } catch (error) {
+    console.error('Error fetching bank accounts:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+// Get a specific bank account
+export const getBankAccount = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const { id } = req.params;
+    const account = await BankAccount.findOne({ _id: id, userId, isActive: true });
+
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Bank account not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: account
+    });
+
+  } catch (error) {
+    console.error('Error fetching bank account:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+// Update a bank account
+export const updateBankAccount = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const account = await BankAccount.findOne({ _id: id, userId, isActive: true });
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Bank account not found' });
+    }
+
+    // Store old opening balance
+    const oldOpeningBalance = account.openingBalance;
+    const newOpeningBalance = updateData.openingBalance;
+
+    // Calculate the difference in opening balance
+    const openingBalanceDifference = newOpeningBalance - oldOpeningBalance;
+
+    // Update current balance if opening balance changed
+    if (openingBalanceDifference !== 0) {
+      updateData.currentBalance = account.currentBalance + openingBalanceDifference;
+    }
+
+    // Update account
+    const updatedAccount = await BankAccount.findByIdAndUpdate(
+      id,
+      { ...updateData, updatedAt: new Date() },
+      { new: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Bank account updated successfully',
+      data: updatedAccount
+    });
+
+  } catch (error) {
+    console.error('Error updating bank account:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+// Delete a bank account (soft delete)
+export const deleteBankAccount = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const { id } = req.params;
+
+    const account = await BankAccount.findOne({ _id: id, userId, isActive: true });
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Bank account not found' });
+    }
+
+    // Soft delete
+    await BankAccount.findByIdAndUpdate(id, { isActive: false, updatedAt: new Date() });
+
+    res.status(200).json({
+      success: true,
+      message: 'Bank account deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Error deleting bank account:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+// ==================== BANK TRANSACTIONS ====================
+
+// Create a bank transaction
+export const createBankTransaction = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const {
+      type,
+      fromAccount,
+      toAccount,
+      amount,
+      description = '',
+      transactionDate,
+      adjustmentType = null,
+      imageUrl = null
+    } = req.body;
+
+    if (!type || !fromAccount || !toAccount || !amount) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+
+    // Validate accounts exist
+    const fromAccountDoc = await BankAccount.findOne({ 
+      accountDisplayName: fromAccount, 
+      userId, 
+      isActive: true 
+    });
+    const toAccountDoc = await BankAccount.findOne({ 
+      accountDisplayName: toAccount, 
+      userId, 
+      isActive: true 
+    });
+
+    if (!fromAccountDoc && fromAccount !== 'Cash') {
+      return res.status(400).json({ success: false, message: 'From account not found' });
+    }
+    if (!toAccountDoc && toAccount !== 'Cash') {
+      return res.status(400).json({ success: false, message: 'To account not found' });
+    }
+
+    // Calculate new balances
+    let fromAccountNewBalance = fromAccountDoc ? fromAccountDoc.currentBalance : 0;
+    let toAccountNewBalance = toAccountDoc ? toAccountDoc.currentBalance : 0;
+
+    // Apply transaction logic based on type
+    switch (type) {
+      case 'Bank to Cash Transfer':
+        fromAccountNewBalance -= Number(amount);
+        break;
+      case 'Cash to Bank Transfer':
+        toAccountNewBalance += Number(amount);
+        break;
+      case 'Bank to Bank Transfer':
+        fromAccountNewBalance -= Number(amount);
+        toAccountNewBalance += Number(amount);
+        break;
+      case 'Bank Adjustment Entry':
+        if (adjustmentType === 'Increase balance') {
+          toAccountNewBalance += Number(amount);
+        } else if (adjustmentType === 'Decrease balance') {
+          toAccountNewBalance -= Number(amount);
+        }
+        break;
+    }
+
+    // Update account balances
+    if (fromAccountDoc) {
+      await BankAccount.findByIdAndUpdate(fromAccountDoc._id, { 
+        currentBalance: fromAccountNewBalance,
+        updatedAt: new Date()
+      });
+    }
+    if (toAccountDoc) {
+      await BankAccount.findByIdAndUpdate(toAccountDoc._id, { 
+        currentBalance: toAccountNewBalance,
+        updatedAt: new Date()
+      });
+    }
+
+    // Create transaction record
+    const transaction = new BankTransaction({
+      userId,
+      type,
+      fromAccount,
+      toAccount,
+      amount: Number(amount),
+      description,
+      transactionDate: transactionDate ? new Date(transactionDate) : new Date(),
+      adjustmentType,
+      imageUrl,
+      balanceAfter: toAccountNewBalance,
+      status: 'completed'
+    });
+
+    await transaction.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Transaction created successfully',
+      data: transaction
+    });
+
+  } catch (error) {
+    console.error('Error creating bank transaction:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+// Get transactions for a specific account
+export const getAccountTransactions = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const { accountName } = req.params;
+    const { page = 1, limit = 20 } = req.query;
+
+    const skip = (page - 1) * limit;
+
+    // Remove any existing opening balance transactions (not needed anymore)
+    await BankTransaction.deleteMany({
+      userId,
+      fromAccount: accountName,
+      toAccount: accountName,
+      type: 'Opening Balance'
+    });
+
+    // Get transactions where account is either from or to
+    const transactions = await BankTransaction.find({
+      userId,
+      $or: [
+        { fromAccount: accountName },
+        { toAccount: accountName }
+      ]
+    })
+    .sort({ transactionDate: -1 })
+    .skip(skip)
+    .limit(parseInt(limit));
+
+    const total = await BankTransaction.countDocuments({
+      userId,
+      $or: [
+        { fromAccount: accountName },
+        { toAccount: accountName }
+      ]
+    });
+
+    res.status(200).json({
+      success: true,
+      data: transactions,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        totalItems: total,
+        itemsPerPage: parseInt(limit)
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching account transactions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+// Get all bank transactions
+export const getAllBankTransactions = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const { page = 1, limit = 20, type } = req.query;
+    const skip = (page - 1) * limit;
+
+    let query = { userId };
+    if (type) {
+      query.type = type;
+    }
+
+    const transactions = await BankTransaction.find(query)
+      .sort({ transactionDate: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await BankTransaction.countDocuments(query);
+
+    res.status(200).json({
+      success: true,
+      data: transactions,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        totalItems: total,
+        itemsPerPage: parseInt(limit)
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching bank transactions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+// Update a bank transaction
+export const updateBankTransaction = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const { id } = req.params;
+    const updateData = req.body;
+
+    // Find the transaction
+    const transaction = await BankTransaction.findOne({ _id: id, userId });
+    if (!transaction) {
+      return res.status(404).json({ success: false, message: 'Transaction not found' });
+    }
+
+    // Store old values for balance reversal
+    const oldAmount = transaction.amount;
+    const oldFromAccount = transaction.fromAccount;
+    const oldToAccount = transaction.toAccount;
+    const oldType = transaction.type;
+
+    // Update the transaction
+    const updatedTransaction = await BankTransaction.findByIdAndUpdate(
+      id,
+      { ...updateData, updatedAt: new Date() },
+      { new: true }
+    );
+
+    // Reverse the old transaction's effect on account balances
+    await reverseTransactionEffect(userId, oldType, oldFromAccount, oldToAccount, oldAmount);
+
+    // Apply the new transaction's effect on account balances
+    await applyTransactionEffect(userId, updateData.type || oldType, updateData.fromAccount || oldFromAccount, updateData.toAccount || oldToAccount, updateData.amount || oldAmount);
+
+    res.status(200).json({
+      success: true,
+      data: updatedTransaction,
+      message: 'Transaction updated successfully'
+    });
+
+  } catch (error) {
+    console.error('Error updating bank transaction:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+// Delete a bank transaction
+export const deleteBankTransaction = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const { id } = req.params;
+
+    // Find the transaction
+    const transaction = await BankTransaction.findOne({ _id: id, userId });
+    if (!transaction) {
+      return res.status(404).json({ success: false, message: 'Transaction not found' });
+    }
+
+    // Reverse the transaction's effect on account balances
+    await reverseTransactionEffect(userId, transaction.type, transaction.fromAccount, transaction.toAccount, transaction.amount);
+
+    // Delete the transaction
+    await BankTransaction.findByIdAndDelete(id);
+
+    res.status(200).json({
+      success: true,
+      message: 'Transaction deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Error deleting bank transaction:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+// Helper function to reverse transaction effects on account balances
+const reverseTransactionEffect = async (userId, type, fromAccount, toAccount, amount) => {
+  try {
+    if (type === 'Bank to Cash Transfer') {
+      // Reverse: Add amount back to bank account
+      await BankAccount.findOneAndUpdate(
+        { accountDisplayName: fromAccount, userId, isActive: true },
+        { $inc: { currentBalance: amount } }
+      );
+    } else if (type === 'Cash to Bank Transfer') {
+      // Reverse: Subtract amount from bank account
+      await BankAccount.findOneAndUpdate(
+        { accountDisplayName: toAccount, userId, isActive: true },
+        { $inc: { currentBalance: -amount } }
+      );
+    } else if (type === 'Bank Adjustment Entry') {
+      // Reverse: Subtract the adjustment amount
+      await BankAccount.findOneAndUpdate(
+        { accountDisplayName: fromAccount, userId, isActive: true },
+        { $inc: { currentBalance: -amount } }
+      );
+    }
+  } catch (error) {
+    console.error('Error reversing transaction effect:', error);
+  }
+};
+
+// Helper function to apply transaction effects on account balances
+const applyTransactionEffect = async (userId, type, fromAccount, toAccount, amount) => {
+  try {
+    if (type === 'Bank to Cash Transfer') {
+      // Subtract from bank account
+      await BankAccount.findOneAndUpdate(
+        { accountDisplayName: fromAccount, userId, isActive: true },
+        { $inc: { currentBalance: -amount } }
+      );
+    } else if (type === 'Cash to Bank Transfer') {
+      // Add to bank account
+      await BankAccount.findOneAndUpdate(
+        { accountDisplayName: toAccount, userId, isActive: true },
+        { $inc: { currentBalance: amount } }
+      );
+    } else if (type === 'Bank Adjustment Entry') {
+      // Add adjustment amount
+      await BankAccount.findOneAndUpdate(
+        { accountDisplayName: fromAccount, userId, isActive: true },
+        { $inc: { currentBalance: amount } }
+      );
+    }
+  } catch (error) {
+    console.error('Error applying transaction effect:', error);
+  }
+};
+
+// ==================== LEGACY CASH IN HAND FUNCTIONS ====================
 
 // Get cash in hand summary
 export const getCashInHandSummary = async (req, res) => {
@@ -282,7 +852,6 @@ export const addCashAdjustment = async (req, res) => {
 
     await newTransaction.save();
 
-
     res.status(201).json({
       success: true,
       message: 'Cash adjustment added successfully',
@@ -302,7 +871,7 @@ export const addCashAdjustment = async (req, res) => {
   }
 };
 
-// Get all transactions
+// Get cash bank transactions
 export const getCashBankTransactions = async (req, res) => {
   try {
     const userId = req.user && req.user._id;
@@ -514,7 +1083,6 @@ export const updateCashAdjustment = async (req, res) => {
       { new: true }
     );
 
-
     res.status(200).json({
       success: true,
       message: 'Cash adjustment updated successfully',
@@ -552,7 +1120,6 @@ export const deleteCashAdjustment = async (req, res) => {
 
     // Delete the transaction
     await CashBank.findByIdAndDelete(id);
-
 
     res.status(200).json({
       success: true,

@@ -6,6 +6,9 @@ import Toast from '../../../components/Toast';
 import { CustomDropdown, type DropdownOption } from '../../../components/CustomDropdown';
 import { ItemsDropdown, type Item } from '../../../components/ItemsDropdown';
 import { UnitsDropdown, type Unit } from '../../../components/UnitsDropdown';
+import { useBankAccounts } from '../../../hooks/useBankAccounts';
+import { ToggleSwitch } from '../../../components/ToggleSwitch';
+import { PaymentMethodDropdown } from '../../../components/PaymentMethodDropdown';
 import ReactDOM from 'react-dom';
 import { createSale, updateSale, getSaleById } from '../../../../http/sales';
 import { getCustomerParties, getPartyBalance } from '../../../../http/parties';
@@ -512,6 +515,8 @@ function ItemRow({
 const AddSalePageWithSearchParams = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { bankAccounts } = useBankAccounts();
+  const [viewMode, setViewMode] = useState<'credit' | 'cash'>('credit');
   const [newSale, setNewSale] = useState({
     partyName: '',
     phoneNo: '',
@@ -523,6 +528,9 @@ const AddSalePageWithSearchParams = () => {
     tax: '',
     taxType: '%',
     paymentType: 'Credit',
+    paymentMethod: 'Cash',
+    bankAccountId: null as string | null,
+    bankAccountName: '',
     receivedAmount: '', // <-- Add this line
     editingId: null
   });
@@ -934,6 +942,9 @@ const AddSalePageWithSearchParams = () => {
         imageUrl: uploadedImage,
         tax: newSale.tax === 'NONE' || newSale.tax === '' ? 0 : newSale.tax,
         receivedAmount: newSale.paymentType === 'Cash' ? grandTotal : newSale.receivedAmount,
+        paymentMethod: newSale.paymentMethod || 'Cash',
+        bankAccountId: newSale.bankAccountId || null,
+        bankAccountName: newSale.bankAccountName || '',
         sourceOrderId, // Include the original order ID
         sourceOrderNumber // Include the original order number
       };
@@ -1132,6 +1143,9 @@ const AddSalePageWithSearchParams = () => {
         imageUrl: uploadedImage,
         tax: newSale.tax === 'NONE' || newSale.tax === '' ? 0 : newSale.tax,
         receivedAmount: newSale.paymentType === 'Cash' ? grandTotal : newSale.receivedAmount,
+        paymentMethod: newSale.paymentMethod || 'Cash',
+        bankAccountId: newSale.bankAccountId || null,
+        bankAccountName: newSale.bankAccountName || '',
         sourceOrderId,
         sourceOrderNumber
       };
@@ -1239,6 +1253,11 @@ const AddSalePageWithSearchParams = () => {
             tax: parsedData.tax || '',
             taxType: parsedData.taxType || '%',
             paymentType: parsedData.paymentType || 'Credit',
+            paymentMethod: parsedData.paymentMethod === 'Bank Transfer' && parsedData.bankAccountId 
+              ? `bank_${parsedData.bankAccountId}` 
+              : parsedData.paymentMethod || 'Cash',
+            bankAccountId: parsedData.bankAccountId || null as string | null,
+            bankAccountName: parsedData.bankAccountName || '',
             receivedAmount: parsedData.received || '',
             editingId: null
           });
@@ -1373,10 +1392,23 @@ const AddSalePageWithSearchParams = () => {
             discountType: saleData.discountType || '%',
             tax: saleData.tax || '',
             taxType: saleData.taxType || '%',
-            paymentType: saleData.paymentType || 'Credit',
+            paymentType: saleData.paymentType || 'Credit', // Use actual paymentType from sale data
+            paymentMethod: saleData.paymentMethod === 'Bank Transfer' && saleData.bankAccountId 
+              ? `bank_${saleData.bankAccountId}` 
+              : saleData.paymentMethod || 'Cash',
+            bankAccountId: saleData.bankAccountId || null as string | null,
+            bankAccountName: saleData.bankAccountName || '',
             receivedAmount: saleData.received || '', // Use correct field name from backend
             editingId: saleData._id || saleData.id || null
           });
+          
+          // Set viewMode based on paymentType for toggle display
+          const paymentType = saleData.paymentType || 'Credit';
+          if (paymentType === 'Credit') {
+            setViewMode('credit');
+          } else {
+            setViewMode('cash');
+          }
           
           console.log('Set editingId to:', saleData._id || saleData.id || null);
           setDescription(saleData.description || '');
@@ -1429,18 +1461,47 @@ const AddSalePageWithSearchParams = () => {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-2 sm:px-4 md:px-8">
       <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-6">
         {/* Sticky Header */}
-        <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 flex justify-between items-center px-6 py-4">
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">
-            {newSale.editingId ? 'Edit Sale' : 'Add Sale'}
-          </h1>
-          <button
-            type="button"
-            onClick={() => router.push('/dashboard/sale')}
-            className="text-gray-400 hover:text-gray-600 text-2xl"
-            aria-label="Cancel"
-          >
-            ✕
-          </button>
+        <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 px-6 py-4">
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-4">
+              <h1 className="text-xl md:text-2xl font-bold text-gray-900">
+                {newSale.editingId ? 'Edit Sale' : 'Add Sale'}
+              </h1>
+              <ToggleSwitch
+                leftLabel="Credit"
+                rightLabel="Cash"
+                value={viewMode}
+                onChange={(value) => {
+                  setViewMode(value as 'credit' | 'cash');
+                  if (value === 'credit') {
+                    setNewSale(prev => ({ 
+                      ...prev, 
+                      paymentType: 'Credit'
+                      // Keep paymentMethod, bankAccountId, bankAccountName unchanged
+                      // These are for how received amount is paid, not the sale type
+                    }));
+                  } else {
+                    setNewSale(prev => ({ 
+                      ...prev, 
+                      paymentType: 'Cash'
+                      // Keep paymentMethod, bankAccountId, bankAccountName unchanged
+                      // These are for how received amount is paid, not the sale type
+                    }));
+                  }
+                }}
+                leftValue="credit"
+                rightValue="cash"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push('/dashboard/sale')}
+              className="text-gray-400 hover:text-gray-600 text-2xl"
+              aria-label="Cancel"
+            >
+              ✕
+            </button>
+          </div>
         </div>
         <form onSubmit={handleSubmit} className="divide-y divide-gray-200 w-full">
           {/* Customer Section */}
@@ -1757,25 +1818,61 @@ const AddSalePageWithSearchParams = () => {
                   ) : null}
                 </div>
               </div>
-              {/* Payment Type */}
+              {/* Payment Method */}
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                  <span>💳</span> Payment Type
+                  <span>💳</span> Select Payment Method
                 </label>
                 <div className="flex flex-col">
-                  <CustomDropdown
-                    options={[
-                      { value: 'Credit', label: 'Credit' },
-                      { value: 'Cash', label: 'Cash' }
-                    ]}
-                    value={newSale.paymentType}
-                    onChange={val => setNewSale(prev => ({ ...prev, paymentType: val }))}
+                  <PaymentMethodDropdown
+                    value={newSale.paymentMethod}
+                    onChange={(val) => {
+                      // Handle different payment method types
+                      if (val === 'Cash' || val === 'Cheque') {
+                        setNewSale(prev => ({ 
+                          ...prev, 
+                          paymentMethod: val,
+                          bankAccountId: null as string | null,
+                          bankAccountName: ''
+                        }));
+                      } else if (val.startsWith('bank_')) {
+                        // Bank account selected
+                        const accountId = val.replace('bank_', '');
+                        const account = bankAccounts.find(acc => acc._id === accountId);
+                        if (account) {
+                          setNewSale(prev => ({ 
+                            ...prev, 
+                            paymentMethod: val, // Keep the bank_ identifier for display
+                            bankAccountId: account._id as string | null,
+                            bankAccountName: account.accountDisplayName
+                          }));
+                        }
+                      } else {
+                        // Fallback for display names
+                        const account = bankAccounts.find(acc => acc.accountDisplayName === val);
+                        if (account) {
+                          setNewSale(prev => ({ 
+                            ...prev, 
+                            paymentMethod: `bank_${account._id}`, // Convert to bank_ format
+                            bankAccountId: account._id as string | null,
+                            bankAccountName: account.accountDisplayName
+                          }));
+                        } else {
+                          setNewSale(prev => ({ 
+                            ...prev, 
+                            paymentMethod: val,
+                            bankAccountId: null as string | null,
+                            bankAccountName: ''
+                          }));
+                        }
+                      }
+                    }}
+                    bankAccounts={bankAccounts}
                     className="mb-1"
                     dropdownIndex={paymentTypeDropdownIndex}
                     setDropdownIndex={setPaymentTypeDropdownIndex}
-                    optionsCount={2}
                   />
-                  {newSale.paymentType === 'Credit' && (
+                  {viewMode === 'credit' && (
                     <div className="mt-2">
                       <label className="block text-xs font-medium text-green-700 mb-1">Received Amount</label>
                       <input
@@ -1797,8 +1894,8 @@ const AddSalePageWithSearchParams = () => {
                 </div>
               </div>
               {/* Totals */}
-              <div className="md:col-span-1 flex flex-col items-end gap-2">
-                <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full min-w-[220px]">
+              <div className="md:col-span-1 flex flex-col items-end gap-2 mr-4">
+                <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full min-w-[220px] ml-auto">
                   <div className="flex flex-col gap-1">
                     <div className="flex justify-between text-xs text-gray-600">
                       <span>Sub Total</span>

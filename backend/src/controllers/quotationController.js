@@ -307,17 +307,12 @@ export const deleteQuotation = async (req, res) => {
   }
 };
 
-// Update a quotation (full edit)
-export const updateQuotation = async (req, res) => {
+// Get quotation by ID
+export const getQuotationById = async (req, res) => {
   try {
     const userId = req.user && (req.user._id || req.user.id);
-    const { quotationId } = req.params;
-    const updateData = req.body;
-    const quotation = await Quotation.findOneAndUpdate(
-      { _id: quotationId, userId },
-      { ...updateData, updatedAt: new Date() },
-      { new: true }
-    );
+    const { id } = req.params;
+    const quotation = await Quotation.findOne({ _id: id, userId });
     if (!quotation) return res.status(404).json({ success: false, message: 'Quotation not found' });
     res.json({ success: true, data: quotation });
   } catch (err) {
@@ -325,9 +320,68 @@ export const updateQuotation = async (req, res) => {
   }
 };
 
+// Update a quotation (full edit)
+export const updateQuotation = async (req, res) => {
+  try {
+    const userId = req.user && (req.user._id || req.user.id);
+    const { quotationId } = req.params;
+    const updateData = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    // Check if quotation exists
+    const existingQuotation = await Quotation.findOne({ _id: quotationId, userId });
+    if (!existingQuotation) {
+      return res.status(404).json({ success: false, message: 'Quotation not found' });
+    }
+
+    // Validate required fields
+    if (!updateData.customerName || !updateData.items || updateData.items.length === 0) {
+      return res.status(400).json({ success: false, message: 'Customer name and at least one item are required' });
+    }
+
+    // Calculate totals if not provided
+    const subtotal = updateData.subtotal || updateData.items.reduce((sum, item) => sum + (item.qty * item.price), 0);
+    const totalDiscount = updateData.discount || 0;
+    const taxAmount = updateData.tax || 0;
+    const totalAmount = subtotal - totalDiscount + taxAmount;
+
+    // Prepare update data
+    const quotationUpdateData = {
+      ...updateData,
+      subtotal,
+      totalAmount,
+      updatedAt: new Date()
+    };
+
+    // Update the quotation
+    const quotation = await Quotation.findOneAndUpdate(
+      { _id: quotationId, userId },
+      quotationUpdateData,
+      { new: true, runValidators: true }
+    );
+
+    if (!quotation) {
+      return res.status(404).json({ success: false, message: 'Quotation not found' });
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Quotation updated successfully',
+      data: quotation 
+    });
+  } catch (err) {
+    console.error('Error updating quotation:', err);
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
 export default {
   createQuotation,
   getQuotationsForUser,
+  getQuotationById,
   updateQuotationStatus,
   fixQuotationIndexes,
   deleteQuotation,

@@ -25,6 +25,7 @@ const PurchaseSchema = new mongoose.Schema({
   grandTotal: { type: Number, default: 0 },
   billNo: { type: String, required: true },
   paymentType: { type: String, default: 'Credit' },
+  paymentMethod: { type: String, default: 'Cash' },
   description: { type: String },
   imageUrl: { type: String },
   dueDate: { type: Date, default: null },

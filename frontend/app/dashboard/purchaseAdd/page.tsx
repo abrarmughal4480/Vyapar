@@ -17,6 +17,7 @@ import { useSidebar } from '../../contexts/SidebarContext';
 import { UnitsDropdown } from '../../components/UnitsDropdown';
 import { ItemsDropdown } from '../../components/ItemsDropdown';
 import { CustomDropdown } from '../../components/CustomDropdown';
+import { useBankAccounts } from '../../hooks/useBankAccounts';
 
 // Utility functions for unit conversion
 const getUnitDisplay = (unit: any) => {
@@ -231,6 +232,9 @@ export default function AddPurchasePage() {
   // Import sidebar context
   const { setIsCollapsed } = useSidebar();
   const [wasSidebarCollapsed, setWasSidebarCollapsed] = useState(false);
+  
+  // Bank accounts hook
+  const { bankAccounts, loading: bankAccountsLoading } = useBankAccounts();
   const [formData, setFormData] = useState<FormData>({
     billNumber: 'Purchase #1',
     billDate: '19/06/2025',
@@ -272,7 +276,7 @@ export default function AddPurchasePage() {
     taxType: '%',
     taxPartyName: '',
     taxPartyId: '',
-    paymentType: 'Credit',
+    paymentType: 'Cash',
     paid: '',
     description: '',
     editingId: editId || null
@@ -411,7 +415,7 @@ export default function AddPurchasePage() {
       if (fromContext === 'expenses') {
         setIsFromExpenses(true);
         setPageTitle('Add Expense');
-        // Set default payment type to Cash for expenses (since Credit is not available)
+        // Set default payment method to Cash for expenses (since Credit is not available)
         setNewPurchase(prev => ({ ...prev, paymentType: 'Cash' }));
         // Fetch expense items from database for suggestions
         fetchExpenseItemsForSuggestions();
@@ -497,6 +501,7 @@ export default function AddPurchasePage() {
             tax: orderData.tax || '',
             taxType: orderData.taxType || '%',
             paymentType: orderData.paymentType || 'Credit',
+            paid: orderData.paidAmount || orderData.receivedAmount || orderData.paid || '',
             description: orderData.description || '',
             dueDate: orderData.dueDate ? new Date(orderData.dueDate).toISOString().split('T')[0] : prev.dueDate,
             invoiceDate: orderData.invoiceDate ? new Date(orderData.invoiceDate).toISOString().split('T')[0] : prev.invoiceDate,
@@ -640,7 +645,7 @@ export default function AddPurchasePage() {
                 tax: '',
                 taxAmount: '',
                 taxType: '%',
-                paymentType: expense.paymentType || 'Cash',
+                paymentType: expense.paymentMethod || 'Cash',
                 paid: expense.receivedAmount?.toString() || '',
                 description: expense.description || '',
                 editingId: editId
@@ -693,7 +698,7 @@ export default function AddPurchasePage() {
                 tax: order.tax || '',
                 taxAmount: order.taxAmount || '',
                 taxType: order.taxType || '%',
-                paymentType: order.paymentType || 'Credit',
+                paymentType: order.paymentMethod || 'Cash',
                 paid: order.paid || '',
                 description: order.description || '',
                 editingId: editId
@@ -738,7 +743,7 @@ export default function AddPurchasePage() {
                 tax: result.purchase.tax || '',
                 taxAmount: result.purchase.taxAmount || '',
                 taxType: result.purchase.taxType || '%',
-                paymentType: result.purchase.paymentType || 'Cash',
+                paymentType: result.purchase.paymentMethod || 'Cash',
                 paid: result.purchase.paid || '',
                 description: result.purchase.description || '',
                 editingId: editId
@@ -1275,7 +1280,7 @@ export default function AddPurchasePage() {
 
       const paidValue = newPurchase.paymentType === 'Cash'
         ? grandTotal
-        : (newPurchase.paymentType === 'Credit' && newPurchase.paid !== undefined && newPurchase.paid !== '' ? Number(newPurchase.paid) : 0);
+        : (newPurchase.paid !== undefined && newPurchase.paid !== '' ? Number(newPurchase.paid) : 0);
       // Prepare common data
       const commonData = {
         supplierName: newPurchase.partyName,
@@ -1302,7 +1307,10 @@ export default function AddPurchasePage() {
         discountType: newPurchase.discountType || '%',
         tax: newPurchase.tax || 0,
         taxType: newPurchase.taxType || '%',
-        paymentType: newPurchase.paymentType || 'Credit',
+        paymentType: 'Credit', // Always Credit for purchases
+        paymentMethod: newPurchase.paymentType || 'Cash', // Use the selected payment method
+        bankAccountId: newPurchase.paymentType?.startsWith('bank_') ? newPurchase.paymentType.replace('bank_', '') : null,
+        bankAccountName: newPurchase.paymentType?.startsWith('bank_') ? bankAccounts.find(bank => bank._id === newPurchase.paymentType?.replace('bank_', ''))?.accountDisplayName || '' : '',
         paid: paidValue,
         description: newPurchase.description || '',
         imageUrl: uploadedImage || '',
@@ -1334,8 +1342,11 @@ export default function AddPurchasePage() {
               amount: Number(item.price)
             })),
           totalAmount: grandTotal,
-          paymentType: newPurchase.paymentType || 'Cash',
-          receivedAmount: newPurchase.paymentType === 'Credit' ? Number(newPurchase.paid) || 0 : grandTotal,
+          paymentType: 'Credit', // Always Credit for expenses
+          paymentMethod: newPurchase.paymentType || 'Cash',
+          bankAccountId: newPurchase.paymentType?.startsWith('bank_') ? newPurchase.paymentType.replace('bank_', '') : null,
+          bankAccountName: newPurchase.paymentType?.startsWith('bank_') ? bankAccounts.find(bank => bank._id === newPurchase.paymentType?.replace('bank_', ''))?.accountDisplayName || '' : '',
+          receivedAmount: Number(newPurchase.paid) || 0,
           expenseDate: newPurchase.billDate || new Date().toISOString().split('T')[0],
           description: newPurchase.description || ''
         };
@@ -1436,7 +1447,7 @@ export default function AddPurchasePage() {
     }
   }, []);
 
-  const [paymentTypeDropdownIndex, setPaymentTypeDropdownIndex] = useState(0);
+  const [paymentMethodDropdownIndex, setPaymentMethodDropdownIndex] = useState(0);
   const [discountTypeDropdownIndex, setDiscountTypeDropdownIndex] = useState(0);
   const [taxTypeDropdownIndex, setTaxTypeDropdownIndex] = useState(0);
   
@@ -1496,7 +1507,7 @@ export default function AddPurchasePage() {
                           const newTaxEnabled = !tacEnabled;
                           setTacEnabled(newTaxEnabled);
                           
-                          // If tax is enabled and we're in expenses mode, set payment type to Credit
+                          // If tax is enabled and we're in expenses mode, set payment method to Credit
                           if (newTaxEnabled && isFromExpenses) {
                             setNewPurchase(prev => ({ ...prev, paymentType: 'Credit' }));
                           }
@@ -2559,59 +2570,58 @@ export default function AddPurchasePage() {
                     )}
                   </div>
                   
-                  {/* Right Side - Payment Type and Totals */}
+                  {/* Right Side - Payment Method and Totals */}
                   <div className="flex flex-row items-start gap-8">
-                    {/* Payment Type */}
+                    {/* Payment Method */}
                     <div className="min-w-[280px]">
                       <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                        Payment Type
+                        <span>💳</span> Payment Method
                       </label>
                       <CustomDropdown
                         options={[
-                          // Only show Credit option if not in expense mode or if tax is enabled
-                          ...(isFromExpenses && !tacEnabled ? [] : [{ value: 'Credit', label: 'Credit' }]),
                           { value: 'Cash', label: 'Cash' },
-                          { value: 'Card', label: 'Card' },
-                          { value: 'UPI', label: 'UPI' },
-                          { value: 'Cheque', label: 'Cheque' }
+                          { value: 'Cheque', label: 'Cheque' },
+                          // Add bank accounts as options
+                          ...bankAccounts.map(bank => ({
+                            value: `bank_${bank._id}`,
+                            label: bank.accountDisplayName
+                          }))
                         ]}
                         value={newPurchase.paymentType}
                         onChange={val => setNewPurchase(prev => ({ ...prev, paymentType: val }))}
                         className="mb-1 w-full"
-                        dropdownIndex={paymentTypeDropdownIndex}
-                        setDropdownIndex={setPaymentTypeDropdownIndex}
-                        optionsCount={isFromExpenses && !tacEnabled ? 4 : 5}
+                        dropdownIndex={paymentMethodDropdownIndex}
+                        setDropdownIndex={setPaymentMethodDropdownIndex}
+                        optionsCount={2 + bankAccounts.length}
                       />
                       
-                      {/* Paid Amount Field for Credit Purchases/Orders */}
-                      {newPurchase.paymentType === 'Credit' && (
-                        <div className="mt-3">
-                          <label className="block text-xs font-medium text-green-700 mb-1">
-                            {isFromExpenses ? 'Received Amount' : 'Paid Amount'}
-                          </label>
-                          <input
-                            type="number"
-                            name="paid"
-                            value={newPurchase.paid}
-                            min={0}
-                            max={grandTotal}
-                            onChange={e => setNewPurchase(prev => ({ ...prev, paid: e.target.value }))}
-                            className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 ${
-                              formErrors.paid ? 'border-red-300 bg-red-50 focus:ring-red-200' : 'border-green-200 focus:ring-green-200'
-                            }`}
-                            placeholder={`Enter ${isFromExpenses ? 'amount received' : 'amount paid'} (max PKR ${grandTotal.toFixed(2)})`}
-                            onBlur={(e) => {
-                              const paidAmount = Number(e.target.value);
-                              if (paidAmount > grandTotal) {
-                                setNewPurchase(prev => ({ ...prev, paid: grandTotal.toString() }));
-                                setToast({ message: 'Paid amount cannot exceed total amount', type: 'error' });
-                              }
-                            }}
-                            autoComplete="off"
-                          />
-                          {formErrors.paid && <p className="text-xs text-red-500 mt-1">{formErrors.paid}</p>}
-                        </div>
-                      )}
+                      {/* Paid Amount Field - Always Show */}
+                      <div className="mt-3">
+                        <label className="block text-xs font-medium text-green-700 mb-1">
+                          {isFromExpenses ? 'Received Amount' : 'Paid Amount'}
+                        </label>
+                        <input
+                          type="number"
+                          name="paid"
+                          value={newPurchase.paid}
+                          min={0}
+                          max={grandTotal}
+                          onChange={e => setNewPurchase(prev => ({ ...prev, paid: e.target.value }))}
+                          className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 ${
+                            formErrors.paid ? 'border-red-300 bg-red-50 focus:ring-red-200' : 'border-green-200 focus:ring-green-200'
+                          }`}
+                          placeholder={`Enter ${isFromExpenses ? 'amount received' : 'amount paid'} (max PKR ${grandTotal.toFixed(2)})`}
+                          onBlur={(e) => {
+                            const paidAmount = Number(e.target.value);
+                            if (paidAmount > grandTotal) {
+                              setNewPurchase(prev => ({ ...prev, paid: grandTotal.toString() }));
+                              setToast({ message: 'Paid amount cannot exceed total amount', type: 'error' });
+                            }
+                          }}
+                          autoComplete="off"
+                        />
+                        {formErrors.paid && <p className="text-xs text-red-500 mt-1">{formErrors.paid}</p>}
+                      </div>
                     </div>
                     
                     {/* Totals */}
@@ -2626,20 +2636,20 @@ export default function AddPurchasePage() {
                             <span>Total Amount</span>
                             <span>PKR {isFromExpenses ? subTotal.toFixed(2) : originalSubTotal.toFixed(2)}</span>
                           </div>
-                          {/* Credit Information for Expenses */}
-                          {newPurchase.paymentType === 'Credit' && newPurchase.paid && Number(newPurchase.paid) > 0 && (
-                            <>
-                              <div className="border-t border-blue-200 my-2"></div>
-                              <div className="flex justify-between text-sm text-green-700">
-                                <span>Received Amount</span>
-                                <span>PKR {Number(newPurchase.paid).toFixed(2)}</span>
-                              </div>
-                              <div className="flex justify-between text-sm text-red-700 font-semibold">
-                                <span>Credit Amount</span>
-                                <span>PKR {(subTotal - Number(newPurchase.paid)).toFixed(2)}</span>
-                              </div>
-                            </>
-                          )}
+                            {/* Credit Information for Expenses - Always Show */}
+                            {newPurchase.paid && Number(newPurchase.paid) > 0 && (
+                              <>
+                                <div className="border-t border-blue-200 my-2"></div>
+                                <div className="flex justify-between text-sm text-green-700">
+                                  <span>Received Amount</span>
+                                  <span>PKR {Number(newPurchase.paid).toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm text-red-700 font-semibold">
+                                  <span>Credit Amount</span>
+                                  <span>PKR {(subTotal - Number(newPurchase.paid)).toFixed(2)}</span>
+                                </div>
+                              </>
+                            )}
                         </div>
                       ) : (
                         // Full totals for purchases
@@ -2671,8 +2681,8 @@ export default function AddPurchasePage() {
                               <span>PKR {grandTotal.toFixed(2)}</span>
                             </div>
                             
-                            {/* Credit Information */}
-                            {newPurchase.paymentType === 'Credit' && newPurchase.paid && Number(newPurchase.paid) > 0 && (
+                            {/* Credit Information - Always Show */}
+                            {newPurchase.paid && Number(newPurchase.paid) > 0 && (
                               <>
                                 <div className="border-t border-blue-200 my-2"></div>
                                 <div className="flex justify-between text-sm text-green-700">

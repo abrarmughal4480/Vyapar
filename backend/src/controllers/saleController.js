@@ -3,34 +3,32 @@ import Item from '../models/items.js';
 import Payment from '../models/payment.js';
 import mongoose from 'mongoose';
 
-function getUnitDisplay(unit) {
+const getUnitDisplay = unit => {
   if (!unit) return '';
   const base = unit.base === 'custom' ? unit.customBase : unit.base;
   const secondary = unit.secondary && unit.secondary !== 'None'
     ? (unit.secondary === 'custom' ? unit.customSecondary : unit.secondary)
     : '';
   return secondary ? `${base} / ${secondary}` : base;
-}
+};
 
 export const createSale = async (req, res) => {
   try {
     const { partyName, items } = req.body;
-    if (!partyName || !items || !Array.isArray(items) || items.length === 0) {
+    if (!partyName || !items?.length) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
-    const userId = req.user && req.user._id;
+    const userId = req.user?._id;
     if (!userId) {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
     const userIdObj = new mongoose.Types.ObjectId(userId);
     
-    // Check if party exists, if not create it
     const Party = (await import('../models/parties.js')).default;
     let party = await Party.findOne({ name: partyName, user: userId });
     let partyCreated = false;
     
     if (!party) {
-      // Create new party with default values
       party = new Party({
         name: partyName,
         phone: req.body.phoneNo || '',
@@ -49,64 +47,29 @@ export const createSale = async (req, res) => {
         note: 'Auto-created from sale',
         user: userId
       });
-      
       await party.save();
       partyCreated = true;
-      console.log(`Auto-created party: ${partyName}`);
     }
     
-    // Decrement stock for each item
     for (const saleItem of items) {
-      // Convert quantity to base unit for stock calculation
       let stockQuantity = Number(saleItem.qty);
-      
-      // Check if unit conversion is needed
       const dbItem = await Item.findOne({ userId: userIdObj.toString(), name: saleItem.item });
-      if (dbItem && dbItem.unit) {
-        const itemUnit = dbItem.unit;
+      if (dbItem?.unit) {
+        const { unit: itemUnit } = dbItem;
         const saleUnit = saleItem.unit;
         
-        // Handle object format unit
         if (typeof itemUnit === 'object' && itemUnit.base && itemUnit.secondary) {
-          // If sale unit is secondary unit, convert to base unit
-          if (saleUnit === itemUnit.secondary && itemUnit.conversionFactor) {
-            stockQuantity = Number(saleItem.qty) * itemUnit.conversionFactor;
-          }
-          // If sale unit is base unit, use as is
-          else if (saleUnit === itemUnit.base) {
-            stockQuantity = Number(saleItem.qty);
-          }
-          // For custom units or other cases, use as is
-          else {
-            stockQuantity = Number(saleItem.qty);
-          }
-        }
-        // Handle string format unit (like "Piece / Dozen")
-        else if (typeof itemUnit === 'string' && itemUnit.includes(' / ')) {
-          const parts = itemUnit.split(' / ');
-          const baseUnit = parts[0];
-          const secondaryUnit = parts[1];
-          
-          // If sale unit is secondary unit, convert to base unit (assuming 1:12 ratio)
-          if (saleUnit === secondaryUnit) {
-            stockQuantity = Number(saleItem.qty) * 12; // Default conversion factor
-          }
-          // If sale unit is base unit, use as is
-          else if (saleUnit === baseUnit) {
-            stockQuantity = Number(saleItem.qty);
-          }
-          // For other cases, use as is
-          else {
-            stockQuantity = Number(saleItem.qty);
-          }
-        }
-        // For simple string units, use as is
-        else {
-          stockQuantity = Number(saleItem.qty);
+          stockQuantity = saleUnit === itemUnit.secondary && itemUnit.conversionFactor
+            ? Number(saleItem.qty) * itemUnit.conversionFactor
+            : Number(saleItem.qty);
+        } else if (typeof itemUnit === 'string' && itemUnit.includes(' / ')) {
+          const [baseUnit, secondaryUnit] = itemUnit.split(' / ');
+          stockQuantity = saleUnit === secondaryUnit 
+            ? Number(saleItem.qty) * 12
+            : Number(saleItem.qty);
         }
       }
       
-      // Use simple stock reduction method
       if (dbItem) {
         try {
           const originalBatches = JSON.parse(JSON.stringify(dbItem.batches || []));
@@ -117,51 +80,34 @@ export const createSale = async (req, res) => {
           let remainingToAllocate = requestQty;
           
           for (let i = 0; i < originalBatches.length && remainingToAllocate > 0; i++) {
-            const originalBatch = originalBatches[i];
-            const originalQty = originalBatch.quantity || 0;
-            const currentBatch = dbItem.batches[i] || { quantity: 0 };
-            const currentQty = currentBatch.quantity || 0;
-            
+            const { quantity: originalQty = 0, purchasePrice = dbItem.purchasePrice || 0 } = originalBatches[i];
+            const currentQty = dbItem.batches[i]?.quantity || 0;
             const consumedFromBatch = Math.min(originalQty, originalQty - currentQty, remainingToAllocate);
             
             if (consumedFromBatch > 0) {
-              consumedBatches.push({
-                quantity: consumedFromBatch,
-                purchasePrice: originalBatch.purchasePrice || dbItem.purchasePrice || 0
-              });
+              consumedBatches.push({ quantity: consumedFromBatch, purchasePrice });
               remainingToAllocate -= consumedFromBatch;
             }
           }
           
           if (remainingToAllocate > 0) {
             const lastBatch = dbItem.batches[dbItem.batches.length - 1];
-            if (lastBatch && lastBatch.quantity < 0) {
-              consumedBatches.push({
-                quantity: remainingToAllocate,
-                purchasePrice: lastBatch.purchasePrice || dbItem.purchasePrice || 0
-              });
-            } else {
-              consumedBatches.push({
-                quantity: remainingToAllocate,
-                purchasePrice: dbItem.purchasePrice || 0
-              });
-            }
+            consumedBatches.push({
+              quantity: remainingToAllocate,
+              purchasePrice: lastBatch?.purchasePrice || dbItem.purchasePrice || 0
+            });
           }
           
           const totalCost = consumedBatches.reduce((sum, b) => sum + (Number(b.quantity || 0) * Number(b.purchasePrice || 0)), 0);
-          saleItem.consumedBatches = consumedBatches;
-          saleItem.totalCost = totalCost;
+          Object.assign(saleItem, { consumedBatches, totalCost });
           
         } catch (error) {
-          console.error(`Stock reduction failed for ${saleItem.item}:`, error.message);
-          // Fallback: batch-aware FIFO reduction
           try {
             const currentStock = dbItem.stock || 0;
             const requestQty = Number(stockQuantity) || 0;
             const toDeduct = Math.min(currentStock, requestQty);
-            if (!Array.isArray(dbItem.batches)) {
-              dbItem.batches = [];
-            }
+            if (!Array.isArray(dbItem.batches)) dbItem.batches = [];
+            
             let remaining = toDeduct;
             const consumed = [];
             for (let i = 0; i < dbItem.batches.length && remaining > 0; i++) {
@@ -170,17 +116,18 @@ export const createSale = async (req, res) => {
               batch.quantity = (batch.quantity || 0) - canDeduct;
               remaining -= canDeduct;
               if (canDeduct > 0) {
-                consumed.push({ quantity: canDeduct, purchasePrice: batch.purchasePrice || dbItem.purchasePrice || 0 });
+                consumed.push({ 
+                  quantity: canDeduct, 
+                  purchasePrice: batch.purchasePrice || dbItem.purchasePrice || 0 
+                });
               }
             }
             dbItem.batches = dbItem.batches.filter(b => (b.quantity || 0) > 0);
             dbItem.stock = (dbItem.stock || 0) - toDeduct;
             await dbItem.save();
             const totalCost = consumed.reduce((sum, b) => sum + (Number(b.quantity || 0) * Number(b.purchasePrice || 0)), 0);
-            saleItem.consumedBatches = consumed;
-            saleItem.totalCost = totalCost;
+            Object.assign(saleItem, { consumedBatches: consumed, totalCost });
           } catch (fallbackErr) {
-            // Final fallback to safeguard
             dbItem.stock = Math.max(0, (dbItem.stock || 0) - (Number(stockQuantity) || 0));
             await dbItem.save();
           }
@@ -188,59 +135,34 @@ export const createSale = async (req, res) => {
       }
     }
     
-    // Calculate original subtotal (before discounts) and final subtotal
-    const originalSubTotal = items.reduce((sum, item) => {
-      const qty = Number(item.qty) || 0;
-      const price = Number(item.price) || 0;
-      return sum + (qty * price);
-    }, 0);
+    const originalSubTotal = items.reduce((sum, { qty = 0, price = 0 }) => 
+      sum + (Number(qty) * Number(price)), 0);
     
-    // Calculate item-level discounts
     const totalItemDiscount = items.reduce((total, item) => {
-      let itemDiscount = 0;
-      if (item.discountPercentage) {
-        const qty = Number(item.qty) || 0;
-        const price = Number(item.price) || 0;
-        itemDiscount = (qty * price * Number(item.discountPercentage)) / 100;
-      } else if (item.discountAmount) {
-        itemDiscount = Number(item.discountAmount) || 0;
-      }
+      const { qty = 0, price = 0, discountPercentage, discountAmount } = item;
+      const itemDiscount = discountPercentage 
+        ? (Number(qty) * Number(price) * Number(discountPercentage)) / 100
+        : Number(discountAmount) || 0;
       return total + itemDiscount;
     }, 0);
     
-    // Calculate global discount
-    let discountValue = 0;
-    if (req.body.discount && !isNaN(Number(req.body.discount))) {
-      if (req.body.discountType === '%') {
-        discountValue = originalSubTotal * Number(req.body.discount) / 100;
-      } else {
-        discountValue = Number(req.body.discount);
-      }
-    }
+    const { discount, discountType, taxType = '%', tax = 0 } = req.body;
+    const discountValue = discount && !isNaN(Number(discount))
+      ? discountType === '%' ? originalSubTotal * Number(discount) / 100 : Number(discount)
+      : 0;
     
-    // Total discount is item discounts + global discount
     const totalDiscount = totalItemDiscount + discountValue;
-    
-    // Calculate final subtotal after item discounts
     const finalSubTotal = originalSubTotal - totalItemDiscount;
     
-    // Calculate taxValue
-    let taxType = req.body.taxType || '%';
-    let tax = req.body.tax || 0;
-    let taxValue = 0;
-    if (taxType === '%') {
-      taxValue = (originalSubTotal - totalDiscount) * Number(tax) / 100;
-    } else if (taxType === 'PKR') {
-      taxValue = Number(tax);
-    }
+    const taxValue = taxType === '%' 
+      ? (originalSubTotal - totalDiscount) * Number(tax) / 100
+      : Number(tax);
     
-    // Calculate grandTotal
     const grandTotal = Math.max(0, originalSubTotal - totalDiscount + taxValue);
     
-    // Generate invoice number for this user
     let invoiceNo = 'INV001';
     const lastSale = await Sale.findOne({ userId: userIdObj }).sort({ createdAt: -1 });
-    if (lastSale && lastSale.invoiceNo) {
+    if (lastSale?.invoiceNo) {
       const match = lastSale.invoiceNo.match(/INV(\d+)/);
       if (match) {
         const nextNum = String(parseInt(match[1], 10) + 1).padStart(3, '0');
@@ -248,29 +170,77 @@ export const createSale = async (req, res) => {
       }
     }
     
-    // Handle received amount for all payment types
-    let received = 0;
-    if (req.body.receivedAmount !== undefined && req.body.receivedAmount !== null) {
-      received = Number(req.body.receivedAmount) || 0;
-    }
+    const received = req.body.receivedAmount !== undefined && req.body.receivedAmount !== null
+      ? Number(req.body.receivedAmount) || 0
+      : 0;
     const balance = grandTotal - received;
+
+    const paymentType = req.body.paymentType || 'Credit';
+    if (!['Cash', 'Credit'].includes(paymentType)) {
+      return res.status(400).json({ success: false, message: 'Invalid paymentType. Must be Cash or Credit.' });
+    }
+    
+    let paymentMethod = req.body.paymentMethod || 'Cash';
+    if (paymentMethod.startsWith('bank_')) paymentMethod = 'Bank Transfer';
+    
+    if (!['Cash', 'Cheque', 'Bank Transfer'].includes(paymentMethod)) {
+      return res.status(400).json({ success: false, message: 'Invalid paymentMethod. Must be Cash, Cheque, or Bank Transfer.' });
+    }
+    
+    const { bankAccountId = null, bankAccountName = '' } = req.body;
+
+    if (paymentMethod === 'Bank Transfer' && bankAccountId && received > 0) {
+      try {
+        const BankAccount = (await import('../models/bankAccount.js')).default;
+        const BankTransaction = (await import('../models/bankTransaction.js')).default;
+        
+        const bankAccount = await BankAccount.findOne({ 
+          _id: bankAccountId, 
+          userId: userIdObj, 
+          isActive: true 
+        });
+        
+        if (bankAccount) {
+          const newBalance = bankAccount.currentBalance + received;
+          await BankAccount.findByIdAndUpdate(bankAccountId, { 
+            currentBalance: newBalance,
+            updatedAt: new Date()
+          });
+          
+          const bankTransaction = new BankTransaction({
+            userId: userIdObj,
+            type: 'Cash to Bank Transfer',
+            fromAccount: 'Cash',
+            toAccount: bankAccount.accountDisplayName,
+            amount: received,
+            description: `Payment received for sale invoice ${invoiceNo}`,
+            transactionDate: new Date(),
+            balanceAfter: newBalance,
+            status: 'completed'
+          });
+          await bankTransaction.save();
+        }
+      } catch (bankError) {}
+    }
     
     const sale = new Sale({
       ...req.body,
       userId: userIdObj,
-      discountValue: totalDiscount, // Use total discount (item + global)
+      discountValue: totalDiscount,
       taxType,
       tax,
       taxValue,
       grandTotal,
       invoiceNo,
       balance,
-      received
+      received,
+      paymentType,
+      paymentMethod,
+      bankAccountId,
+      bankAccountName
     });
-    
     await sale.save();
     
-    // Map unit fields for frontend
     const saleObj = sale.toObject();
     if (Array.isArray(saleObj.items)) {
       saleObj.items = saleObj.items.map(item => ({
@@ -279,56 +249,41 @@ export const createSale = async (req, res) => {
       }));
     }
     
-    // If this sale was converted from a sales order, update the order status
     if (req.body.sourceOrderId) {
       try {
         const SaleOrder = (await import('../models/saleOrder.js')).default;
         const saleOrder = await SaleOrder.findById(req.body.sourceOrderId);
         if (saleOrder) {
-          saleOrder.status = 'Completed';
-          saleOrder.invoiceNumber = sale.invoiceNo;
-          saleOrder.convertedToInvoice = sale._id;
+          Object.assign(saleOrder, {
+            status: 'Completed',
+            invoiceNumber: sale.invoiceNo,
+            convertedToInvoice: sale._id
+          });
           await saleOrder.save();
         }
-      } catch (err) {
-        console.error('Failed to update sales order status:', err);
-      }
+      } catch (err) {}
     }
     
-    // Update party openingBalance in DB based on payment type
-    // balance = grandTotal - received (remaining amount to be paid)
     try {
-      // Use the party we found/created earlier
+      
       if (party) {
-        // Store party's current balance before transaction
+        
         const partyCurrentBalance = party.openingBalance || 0;
         
-        if (req.body.paymentType === 'Credit') {
-          // For credit sales, add the remaining balance (credit amount) to party balance
-          // balance = grandTotal - received
+        if (paymentType === 'Credit') {
           party.openingBalance = partyCurrentBalance + balance;
-        } else if (req.body.paymentType === 'Cash') {
-          // For cash sales, only add remaining balance if there's any unpaid amount
-          if (balance > 0) {
-            party.openingBalance = partyCurrentBalance + balance;
-          }
+        } else if (paymentType === 'Cash' && balance > 0) {
+          party.openingBalance = partyCurrentBalance + balance;
         }
-        
-        // Calculate and update partyBalanceAfterTransaction
         const partyBalanceAfterTransaction = party.openingBalance;
         sale.partyBalanceAfterTransaction = partyBalanceAfterTransaction;
         await sale.save();
-        
         await party.save();
       }
-    } catch (err) {
-      console.error('Failed to update party openingBalance:', err);
-    }
+    } catch (err) {}
     
     res.status(201).json({ success: true, sale: saleObj, partyCreated });
   } catch (err) {
-    console.error('Sale creation error:', err);
-    console.error('Request body:', req.body);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -338,24 +293,20 @@ export const getSalesByUser = async (req, res) => {
     const { userId } = req.params;
     const { companyName } = req.query;
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
-    const filter = { userId };
-    if (companyName) filter.companyName = companyName;
+    
+    const filter = { userId, ...(companyName && { companyName }) };
     const sales = await Sale.find(filter).sort({ createdAt: -1 });
+    
     const salesWithUnitString = sales.map(sale => {
       const saleObj = sale.toObject();
       if (Array.isArray(saleObj.items)) {
-        // Calculate actual sale amount after item-level discounts
         let actualSaleAmount = 0;
         saleObj.items = saleObj.items.map(item => {
-          const originalAmount = (item.qty || 0) * (item.price || 0);
-          let itemDiscount = 0;
-          
-          if (item.discountPercentage) {
-            itemDiscount = (originalAmount * parseFloat(item.discountPercentage)) / 100;
-          } else if (item.discountAmount) {
-            itemDiscount = parseFloat(item.discountAmount) || 0;
-          }
-          
+          const { qty = 0, price = 0, discountPercentage, discountAmount } = item;
+          const originalAmount = qty * price;
+          const itemDiscount = discountPercentage 
+            ? (originalAmount * parseFloat(discountPercentage)) / 100
+            : parseFloat(discountAmount) || 0;
           const actualAmount = originalAmount - itemDiscount;
           actualSaleAmount += actualAmount;
           
@@ -367,8 +318,6 @@ export const getSalesByUser = async (req, res) => {
             actualAmount
           };
         });
-        
-        // Add the calculated actual sale amount
         saleObj.actualSaleAmount = actualSaleAmount;
       }
       return saleObj;
@@ -379,7 +328,7 @@ export const getSalesByUser = async (req, res) => {
   }
 };
 
-// Receive payment for a sale
+
 export const receivePayment = async (req, res) => {
   try {
     const { saleId, amount, discount, discountType } = req.body;
@@ -391,47 +340,74 @@ export const receivePayment = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Sale not found' });
     }
 
-    // Calculate discount and update sale totals
     let discountValue = 0;
     let newGrandTotal = sale.grandTotal;
     let newBalance = sale.balance;
 
     if (discount && discount > 0 && discountType) {
-      if (discountType === '%') {
-        // Percentage discount
-        discountValue = (sale.grandTotal * discount) / 100;
-      } else if (discountType === 'PKR') {
-        // Fixed PKR discount
-        discountValue = discount;
-      }
+      discountValue = discountType === '%' 
+        ? (sale.grandTotal * discount) / 100 
+        : discount;
       
-      // Update sale totals after discount
       newGrandTotal = Math.max(0, sale.grandTotal - discountValue);
       newBalance = Math.max(0, sale.balance - discountValue);
       
-      // Update sale with new totals
-      sale.grandTotal = newGrandTotal;
-      sale.balance = newBalance;
-      sale.discount = discount;
-      sale.discountType = discountType;
-      sale.discountValue = discountValue;
+      Object.assign(sale, {
+        grandTotal: newGrandTotal,
+        balance: newBalance,
+        discount,
+        discountType,
+        discountValue
+      });
     }
 
-    // Calculate excess amount (if received amount is more than due balance)
+    
     const excessAmount = Math.max(0, amount - newBalance);
     
-    // Process payment (amount can be 0 if discount covers everything)
+    
     if (amount > 0) {
       sale.received = (sale.received || 0) + amount;
       sale.balance = Math.max(0, newBalance - amount);
+      
+      if (sale.paymentMethod === 'Bank Transfer' && sale.bankAccountId) {
+        try {
+          const BankAccount = (await import('../models/bankAccount.js')).default;
+          const BankTransaction = (await import('../models/bankTransaction.js')).default;
+          
+          const bankAccount = await BankAccount.findOne({ 
+            _id: sale.bankAccountId, 
+            userId: sale.userId, 
+            isActive: true 
+          });
+          
+          if (bankAccount) {
+            const newBalance = bankAccount.currentBalance + amount;
+            await BankAccount.findByIdAndUpdate(sale.bankAccountId, { 
+              currentBalance: newBalance,
+              updatedAt: new Date()
+            });
+            
+            const bankTransaction = new BankTransaction({
+              userId: sale.userId,
+              type: 'Cash to Bank Transfer',
+              fromAccount: 'Cash',
+              toAccount: bankAccount.accountDisplayName,
+              amount: amount,
+              description: `Payment received for sale invoice ${sale.invoiceNo}`,
+              transactionDate: new Date(),
+              balanceAfter: newBalance,
+              status: 'completed'
+            });
+            await bankTransaction.save();
+          }
+        } catch (bankError) {}
+      }
     } else {
-      // If amount is 0, the discount has already been applied above
       sale.balance = newBalance;
     }
     
     await sale.save();
 
-    // Save payment history for invoice payments
     if (amount > 0) {
       try {
         const paymentRecord = new Payment({
@@ -439,7 +415,7 @@ export const receivePayment = async (req, res) => {
           saleId: saleId,
           invoiceNo: sale.invoiceNo,
           customerName: sale.partyName,
-          partyName: sale.partyName, // Unified field
+          partyName: sale.partyName, 
           phoneNo: sale.phoneNo || '',
           amount: amount,
           total: sale.grandTotal,
@@ -454,48 +430,34 @@ export const receivePayment = async (req, res) => {
           discountType: discountType || 'PKR',
           discountAmount: discountValue,
           finalAmount: amount,
-          partyBalanceAfterTransaction: 0 // Will be updated below
+          partyBalanceAfterTransaction: 0 
         });
-        
         await paymentRecord.save();
-      } catch (paymentErr) {
-        console.error('Failed to save invoice payment history:', paymentErr);
-        // Don't fail the entire operation if payment history save fails
-      }
+      } catch (paymentErr) {}
     }
 
-    // Update party openingBalance
     try {
       const Party = (await import('../models/parties.js')).default;
       const partyDoc = await Party.findOne({ name: sale.partyName, user: sale.userId });
       if (partyDoc) {
         if (amount > 0) {
-          // Reduce party balance by the actual payment amount
           partyDoc.openingBalance = (partyDoc.openingBalance || 0) - amount;
         }
-        
-        // If there's excess amount, add it as opening balance (credit for future)
         if (excessAmount > 0) {
           partyDoc.openingBalance = (partyDoc.openingBalance || 0) + excessAmount;
         }
-        
         await partyDoc.save();
         
-        // Update payment record with party balance after transaction
         if (amount > 0) {
           try {
             await Payment.findOneAndUpdate(
               { saleId: saleId, amount: amount },
               { partyBalanceAfterTransaction: partyDoc.openingBalance }
             );
-          } catch (updateErr) {
-            console.error('Failed to update payment record with party balance:', updateErr);
-          }
+          } catch (updateErr) {}
         }
       }
-    } catch (err) {
-      console.error('Failed to update party openingBalance on payment:', err);
-    }
+    } catch (err) {}
 
     res.json({ 
       success: true, 
@@ -508,24 +470,21 @@ export const receivePayment = async (req, res) => {
       excessAmount: excessAmount > 0 ? excessAmount : 0,
       openingBalanceSet: excessAmount > 0
     });
-    
   } catch (err) {
-    console.error('Payment error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// Receive payment for party (updates multiple sales starting from oldest)
+
 export const receivePartyPayment = async (req, res) => {
   try {
     const { partyName, amount, discount, discountType, paymentType = 'Cash', description = '', imageUrl = '' } = req.body;
-    const userId = req.user && (req.user._id || req.user.id);
+    const userId = req.user?._id || req.user?.id;
     
     if (!partyName || (typeof amount !== 'number' && amount !== 0) || amount < 0) {
       return res.status(400).json({ success: false, message: 'Missing partyName or invalid amount' });
     }
 
-    // Directly update party opening balance
     try {
       const Party = (await import('../models/parties.js')).default;
       const partyDoc = await Party.findOne({ name: partyName, user: userId });
@@ -534,35 +493,25 @@ export const receivePartyPayment = async (req, res) => {
         return res.status(404).json({ success: false, message: 'Party not found' });
       }
 
-      // Calculate discount amount if provided
-      let discountAmount = 0;
-      if (discount && discount > 0 && discountType) {
-        if (discountType === '%') {
-          discountAmount = (amount * discount) / 100;
-        } else if (discountType === 'PKR') {
-          discountAmount = Math.min(discount, amount);
-        }
-      }
+      const discountAmount = discount && discount > 0 && discountType
+        ? discountType === '%' ? (amount * discount) / 100 : Math.min(discount, amount)
+        : 0;
 
-      // Calculate final amount after discount
       const finalAmount = Math.max(0, amount - discountAmount);
-
-      // Subtract the final amount from party's opening balance (reducing their debt)
       partyDoc.openingBalance = (partyDoc.openingBalance || 0) - finalAmount;
       await partyDoc.save();
 
-      // Save payment history
       try {
         const paymentRecord = new Payment({
           userId,
-          saleId: null, // No specific sale for party payments
-          invoiceNo: null, // No specific invoice for party payments
+          saleId: null, 
+          invoiceNo: null, 
           customerName: partyName,
-          partyName: partyName, // Unified field
+          partyName: partyName, 
           phoneNo: partyDoc.phoneNo || partyDoc.contactNumber || '',
           amount: finalAmount,
-          total: null, // No specific total for party payments
-          balance: 0, // No specific balance for party payments
+          total: null, 
+          balance: 0, 
           paymentType,
           paymentDate: new Date(),
           description: description || `Party payment received from ${partyName}`,
@@ -575,12 +524,8 @@ export const receivePartyPayment = async (req, res) => {
           finalAmount,
           partyBalanceAfterTransaction: partyDoc.openingBalance
         });
-        
         await paymentRecord.save();
-      } catch (paymentErr) {
-        console.error('Failed to save payment history:', paymentErr);
-        // Don't fail the entire operation if payment history save fails
-      }
+      } catch (paymentErr) {}
 
       res.json({ 
         success: true, 
@@ -590,28 +535,27 @@ export const receivePartyPayment = async (req, res) => {
         discountAmount,
         newOpeningBalance: partyDoc.openingBalance
       });
-      
     } catch (err) {
-      console.error('Failed to update party opening balance:', err);
       return res.status(500).json({ success: false, message: 'Failed to update party balance' });
     }
   } catch (err) {
-    console.error('Party payment error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// Get sales stats (sum of grandTotal, balance, received) for a user
+
 export const getSalesStatsByUser = async (req, res) => {
   try {
     const { userId } = req.params;
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
+    
     let objectUserId;
     try {
       objectUserId = new mongoose.Types.ObjectId(userId);
     } catch (e) {
       return res.json({ success: true, stats: { totalGrandTotal: 0, totalBalance: 0, totalReceived: 0 } });
     }
+    
     const stats = await Sale.aggregate([
       { $match: { userId: objectUserId } },
       {
@@ -630,7 +574,7 @@ export const getSalesStatsByUser = async (req, res) => {
   }
 };
 
-// Delete a sale by ID
+
 export const deleteSale = async (req, res) => {
   try {
     const userId = req.user && req.user._id;
@@ -643,62 +587,62 @@ export const deleteSale = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized to delete this sale' });
     }
     
-    // Restore stock for all items in the sale
+    
     const items = sale.items || [];
     for (const saleItem of items) {
       const dbItem = await Item.findOne({ userId: userId.toString(), name: saleItem.item });
       if (dbItem) {
-        // Convert quantity to base unit for stock restoration
+        
         let stockQuantity = Number(saleItem.qty);
         
-        // Check if unit conversion is needed
+        
         if (dbItem.unit) {
           const itemUnit = dbItem.unit;
           const saleUnit = saleItem.unit;
           
-          // Handle object format unit
+          
           if (typeof itemUnit === 'object' && itemUnit.base && itemUnit.secondary) {
-            // If sale unit is secondary unit, convert to base unit
+            
             if (saleUnit === itemUnit.secondary && itemUnit.conversionFactor) {
               stockQuantity = Number(saleItem.qty) * itemUnit.conversionFactor;
             }
-            // If sale unit is base unit, use as is
+            
             else if (saleUnit === itemUnit.base) {
               stockQuantity = Number(saleItem.qty);
             }
-            // For custom units or other cases, use as is
+            
             else {
               stockQuantity = Number(saleItem.qty);
             }
           }
-          // Handle string format unit (like "Piece / Dozen")
+          
           else if (typeof itemUnit === 'string' && itemUnit.includes(' / ')) {
             const parts = itemUnit.split(' / ');
             const baseUnit = parts[0];
             const secondaryUnit = parts[1];
             
-            // If sale unit is secondary unit, convert to base unit (assuming 1:12 ratio)
+            
             if (saleUnit === secondaryUnit) {
-              stockQuantity = Number(saleItem.qty) * 12; // Default conversion factor
+              stockQuantity = Number(saleItem.qty) * 12; 
             }
-            // If sale unit is base unit, use as is
+            
             else if (saleUnit === baseUnit) {
               stockQuantity = Number(saleItem.qty);
             }
-            // For other cases, use as is
+            
             else {
               stockQuantity = Number(saleItem.qty);
             }
           }
-          // For simple string units, use as is
+          
           else {
             stockQuantity = Number(saleItem.qty);
           }
         }
         
-        // Handle simple stock restoration
+        
         if (dbItem) {
-          // Simple stock restoration
+          
           dbItem.stock = (dbItem.stock || 0) + stockQuantity;
         }
         
@@ -706,7 +650,7 @@ export const deleteSale = async (req, res) => {
       }
     }
     
-    // Update party balance if this was a credit sale
+    
     try {
       if (sale.paymentType === 'Credit' && sale.balance > 0) {
         const Party = (await import('../models/parties.js')).default;
@@ -717,7 +661,43 @@ export const deleteSale = async (req, res) => {
         }
       }
     } catch (err) {
-      console.error('Failed to update party balance on sale deletion:', err);
+      
+    }
+
+    
+    try {
+      if (sale.paymentMethod === 'Bank Transfer' && sale.bankAccountId && sale.received > 0) {
+        const BankAccount = (await import('../models/bankAccount.js')).default;
+        const BankTransaction = (await import('../models/bankTransaction.js')).default;
+        
+        
+        const bankAccount = await BankAccount.findOne({ 
+          _id: sale.bankAccountId, 
+          userId: userId, 
+          isActive: true 
+        });
+        
+        if (bankAccount) {
+          
+          const newBalance = bankAccount.currentBalance - sale.received;
+          await BankAccount.findByIdAndUpdate(sale.bankAccountId, { 
+            currentBalance: Math.max(0, newBalance), 
+            updatedAt: new Date()
+          });
+          
+          
+          await BankTransaction.deleteMany({
+            userId: userId,
+            description: { $regex: `invoice ${sale.invoiceNo}`, $options: 'i' }
+          });
+          
+          
+          
+        }
+      }
+    } catch (bankError) {
+      
+      
     }
     
     await Sale.deleteOne({ _id: saleId });
@@ -729,7 +709,7 @@ export const deleteSale = async (req, res) => {
 
 
 
-// Update a sale with proper stock and party balance management
+
 export const updateSale = async (req, res) => {
   try {
     const userId = req.user && req.user._id;
@@ -740,36 +720,36 @@ export const updateSale = async (req, res) => {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
 
-    // 1. Fetch old sale
+    
     const oldSale = await Sale.findOne({ _id: saleId, userId });
     if (!oldSale) {
       return res.status(404).json({ success: false, message: 'Sale not found' });
     }
 
 
-    // 2. Calculate quantity differences and restore only what's needed
+    
     const oldItems = oldSale.items || [];
     const newItems = updateData.items || [];
     
     for (const oldItem of oldItems) {
       const dbItem = await Item.findOne({ userId: userId.toString(), name: oldItem.item });
       if (dbItem) {
-        // Find corresponding new item to calculate difference
+        
         const newItem = newItems.find(item => item.item === oldItem.item);
         const oldQty = Number(oldItem.qty);
         const newQty = newItem ? Number(newItem.qty) : 0;
         
-        // Calculate how much to restore (only if new quantity is less than old)
+        
         const quantityToRestore = Math.max(0, oldQty - newQty);
         
         if (quantityToRestore > 0) {
-          // Log stock before restoration
+          
           const stockBeforeRestore = dbItem.stock || 0;
           
-          // Convert quantity to base unit for stock restoration
+          
           let stockQuantity = quantityToRestore;
           
-          // Handle unit conversion for restoration
+          
           if (dbItem.unit) {
             const itemUnit = dbItem.unit;
             const saleUnit = oldItem.unit;
@@ -782,14 +762,14 @@ export const updateSale = async (req, res) => {
               const parts = itemUnit.split(' / ');
               const secondaryUnit = parts[1];
               if (saleUnit === secondaryUnit) {
-                stockQuantity = quantityToRestore * 12; // Default conversion factor
+                stockQuantity = quantityToRestore * 12; 
               }
             }
           }
           
-          // CRITICAL FIX: Restore stock with proper batch structure from old consumed batches
+          
           if (oldItem.consumedBatches && Array.isArray(oldItem.consumedBatches) && oldItem.consumedBatches.length > 0) {
-            // Calculate how much to restore proportionally from old consumed batches
+            
             const oldTotalQuantity = oldItem.consumedBatches.reduce((sum, batch) => sum + (batch.quantity || 0), 0);
             const restoreRatio = oldTotalQuantity > 0 ? quantityToRestore / oldTotalQuantity : 0;
             
@@ -801,96 +781,98 @@ export const updateSale = async (req, res) => {
               const batchQty = consumedBatch.quantity || 0;
               const batchPrice = consumedBatch.purchasePrice || 0;
               
-              // Calculate how much to restore from this batch proportionally
+              
               const restoreFromBatch = Math.min(remainingToRestore, Math.round(batchQty * restoreRatio));
               
               if (restoreFromBatch > 0) {
-                // Add this portion back with its original purchase price
+                
                 await dbItem.addStock(restoreFromBatch, batchPrice);
                 remainingToRestore -= restoreFromBatch;
               }
             }
             
-            // If there's still remaining to restore, use fallback
+            
             if (remainingToRestore > 0) {
               await dbItem.addStock(remainingToRestore, oldItem.purchasePrice || dbItem.purchasePrice || 0);
             }
           } else {
-            // Fallback: use addStock with item's current purchase price
+            
             await dbItem.addStock(stockQuantity, oldItem.purchasePrice || dbItem.purchasePrice || 0);
           }
         }
       }
     }
 
-    // 3. Revert old party balance
+    
     try {
       const Party = (await import('../models/parties.js')).default;
       const oldParty = await Party.findOne({ name: oldSale.partyName, user: userId });
       if (oldParty) {
-        // Revert old balance for both credit and cash sales
+        
         if (oldSale.balance > 0) {
           oldParty.openingBalance = (oldParty.openingBalance || 0) - oldSale.balance;
           await oldParty.save();
         }
       }
     } catch (err) {
-      console.error('Failed to revert old party balance:', err);
+      
     }
 
-    // 4. Process new sale items and reduce stock
+    
+
+    
     for (const newItem of newItems) {
       const dbItem = await Item.findOne({ userId: userId.toString(), name: newItem.item });
       if (dbItem) {
-        // Find old sale item to compare quantities
+        
         const oldSaleItem = oldItems.find(oldItem => oldItem.item === newItem.item);
         const oldQty = oldSaleItem ? Number(oldSaleItem.qty) : 0;
         const newQty = Number(newItem.qty);
         
-        // Calculate additional quantity needed (only consume the difference)
+        
         const additionalQty = Math.max(0, newQty - oldQty);
         
-        // SIMPLE LOGIC: Calculate quantity change and adjust accordingly
+        
         const quantityChange = newQty - oldQty;
         
         if (quantityChange !== 0) {
-          // Get old consumed batches
+          
           const oldConsumedBatches = oldSaleItem ? (oldSaleItem.consumedBatches || []) : [];
           
           if (quantityChange > 0) {
-            // Quantity increased - consume ADDITIONAL QUANTITY from stock
             
-            // CRITICAL FIX: Capture consumed batches BEFORE calling reduceStock
-            // This ensures we track the exact batches and prices that will be consumed
+            
+            
+            
             const consumedBatches = [];
             let totalCost = 0;
             let remainingToConsume = additionalQty;
             
-            // Process batches in FIFO order to capture what will be consumed
+            
             for (let i = 0; i < dbItem.batches.length && remainingToConsume > 0; i++) {
               const batch = dbItem.batches[i];
               const availableInBatch = batch.quantity || 0;
               const consumeFromBatch = Math.min(availableInBatch, remainingToConsume);
               
               if (consumeFromBatch > 0) {
-                // Add to consumed batches with original purchase price
+                
                 consumedBatches.push({
                   quantity: consumeFromBatch,
                   purchasePrice: batch.purchasePrice || dbItem.purchasePrice || 0
                 });
                 
-                // Calculate cost
+                
                 totalCost += consumeFromBatch * (batch.purchasePrice || dbItem.purchasePrice || 0);
                 
-                // Update remaining to consume
+                
                 remainingToConsume -= consumeFromBatch;
                 
               }
             }
             
-            // Handle case where we need more stock than available in batches
+            
             if (remainingToConsume > 0) {
-              // Add remaining units as consumed from current purchase price
+              
               consumedBatches.push({
                 quantity: remainingToConsume,
                 purchasePrice: dbItem.purchasePrice || 0
@@ -899,22 +881,22 @@ export const updateSale = async (req, res) => {
               totalCost += remainingToConsume * (dbItem.purchasePrice || 0);
             }
             
-            // Now use reduceStock method for proper FIFO-based stock reduction
+            
             await dbItem.reduceStock(additionalQty);
             
-            // Set the consumed batches and total cost
+            
             newItem.consumedBatches = consumedBatches;
             newItem.totalCost = totalCost;
             
           } else {
-            // Quantity decreased - we only restore the difference, no additional consumption needed
-            // For quantity decreased, we need to create consumed batches that represent the NEW quantity
-            // We should use the old consumed batches but reduce them proportionally to match the new quantity
+            
+            
+            
             const oldTotalQuantity = oldConsumedBatches.reduce((sum, b) => sum + b.quantity, 0);
             const newQuantity = newQty;
             const reductionRatio = oldTotalQuantity > 0 ? newQuantity / oldTotalQuantity : 0;
             
-            // Create new consumed batches by reducing old ones proportionally
+            
             const newConsumedBatches = [];
             let totalCost = 0;
             
@@ -931,14 +913,14 @@ export const updateSale = async (req, res) => {
               }
             }
             
-            // Set the consumed batches and total cost
+            
             newItem.consumedBatches = newConsumedBatches;
             newItem.totalCost = totalCost;
             
           }
           
         } else {
-          // No quantity change - keep old consumed batches
+          
           newItem.consumedBatches = oldSaleItem ? (oldSaleItem.consumedBatches || []) : [];
           newItem.totalCost = oldSaleItem ? (oldSaleItem.totalCost || 0) : 0;
         }
@@ -946,14 +928,14 @@ export const updateSale = async (req, res) => {
       }
     }
 
-    // 5. Calculate new totals
+    
     const originalSubTotal = newItems.reduce((sum, item) => {
       const qty = Number(item.qty) || 0;
       const price = Number(item.price) || 0;
       return sum + (qty * price);
     }, 0);
     
-    // Calculate item-level discounts
+    
     const totalItemDiscount = newItems.reduce((total, item) => {
       let itemDiscount = 0;
       if (item.discountPercentage) {
@@ -966,7 +948,7 @@ export const updateSale = async (req, res) => {
       return total + itemDiscount;
     }, 0);
     
-    // Calculate global discount
+    
     let discountValue = 0;
     if (updateData.discount && !isNaN(Number(updateData.discount))) {
       if (updateData.discountType === '%') {
@@ -976,10 +958,10 @@ export const updateSale = async (req, res) => {
       }
     }
     
-    // Total discount is item discounts + global discount
+    
     const totalDiscount = totalItemDiscount + discountValue;
     
-    // Calculate tax
+    
     let taxType = updateData.taxType || '%';
     let tax = updateData.tax || 0;
     let taxValue = 0;
@@ -991,18 +973,35 @@ export const updateSale = async (req, res) => {
     
     const grandTotal = Math.max(0, originalSubTotal - totalDiscount + taxValue);
     
-    // Calculate balance
+    
     let received = Number(updateData.receivedAmount || updateData.received) || 0;
     const balance = grandTotal - received;
     
+    
+    const paymentType = updateData.paymentType || 'Credit';
+    if (!['Cash', 'Credit'].includes(paymentType)) {
+      return res.status(400).json({ success: false, message: 'Invalid paymentType. Must be Cash or Credit.' });
+    }
+    
+    let paymentMethod = updateData.paymentMethod || 'Cash';
+    
+    
+    if (paymentMethod.startsWith('bank_')) {
+      paymentMethod = 'Bank Transfer';
+    }
+    
+    if (!['Cash', 'Cheque', 'Bank Transfer'].includes(paymentMethod)) {
+      return res.status(400).json({ success: false, message: 'Invalid paymentMethod. Must be Cash, Cheque, or Bank Transfer.' });
+    }
+    
 
-    // 6. Update party balance for new sale
+    
     let partyCreated = false;
     try {
       const Party = (await import('../models/parties.js')).default;
       let newParty = await Party.findOne({ name: updateData.partyName, user: userId });
       
-      // If party doesn't exist, create it
+      
       if (!newParty) {
         newParty = new Party({
           name: updateData.partyName,
@@ -1025,33 +1024,248 @@ export const updateSale = async (req, res) => {
         
         await newParty.save();
         partyCreated = true;
-        console.log(`Auto-created party during update: ${updateData.partyName}`);
+        
       }
       
       if (newParty) {
-        if (updateData.paymentType === 'Credit') {
-          // Add new credit balance
+        if (paymentType === 'Credit') {
+          
           newParty.openingBalance = (newParty.openingBalance || 0) + balance;
-        } else if (updateData.paymentType === 'Cash') {
-          // For cash sales, add balance if there's any unpaid amount
+        } else if (paymentType === 'Cash') {
+          
           if (balance > 0) {
             newParty.openingBalance = (newParty.openingBalance || 0) + balance;
           }
         }
         
-        // Calculate and store party balance after this transaction
+        
         const partyBalanceAfterTransaction = newParty.openingBalance;
         
         await newParty.save();
         
-        // Store the party balance after transaction for this sale
+        
         updateData.partyBalanceAfterTransaction = partyBalanceAfterTransaction;
       }
     } catch (err) {
-      console.error('Failed to update new party balance:', err);
+      
     }
 
-    // 7. Update the sale record
+    
+    try {
+      const newPaymentMethod = updateData.paymentMethod || 'Cash';
+      const newBankAccountId = updateData.bankAccountId || null;
+      const newBankAccountName = updateData.bankAccountName || '';
+      
+      
+      let actualNewPaymentMethod = newPaymentMethod;
+      if (newPaymentMethod.startsWith('bank_')) {
+        actualNewPaymentMethod = 'Bank Transfer';
+      }
+      
+      const BankAccount = (await import('../models/bankAccount.js')).default;
+      const BankTransaction = (await import('../models/bankTransaction.js')).default;
+      
+      
+      const oldReceived = oldSale.received || 0;
+      const newReceived = received || 0;
+      const receivedDifference = newReceived - oldReceived;
+      
+      
+      const bankAccountChanged = oldSale.bankAccountId && newBankAccountId && 
+        oldSale.bankAccountId.toString() !== newBankAccountId.toString();
+      
+      
+      if (receivedDifference !== 0 || bankAccountChanged || 
+          (oldSale.paymentMethod !== actualNewPaymentMethod)) {
+        
+        if (oldSale.paymentMethod === 'Bank Transfer' && actualNewPaymentMethod === 'Bank Transfer' && 
+            oldSale.bankAccountId && newBankAccountId && 
+            oldSale.bankAccountId.toString() === newBankAccountId.toString()) {
+          
+          
+          const bankAccount = await BankAccount.findOne({ 
+            _id: newBankAccountId, 
+            userId: userId, 
+            isActive: true 
+          });
+          
+          if (bankAccount) {
+            const newBalance = bankAccount.currentBalance + receivedDifference;
+            await BankAccount.findByIdAndUpdate(newBankAccountId, { 
+              currentBalance: newBalance,
+              updatedAt: new Date()
+            });
+            
+            
+            const existingTransaction = await BankTransaction.findOne({
+              userId: userId,
+              description: { $regex: `invoice ${oldSale.invoiceNo}`, $options: 'i' },
+              type: 'Cash to Bank Transfer',
+              toAccount: bankAccount.accountDisplayName
+            }).sort({ transactionDate: -1 });
+            
+            if (existingTransaction) {
+              
+              await BankTransaction.findByIdAndUpdate(existingTransaction._id, {
+                amount: newReceived,
+                balanceAfter: newBalance,
+                updatedAt: new Date()
+              });
+              
+            } else {
+              
+              const bankTransaction = new BankTransaction({
+                userId: userId,
+                type: 'Cash to Bank Transfer',
+                fromAccount: 'Cash',
+                toAccount: bankAccount.accountDisplayName,
+                amount: newReceived,
+                description: `Payment received for sale invoice ${oldSale.invoiceNo}`,
+                transactionDate: new Date(),
+                balanceAfter: newBalance,
+                status: 'completed'
+              });
+              
+              await bankTransaction.save();
+              
+            }
+          }
+        } else if (oldSale.paymentMethod === 'Bank Transfer' && actualNewPaymentMethod === 'Bank Transfer' && 
+                   oldSale.bankAccountId && newBankAccountId && 
+                   oldSale.bankAccountId.toString() !== newBankAccountId.toString()) {
+          
+          // Bank account changed - restore old bank and create new transaction
+          
+          // First, restore the old bank account
+          if (oldSale.bankAccountId && oldSale.received > 0) {
+            const oldBankAccount = await BankAccount.findOne({ 
+              _id: oldSale.bankAccountId, 
+              userId: userId, 
+              isActive: true 
+            });
+            
+            if (oldBankAccount) {
+              const restoredBalance = oldBankAccount.currentBalance - oldSale.received;
+              await BankAccount.findByIdAndUpdate(oldSale.bankAccountId, { 
+                currentBalance: Math.max(0, restoredBalance),
+                updatedAt: new Date()
+              });
+              
+              // Delete old transaction
+              await BankTransaction.deleteMany({
+                userId: userId,
+                description: { $regex: `invoice ${oldSale.invoiceNo}`, $options: 'i' },
+                type: 'Cash to Bank Transfer',
+                toAccount: oldBankAccount.accountDisplayName
+              });
+            }
+          }
+          
+          // Now create new transaction for new bank account
+          if (newBankAccountId && newReceived > 0) {
+            const newBankAccount = await BankAccount.findOne({ 
+              _id: newBankAccountId, 
+              userId: userId, 
+              isActive: true 
+            });
+            
+            if (newBankAccount) {
+              const newBalance = newBankAccount.currentBalance + newReceived;
+              await BankAccount.findByIdAndUpdate(newBankAccountId, { 
+                currentBalance: newBalance,
+                updatedAt: new Date()
+              });
+              
+              const bankTransaction = new BankTransaction({
+                userId: userId,
+                type: 'Cash to Bank Transfer',
+                fromAccount: 'Cash',
+                toAccount: newBankAccount.accountDisplayName,
+                amount: newReceived,
+                description: `Payment received for sale invoice ${oldSale.invoiceNo}`,
+                transactionDate: new Date(),
+                balanceAfter: newBalance,
+                status: 'completed'
+              });
+              
+              await bankTransaction.save();
+            }
+          }
+        } else {
+          
+          
+          
+          if (oldSale.paymentMethod === 'Bank Transfer' && oldSale.bankAccountId && oldSale.received > 0) {
+            const oldBankAccount = await BankAccount.findOne({ 
+              _id: oldSale.bankAccountId, 
+              userId: userId, 
+              isActive: true 
+            });
+            
+            if (oldBankAccount) {
+              
+              const oldTransaction = await BankTransaction.findOne({
+                userId: userId,
+                description: { $regex: `invoice ${oldSale.invoiceNo}`, $options: 'i' },
+                type: 'Cash to Bank Transfer',
+                toAccount: oldBankAccount.accountDisplayName
+              }).sort({ transactionDate: -1 });
+              
+              if (oldTransaction) {
+                
+                const restoredBalance = oldBankAccount.currentBalance - oldSale.received;
+                await BankAccount.findByIdAndUpdate(oldSale.bankAccountId, { 
+                  currentBalance: Math.max(0, restoredBalance),
+                  updatedAt: new Date()
+                });
+                
+                
+                await BankTransaction.findByIdAndDelete(oldTransaction._id);
+                
+              }
+            }
+          }
+          
+          
+          if (actualNewPaymentMethod === 'Bank Transfer' && newBankAccountId && newReceived > 0) {
+            const newBankAccount = await BankAccount.findOne({ 
+              _id: newBankAccountId, 
+              userId: userId, 
+              isActive: true 
+            });
+            
+            if (newBankAccount) {
+              const newBalance = newBankAccount.currentBalance + newReceived;
+              await BankAccount.findByIdAndUpdate(newBankAccountId, { 
+                currentBalance: newBalance,
+                updatedAt: new Date()
+              });
+              
+              
+              const bankTransaction = new BankTransaction({
+                userId: userId,
+                type: 'Cash to Bank Transfer',
+                fromAccount: 'Cash',
+                toAccount: newBankAccount.accountDisplayName,
+                amount: newReceived,
+                description: `Payment received for sale invoice ${updateData.invoiceNo || oldSale.invoiceNo || 'N/A'}`,
+                transactionDate: new Date(),
+                balanceAfter: newBalance,
+                status: 'completed'
+              });
+              
+              await bankTransaction.save();
+              
+            }
+          }
+        }
+      }
+    } catch (bankError) {
+      
+      
+    }
+
+    
     const updatedSale = await Sale.findOneAndUpdate(
       { _id: saleId, userId },
       {
@@ -1063,6 +1277,10 @@ export const updateSale = async (req, res) => {
         grandTotal,
         balance,
         received,
+        paymentType,
+        paymentMethod,
+        bankAccountId: updateData.bankAccountId || null,
+        bankAccountName: updateData.bankAccountName || '',
         updatedAt: new Date()
       },
       { new: true }
@@ -1072,7 +1290,7 @@ export const updateSale = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Sale not found after update' });
     }
 
-    // Map unit fields for frontend
+    
     const saleObj = updatedSale.toObject();
     if (Array.isArray(saleObj.items)) {
       saleObj.items = saleObj.items.map(item => ({
@@ -1084,12 +1302,12 @@ export const updateSale = async (req, res) => {
     
     res.json({ success: true, sale: saleObj, partyCreated });
   } catch (err) {
-    console.error('Sale update error:', err);
+    
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// Bill Wise Profit report
+
 export const getBillWiseProfit = async (req, res) => {
   try {
     const userId = req.user && req.user._id;
@@ -1097,14 +1315,14 @@ export const getBillWiseProfit = async (req, res) => {
 
     const { party } = req.query;
 
-    // Fetch all sales for the user (optionally filter by party)
+    
     const saleQuery = { userId };
     if (party) saleQuery.partyName = party;
     const sales = await Sale.find(saleQuery).sort({ createdAt: -1 }).lean();
 
-    // We now derive purchase cost from sale item batch costs saved in the sale schema
+    
 
-    // Prepare bill-wise profit data
+    
     let totalProfit = 0;
     const bills = sales.map(sale => {
       let billProfit = 0;
@@ -1114,7 +1332,7 @@ export const getBillWiseProfit = async (req, res) => {
           const originalPrice = Number(saleItem.price) || 0;
           const qty = Number(saleItem.qty) || 0;
 
-          // Calculate actual sale price after item-level discount
+          
           let itemDiscount = 0;
           if (saleItem.discountPercentage) {
             itemDiscount = Math.max(0, (originalPrice * parseFloat(saleItem.discountPercentage)) / 100);
@@ -1124,7 +1342,7 @@ export const getBillWiseProfit = async (req, res) => {
 
           const actualSalePrice = Math.max(0, originalPrice - itemDiscount);
 
-          // If consumedBatches exists, split lines per batch with numbering
+          
           if (Array.isArray(saleItem.consumedBatches) && saleItem.consumedBatches.length > 0) {
             saleItem.consumedBatches.forEach((batch, index) => {
               const bQty = Number(batch.quantity || 0);
@@ -1144,7 +1362,7 @@ export const getBillWiseProfit = async (req, res) => {
               }
             });
           } else {
-            // Fallback: single-line using average purchase cost if available
+            
             let totalCost = 0;
             if (typeof saleItem.totalCost === 'number') {
               totalCost = Number(saleItem.totalCost) || 0;
@@ -1165,7 +1383,7 @@ export const getBillWiseProfit = async (req, res) => {
         });
       }
       totalProfit += billProfit;
-      // Calculate total sale amount from actual sale prices (after discounts)
+      
       const totalSaleAmount = itemDetails.reduce((sum, item) => sum + item.salePrice * item.qty, 0);
       
       return {
@@ -1180,28 +1398,28 @@ export const getBillWiseProfit = async (req, res) => {
 
     res.json({ success: true, bills, totalProfit });
   } catch (err) {
-    console.error('Bill Wise Profit Error:', err);
+    
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// Get purchase prices for items (for sale creation)
+
 export const getItemPurchasePrices = async (req, res) => {
   try {
     const userId = req.user && req.user._id;
     if (!userId) return res.status(401).json({ success: false, message: 'User not authenticated' });
     
-    const { items } = req.body; // Array of item names
+    const { items } = req.body; 
     if (!items || !Array.isArray(items)) {
       return res.status(400).json({ success: false, message: 'Items array is required' });
     }
     
-    // Helper function to get latest purchase price for an item
+    
     function getLatestPurchasePrice(itemName) {
       let latestPrice = 0;
       let latestDate = null;
       
-      // Fetch all sales for the user to find purchase prices
+      
       Sale.find({ userId }).then(sales => {
         sales.forEach(sale => {
           if (Array.isArray(sale.items)) {
@@ -1209,15 +1427,15 @@ export const getItemPurchasePrices = async (req, res) => {
               const saleItemName = saleItem.item?.trim().toLowerCase() || '';
               const itemNameLower = itemName?.trim().toLowerCase() || '';
               
-              // Try exact match first, then partial match
+              
               const exactMatch = saleItemName === itemNameLower;
               const partialMatch = saleItemName.includes(itemNameLower) || itemNameLower.includes(saleItemName);
               
               if (saleItem.item && itemName && (exactMatch || partialMatch)) {
-                // Use atPrice first, if undefined then use purchasePrice, otherwise fall back to price
+                
                 const itemPrice = saleItem.atPrice !== undefined && saleItem.atPrice !== null ? saleItem.atPrice : (saleItem.purchasePrice !== undefined && saleItem.purchasePrice !== null ? saleItem.purchasePrice : saleItem.price) || 0;
                 if (itemPrice > 0) {
-                  // Use the latest purchase
+                  
                   if (!latestDate || new Date(sale.createdAt) > latestDate) {
                     latestPrice = itemPrice;
                     latestDate = new Date(sale.createdAt);
@@ -1228,13 +1446,13 @@ export const getItemPurchasePrices = async (req, res) => {
           }
         });
       }).catch(err => {
-        console.error('Error fetching sales for item purchase prices:', err);
+        
       });
       
       return latestPrice;
     }
     
-    // Get purchase prices for each item
+    
     const itemPrices = {};
     items.forEach(itemName => {
       itemPrices[itemName] = getLatestPurchasePrice(itemName);
@@ -1242,18 +1460,18 @@ export const getItemPurchasePrices = async (req, res) => {
     
     res.json({ success: true, itemPrices });
   } catch (err) {
-    console.error('Get Item Purchase Prices Error:', err);
+    
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// Get payment records for payment-in page
+
 export const getPaymentRecords = async (req, res) => {
   try {
     const { userId } = req.params;
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
     
-    // Get all payment records where category is 'Party Payment In' or 'Invoice Payment In' or has saleId
+    
     const payments = await Payment.find({ 
       userId,
       $or: [
@@ -1271,7 +1489,7 @@ export const getPaymentRecords = async (req, res) => {
     
     res.json({ success: true, paymentIns: payments });
   } catch (err) {
-    console.error('Get payment records error:', err);
+    
     res.status(500).json({ success: false, message: err.message });
   }
 };

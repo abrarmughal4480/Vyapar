@@ -342,7 +342,9 @@ export default function SalesOrderPage() {
       discountType: order.discountType || '%',
       tax: order.tax?.toString() || '',
       taxType: order.taxType || '%',
-      paymentType: order.paymentType || 'Credit',
+      paymentMethod: order.paymentMethod || 'Cash',
+      bankAccountId: order.bankAccountId || null,
+      bankAccountName: order.bankAccountName || '',
       description: order.description || '',
       sourceOrderId: orderId, // Track the original order
       sourceOrderNumber: order.orderNumber

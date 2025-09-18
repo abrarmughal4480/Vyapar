@@ -31,6 +31,18 @@ const SaleOrderSchema = new mongoose.Schema({
   dueDate: { type: Date, default: null },
   invoiceNumber: { type: String, default: null },
   convertedToInvoice: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale', default: null },
+  // Payment method fields
+  paymentMethod: { 
+    type: String, 
+    enum: ['Cash', 'Cheque', 'Bank Transfer'], 
+    default: 'Cash' 
+  },
+  bankAccountId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'BankAccount', 
+    default: null 
+  },
+  bankAccountName: { type: String, default: '' },
   // Stock check results when order was created
   stockCheckResults: [{
     item: { type: String, required: true },

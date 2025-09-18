@@ -175,6 +175,8 @@ export const createPurchase = async (req, res) => {
       ...req.body,
       userId,
       partyId, // Include the party ID
+      paymentType: 'Credit', // Force all purchases to be Credit
+      paymentMethod: req.body.paymentMethod || 'Cash', // Use payment method from request or default to Cash
       discountValue: totalDiscount, // Use total discount (item + global)
       taxType,
       tax,
@@ -188,6 +190,45 @@ export const createPurchase = async (req, res) => {
     
     await purchase.save();
     
+    // Handle bank account transaction if payment method is bank transfer and there's a paid amount
+    if (req.body.paymentMethod && (req.body.paymentMethod.startsWith('bank_') || req.body.paymentMethod === 'Bank Transfer') && paid > 0) {
+      try {
+        const BankAccount = (await import('../models/bankAccount.js')).default;
+        const BankTransaction = (await import('../models/bankTransaction.js')).default;
+        
+        const bankAccountId = req.body.paymentMethod.startsWith('bank_') 
+          ? req.body.paymentMethod.replace('bank_', '') 
+          : req.body.bankAccountId;
+        const bankAccount = await BankAccount.findOne({ 
+          _id: bankAccountId, 
+          userId: userId, 
+          isActive: true 
+        });
+        
+        if (bankAccount) {
+          const newBalance = bankAccount.currentBalance - paid;
+          await BankAccount.findByIdAndUpdate(bankAccountId, { 
+            currentBalance: newBalance,
+            updatedAt: new Date()
+          });
+          
+          const bankTransaction = new BankTransaction({
+            userId: userId,
+            type: 'Bank to Cash Transfer',
+            fromAccount: bankAccount.accountDisplayName,
+            toAccount: 'Cash',
+            amount: paid,
+            description: `Payment made for purchase bill ${billNo}`,
+            transactionDate: new Date(),
+            balanceAfter: newBalance,
+            status: 'completed'
+          });
+          await bankTransaction.save();
+        }
+      } catch (bankError) {
+        console.error('Bank transaction error:', bankError);
+      }
+    }
     
     // Note: Purchase order status update is now handled in the frontend
     // to match the pattern used in sales conversion
@@ -199,23 +240,17 @@ export const createPurchase = async (req, res) => {
         // Store supplier's current balance before transaction
         const supplierCurrentBalance = supplierDoc.openingBalance || 0;
         
-        // Only update balance for credit payments (cash payments are 100% paid, no balance change needed)
-        if (req.body.paymentType !== 'Cash') {
-          // For Credit payment: decrease by unpaid amount (grandTotal - paid)
-          const unpaidAmount = purchase.grandTotal - (purchase.paid || 0);
-          supplierDoc.openingBalance = supplierCurrentBalance - unpaidAmount;
-          
-          // Calculate and update partyBalanceAfterTransaction
-          const partyBalanceAfterTransaction = supplierDoc.openingBalance;
-          purchase.partyBalanceAfterTransaction = partyBalanceAfterTransaction;
-          await purchase.save();
-          
-          await supplierDoc.save();
-        } else {
-          // For cash payments, set partyBalanceAfterTransaction to current balance (no change)
-          purchase.partyBalanceAfterTransaction = supplierCurrentBalance;
-          await purchase.save();
-        }
+        // All purchases are now Credit, so always update balance
+        // For Credit payment: decrease by unpaid amount (grandTotal - paid)
+        const unpaidAmount = purchase.grandTotal - (purchase.paid || 0);
+        supplierDoc.openingBalance = supplierCurrentBalance - unpaidAmount;
+        
+        // Calculate and update partyBalanceAfterTransaction
+        const partyBalanceAfterTransaction = supplierDoc.openingBalance;
+        purchase.partyBalanceAfterTransaction = partyBalanceAfterTransaction;
+        await purchase.save();
+        
+        await supplierDoc.save();
       }
     } catch (err) {
       console.error('Failed to update supplier openingBalance:', err);
@@ -346,6 +381,46 @@ export const makePayment = async (req, res) => {
     }
     
     await purchase.save();
+    
+    // Handle bank account transaction if payment method is bank transfer and there's a payment
+    if ((paymentType === 'Bank Transfer' || paymentType.startsWith('bank_')) && amount > 0) {
+      try {
+        const BankAccount = (await import('../models/bankAccount.js')).default;
+        const BankTransaction = (await import('../models/bankTransaction.js')).default;
+        
+        const bankAccountId = paymentType.startsWith('bank_') 
+          ? paymentType.replace('bank_', '') 
+          : purchase.bankAccountId;
+        const bankAccount = await BankAccount.findOne({ 
+          _id: bankAccountId, 
+          userId: purchase.userId, 
+          isActive: true 
+        });
+        
+        if (bankAccount) {
+          const newBalance = bankAccount.currentBalance - amount;
+          await BankAccount.findByIdAndUpdate(bankAccountId, { 
+            currentBalance: newBalance,
+            updatedAt: new Date()
+          });
+          
+          const bankTransaction = new BankTransaction({
+            userId: purchase.userId,
+            type: 'Bank to Cash Transfer',
+            fromAccount: bankAccount.accountDisplayName,
+            toAccount: 'Cash',
+            amount: amount,
+            description: `Payment made for purchase bill ${purchase.billNo}`,
+            transactionDate: new Date(),
+            balanceAfter: newBalance,
+            status: 'completed'
+          });
+          await bankTransaction.save();
+        }
+      } catch (bankError) {
+        console.error('Bank transaction error:', bankError);
+      }
+    }
     
     // Create payment record only if there's an actual payment
     let payment = null;
@@ -511,18 +586,49 @@ export const deletePurchase = async (req, res) => {
         // Calculate the unpaid amount that was affecting the supplier balance
         const unpaidAmount = purchase.grandTotal - (purchase.paid || 0);
         
-        // For credit payments, restore the balance (add back the unpaid amount)
-        if (purchase.paymentType !== 'Cash') {
-          supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + unpaidAmount;
-          await supplierDoc.save();
-
-        }
+        // All purchases are now Credit, so always restore the balance
+        supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + unpaidAmount;
+        await supplierDoc.save();
       }
     } catch (err) {
       console.error('Failed to restore supplier balance:', err);
     }
     
-    // Step 3: Delete the purchase
+    // Step 3: Handle bank transaction reversal if payment was made through bank
+    if (purchase.paymentMethod && (purchase.paymentMethod.startsWith('bank_') || purchase.paymentMethod === 'Bank Transfer') && purchase.paid > 0) {
+      try {
+        const BankAccount = (await import('../models/bankAccount.js')).default;
+        const BankTransaction = (await import('../models/bankTransaction.js')).default;
+        
+        const bankAccountId = purchase.paymentMethod.startsWith('bank_') 
+          ? purchase.paymentMethod.replace('bank_', '') 
+          : purchase.bankAccountId;
+        const bankAccount = await BankAccount.findOne({ 
+          _id: bankAccountId, 
+          userId: userId, 
+          isActive: true 
+        });
+        
+        if (bankAccount) {
+          // Restore the bank balance
+          const newBalance = bankAccount.currentBalance + purchase.paid;
+          await BankAccount.findByIdAndUpdate(bankAccountId, { 
+            currentBalance: newBalance,
+            updatedAt: new Date()
+          });
+          
+          // Delete related bank transactions
+          await BankTransaction.deleteMany({
+            userId: userId,
+            description: { $regex: `purchase bill ${purchase.billNo}`, $options: 'i' }
+          });
+        }
+      } catch (bankError) {
+        console.error('Bank transaction reversal error:', bankError);
+      }
+    }
+    
+    // Step 4: Delete the purchase
     await Purchase.findByIdAndDelete(purchaseId);
     
     res.json({ success: true, message: 'Purchase deleted successfully' });
@@ -731,6 +837,8 @@ export const updatePurchase = async (req, res) => {
       purchaseId,
       {
         ...updateData,
+        paymentType: 'Credit', // Force all purchases to be Credit
+        paymentMethod: updateData.paymentMethod || 'Cash', // Use payment method from update or default to Cash
         discountValue: totalDiscount,
         taxType,
         tax,
@@ -742,6 +850,116 @@ export const updatePurchase = async (req, res) => {
       },
       { new: true }
     );
+    
+    // Handle bank account transaction if payment method is bank transfer and there's a paid amount
+    if (updateData.paymentMethod && (updateData.paymentMethod.startsWith('bank_') || updateData.paymentMethod === 'Bank Transfer') && newPaid > 0) {
+      try {
+        const BankAccount = (await import('../models/bankAccount.js')).default;
+        const BankTransaction = (await import('../models/bankTransaction.js')).default;
+        
+        const bankAccountId = updateData.paymentMethod.startsWith('bank_') 
+          ? updateData.paymentMethod.replace('bank_', '') 
+          : updateData.bankAccountId;
+        const bankAccount = await BankAccount.findOne({ 
+          _id: bankAccountId, 
+          userId: userId, 
+          isActive: true 
+        });
+        
+        if (bankAccount) {
+          // First, restore the old bank balance if there was a previous payment
+          const oldPaid = existingPurchase.paid || 0;
+          if (oldPaid > 0) {
+            const oldBankAccountId = existingPurchase.paymentMethod?.startsWith('bank_') 
+              ? existingPurchase.paymentMethod.replace('bank_', '') 
+              : existingPurchase.bankAccountId;
+            
+            if (oldBankAccountId) {
+              const oldBankAccount = await BankAccount.findOne({ 
+                _id: oldBankAccountId, 
+                userId: userId, 
+                isActive: true 
+              });
+              
+              if (oldBankAccount) {
+                // Restore old balance
+                const restoredBalance = oldBankAccount.currentBalance + oldPaid;
+                await BankAccount.findByIdAndUpdate(oldBankAccountId, { 
+                  currentBalance: restoredBalance,
+                  updatedAt: new Date()
+                });
+                
+                // Delete old transaction
+                await BankTransaction.deleteMany({
+                  userId: userId,
+                  description: { $regex: `purchase bill ${existingPurchase.billNo}`, $options: 'i' }
+                });
+              }
+            }
+          }
+          
+          // Now process the new payment
+          const newBalance = bankAccount.currentBalance - newPaid;
+          await BankAccount.findByIdAndUpdate(bankAccountId, { 
+            currentBalance: newBalance,
+            updatedAt: new Date()
+          });
+          
+          // Create new transaction only if there's a payment
+          if (newPaid > 0) {
+            const bankTransaction = new BankTransaction({
+              userId: userId,
+              type: 'Bank to Cash Transfer',
+              fromAccount: bankAccount.accountDisplayName,
+              toAccount: 'Cash',
+              amount: newPaid,
+              description: `Payment made for purchase bill ${updatedPurchase.billNo}`,
+              transactionDate: new Date(),
+              balanceAfter: newBalance,
+              status: 'completed'
+            });
+            await bankTransaction.save();
+          }
+        }
+      } catch (bankError) {
+        console.error('Bank transaction error:', bankError);
+      }
+    } else if (existingPurchase.paid > 0 && existingPurchase.paymentMethod && (existingPurchase.paymentMethod.startsWith('bank_') || existingPurchase.paymentMethod === 'Bank Transfer')) {
+      // If switching away from bank payment, restore the bank balance
+      try {
+        const BankAccount = (await import('../models/bankAccount.js')).default;
+        const BankTransaction = (await import('../models/bankTransaction.js')).default;
+        
+        const oldBankAccountId = existingPurchase.paymentMethod.startsWith('bank_') 
+          ? existingPurchase.paymentMethod.replace('bank_', '') 
+          : existingPurchase.bankAccountId;
+        
+        if (oldBankAccountId) {
+          const oldBankAccount = await BankAccount.findOne({ 
+            _id: oldBankAccountId, 
+            userId: userId, 
+            isActive: true 
+          });
+          
+          if (oldBankAccount) {
+            // Restore old balance
+            const restoredBalance = oldBankAccount.currentBalance + existingPurchase.paid;
+            await BankAccount.findByIdAndUpdate(oldBankAccountId, { 
+              currentBalance: restoredBalance,
+              updatedAt: new Date()
+            });
+            
+            // Delete old transaction
+            await BankTransaction.deleteMany({
+              userId: userId,
+              description: { $regex: `purchase bill ${existingPurchase.billNo}`, $options: 'i' }
+            });
+          }
+        }
+      } catch (bankError) {
+        console.error('Bank transaction reversal error:', bankError);
+      }
+    }
     
     if (!updatedPurchase) {
       return res.status(500).json({ success: false, message: 'Failed to update purchase' });

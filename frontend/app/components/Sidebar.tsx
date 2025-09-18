@@ -62,7 +62,18 @@ const navItems: NavItem[] = [
       { id: 'expenses', label: 'Expenses', icon: '💸', path: '/dashboard/expenses' }
     ]
   },
-  { id: 'cash-bank', label: 'Cash in Hand', icon: '🏦', path: '/dashboard/cash-bank', description: 'Payment Records' },
+  { 
+    id: 'cash-bank', 
+    label: 'Cash and Bank', 
+    icon: '🏦', 
+    path: '/dashboard/cash-bank', 
+    description: 'Payment Records',
+    hasDropdown: true,
+    subItems: [
+      { id: 'bank-account', label: 'Bank Account', icon: '🏦', path: '/dashboard/cash-bank' },
+      { id: 'cash-in-hand', label: 'Cash in Hand', icon: '💰', path: '/dashboard/cash-in-hand' }
+    ]
+  },
   { id: 'reports', label: 'Reports', icon: '📈', path: '/dashboard/reports', description: 'Business Analytics' },
   // { id: 'barcode', label: 'Barcode', icon: '📱', path: '/dashboard/barcode', description: 'Barcode Scanner' },
   // { id: 'backup-restore', label: 'Backup & Restore', icon: '💾', path: '/dashboard/backup-restore', description: 'Data Management' },
@@ -499,10 +510,12 @@ export default function Sidebar() {
         router.push('/dashboard/sale')
       } else if (item.id === 'purchase') {
         router.push('/dashboard/purchase')
+      } else if (item.id === 'cash-bank') {
+        router.push('/dashboard/cash-bank')
       }
     } else {
       // Close all dropdowns if another main item is clicked
-      setOpenDropdowns(prev => ({ ...prev, sale: false, purchase: false }))
+      setOpenDropdowns(prev => ({ ...prev, sale: false, purchase: false, 'cash-bank': false }))
       router.push(item.path)
     }
   }

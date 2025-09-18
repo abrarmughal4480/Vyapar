@@ -214,11 +214,11 @@ export const createPurchase = async (req, res) => {
           
           const bankTransaction = new BankTransaction({
             userId: userId,
-            type: 'Bank to Cash Transfer',
+            type: 'Purchase',
             fromAccount: bankAccount.accountDisplayName,
-            toAccount: 'Cash',
+            toAccount: supplierName,
             amount: paid,
-            description: `Payment made for purchase bill ${billNo}`,
+            description: `Purchase payment made for bill ${billNo}`,
             transactionDate: new Date(),
             balanceAfter: newBalance,
             status: 'completed'
@@ -406,9 +406,9 @@ export const makePayment = async (req, res) => {
           
           const bankTransaction = new BankTransaction({
             userId: purchase.userId,
-            type: 'Bank to Cash Transfer',
+            type: 'Payment Out',
             fromAccount: bankAccount.accountDisplayName,
-            toAccount: 'Cash',
+            toAccount: purchase.supplierName,
             amount: amount,
             description: `Payment made for purchase bill ${purchase.billNo}`,
             transactionDate: new Date(),
@@ -909,9 +909,9 @@ export const updatePurchase = async (req, res) => {
           if (newPaid > 0) {
             const bankTransaction = new BankTransaction({
               userId: userId,
-              type: 'Bank to Cash Transfer',
+              type: 'Payment Out',
               fromAccount: bankAccount.accountDisplayName,
-              toAccount: 'Cash',
+              toAccount: updatedPurchase.supplierName,
               amount: newPaid,
               description: `Payment made for purchase bill ${updatedPurchase.billNo}`,
               transactionDate: new Date(),

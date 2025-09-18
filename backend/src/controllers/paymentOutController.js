@@ -52,6 +52,45 @@ export const createPaymentOut = async (req, res) => {
     
     await purchase.save();
 
+    // Handle bank account deduction if payment type is bank
+    let bankAccountId = null;
+    if (paymentType && paymentType.startsWith('bank_')) {
+      try {
+        const BankAccount = (await import('../models/bankAccount.js')).default;
+        const BankTransaction = (await import('../models/bankTransaction.js')).default;
+        
+        bankAccountId = paymentType.replace('bank_', '');
+        const bankAccount = await BankAccount.findOne({ 
+          _id: bankAccountId, 
+          userId: userId, 
+          isActive: true 
+        });
+        
+        if (bankAccount) {
+          const newBalance = bankAccount.currentBalance - amount;
+          await BankAccount.findByIdAndUpdate(bankAccountId, { 
+            currentBalance: newBalance,
+            updatedAt: new Date()
+          });
+          
+          const bankTransaction = new BankTransaction({
+            userId: userId,
+            type: 'Payment Out',
+            fromAccount: bankAccount.accountDisplayName,
+            toAccount: purchase.supplierName,
+            amount: amount,
+            description: `Payment out to ${purchase.supplierName} for bill ${purchase.billNo}`,
+            transactionDate: new Date(),
+            balanceAfter: newBalance,
+            status: 'completed'
+          });
+          await bankTransaction.save();
+        }
+      } catch (bankError) {
+        console.error('Bank account update error:', bankError);
+      }
+    }
+
     // Create payment out record first
     const paymentOut = new PaymentOut({
       userId,
@@ -63,6 +102,7 @@ export const createPaymentOut = async (req, res) => {
       total: purchase.grandTotal || 0,
       balance: Math.max(0, currentBalance - amount), // Updated balance after payment
       paymentType,
+      bankAccountId,
       paymentDate: new Date(),
       description,
       imageUrl,
@@ -348,6 +388,45 @@ export const makeBulkPaymentToParty = async (req, res) => {
       supplierDoc.openingBalance = (supplierDoc.openingBalance || 0) + finalAmount;
       await supplierDoc.save();
 
+      // Handle bank account deduction if payment type is bank
+      let bankAccountId = null;
+      if (paymentType && paymentType.startsWith('bank_')) {
+        try {
+          const BankAccount = (await import('../models/bankAccount.js')).default;
+          const BankTransaction = (await import('../models/bankTransaction.js')).default;
+          
+          bankAccountId = paymentType.replace('bank_', '');
+          const bankAccount = await BankAccount.findOne({ 
+            _id: bankAccountId, 
+            userId: userId, 
+            isActive: true 
+          });
+          
+          if (bankAccount) {
+            const newBalance = bankAccount.currentBalance - finalAmount;
+            await BankAccount.findByIdAndUpdate(bankAccountId, { 
+              currentBalance: newBalance,
+              updatedAt: new Date()
+            });
+            
+            const bankTransaction = new BankTransaction({
+              userId: userId,
+              type: 'Payment Out',
+              fromAccount: bankAccount.accountDisplayName,
+              toAccount: supplierName,
+              amount: finalAmount,
+              description: `Payment out to ${supplierName}`,
+              transactionDate: new Date(),
+              balanceAfter: newBalance,
+              status: 'completed'
+            });
+            await bankTransaction.save();
+          }
+        } catch (bankError) {
+          console.error('Bank account update error:', bankError);
+        }
+      }
+
       // Save payment history
       try {
         const paymentRecord = new Payment({
@@ -361,6 +440,7 @@ export const makeBulkPaymentToParty = async (req, res) => {
           total: null, // No specific total for party payments
           balance: 0, // No specific balance for party payments
           paymentType,
+          bankAccountId,
           paymentDate: new Date(),
           description: description || `Party payment made to ${supplierName}`,
           imageUrl,

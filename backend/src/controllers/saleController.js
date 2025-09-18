@@ -209,11 +209,11 @@ export const createSale = async (req, res) => {
           
           const bankTransaction = new BankTransaction({
             userId: userIdObj,
-            type: 'Cash to Bank Transfer',
-            fromAccount: 'Cash',
+            type: 'Sale',
+            fromAccount: partyName,
             toAccount: bankAccount.accountDisplayName,
             amount: received,
-            description: `Payment received for sale invoice ${invoiceNo}`,
+            description: `Sale payment received for invoice ${invoiceNo}`,
             transactionDate: new Date(),
             balanceAfter: newBalance,
             status: 'completed'
@@ -331,7 +331,7 @@ export const getSalesByUser = async (req, res) => {
 
 export const receivePayment = async (req, res) => {
   try {
-    const { saleId, amount, discount, discountType } = req.body;
+    const { saleId, amount, discount, discountType, paymentType, bankAccountId } = req.body;
     if (!saleId || (typeof amount !== 'number' && amount !== 0)) {
       return res.status(400).json({ success: false, message: 'Missing saleId or invalid amount' });
     }
@@ -369,28 +369,35 @@ export const receivePayment = async (req, res) => {
       sale.received = (sale.received || 0) + amount;
       sale.balance = Math.max(0, newBalance - amount);
       
-      if (sale.paymentMethod === 'Bank Transfer' && sale.bankAccountId) {
+      // Handle bank account payment
+      const isBankTransfer = (paymentType && paymentType.startsWith('bank_')) || 
+                            (sale.paymentMethod === 'Bank Transfer' && sale.bankAccountId);
+      const targetBankAccountId = (paymentType && paymentType.startsWith('bank_')) ? 
+                                 paymentType.replace('bank_', '') : 
+                                 (bankAccountId || sale.bankAccountId);
+      
+      if (isBankTransfer && targetBankAccountId) {
         try {
           const BankAccount = (await import('../models/bankAccount.js')).default;
           const BankTransaction = (await import('../models/bankTransaction.js')).default;
           
           const bankAccount = await BankAccount.findOne({ 
-            _id: sale.bankAccountId, 
+            _id: targetBankAccountId, 
             userId: sale.userId, 
             isActive: true 
           });
           
           if (bankAccount) {
             const newBalance = bankAccount.currentBalance + amount;
-            await BankAccount.findByIdAndUpdate(sale.bankAccountId, { 
+            await BankAccount.findByIdAndUpdate(targetBankAccountId, { 
               currentBalance: newBalance,
               updatedAt: new Date()
             });
             
             const bankTransaction = new BankTransaction({
               userId: sale.userId,
-              type: 'Cash to Bank Transfer',
-              fromAccount: 'Cash',
+              type: 'Payment In',
+              fromAccount: sale.customerName,
               toAccount: bankAccount.accountDisplayName,
               amount: amount,
               description: `Payment received for sale invoice ${sale.invoiceNo}`,
@@ -400,7 +407,9 @@ export const receivePayment = async (req, res) => {
             });
             await bankTransaction.save();
           }
-        } catch (bankError) {}
+        } catch (bankError) {
+          console.error('Bank account update error:', bankError);
+        }
       }
     } else {
       sale.balance = newBalance;
@@ -478,7 +487,7 @@ export const receivePayment = async (req, res) => {
 
 export const receivePartyPayment = async (req, res) => {
   try {
-    const { partyName, amount, discount, discountType, paymentType = 'Cash', description = '', imageUrl = '' } = req.body;
+    const { partyName, amount, discount, discountType, paymentType = 'Cash', description = '', imageUrl = '', bankAccountId } = req.body;
     const userId = req.user?._id || req.user?.id;
     
     if (!partyName || (typeof amount !== 'number' && amount !== 0) || amount < 0) {
@@ -500,6 +509,48 @@ export const receivePartyPayment = async (req, res) => {
       const finalAmount = Math.max(0, amount - discountAmount);
       partyDoc.openingBalance = (partyDoc.openingBalance || 0) - finalAmount;
       await partyDoc.save();
+
+      // Handle bank account payment
+      const isBankTransfer = paymentType && paymentType.startsWith('bank_');
+      const targetBankAccountId = isBankTransfer ? 
+                                 paymentType.replace('bank_', '') : 
+                                 bankAccountId;
+      
+      if (isBankTransfer && targetBankAccountId) {
+        try {
+          const BankAccount = (await import('../models/bankAccount.js')).default;
+          const BankTransaction = (await import('../models/bankTransaction.js')).default;
+          
+          const bankAccount = await BankAccount.findOne({ 
+            _id: targetBankAccountId, 
+            userId: userId, 
+            isActive: true 
+          });
+          
+          if (bankAccount) {
+            const newBalance = bankAccount.currentBalance + finalAmount;
+            await BankAccount.findByIdAndUpdate(targetBankAccountId, { 
+              currentBalance: newBalance,
+              updatedAt: new Date()
+            });
+            
+            const bankTransaction = new BankTransaction({
+              userId: userId,
+              type: 'Payment In',
+              fromAccount: partyName,
+              toAccount: bankAccount.accountDisplayName,
+              amount: finalAmount,
+              description: `Party payment received from ${partyName}`,
+              transactionDate: new Date(),
+              balanceAfter: newBalance,
+              status: 'completed'
+            });
+            await bankTransaction.save();
+          }
+        } catch (bankError) {
+          console.error('Bank account update error:', bankError);
+        }
+      }
 
       try {
         const paymentRecord = new Payment({

@@ -20,6 +20,7 @@ const PaymentSchema = new mongoose.Schema({
   total: { type: Number, required: false }, // For specific bills
   balance: { type: Number, default: 0 },
   paymentType: { type: String, enum: ['Cash', 'Cheque', 'Card', 'UPI', 'Credit'], default: 'Cash' },
+  bankAccountId: { type: mongoose.Schema.Types.ObjectId, ref: 'BankAccount', required: false },
   paymentDate: { type: Date, default: Date.now },
   description: { type: String },
   imageUrl: { type: String },

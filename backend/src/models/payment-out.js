@@ -10,6 +10,7 @@ const PaymentOutSchema = new mongoose.Schema({
   total: { type: Number, required: false }, // Made optional for party payments
   balance: { type: Number, default: 0 },
   paymentType: { type: String, enum: ['Cash', 'Cheque', 'Card', 'UPI'], default: 'Cash' },
+  bankAccountId: { type: mongoose.Schema.Types.ObjectId, ref: 'BankAccount', required: false },
   paymentDate: { type: Date, default: Date.now },
   description: { type: String },
   imageUrl: { type: String },

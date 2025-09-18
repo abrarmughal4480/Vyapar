@@ -75,8 +75,6 @@ const navItems: NavItem[] = [
     ]
   },
   { id: 'reports', label: 'Reports', icon: '📈', path: '/dashboard/reports', description: 'Business Analytics' },
-  // { id: 'barcode', label: 'Barcode', icon: '📱', path: '/dashboard/barcode', description: 'Barcode Scanner' },
-  // { id: 'backup-restore', label: 'Backup & Restore', icon: '💾', path: '/dashboard/backup-restore', description: 'Data Management' },
   { id: 'pricing', label: 'Pricing', icon: '💰', path: '/dashboard/pricing', description: 'Plans & Pricing' },
   { id: 'settings', label: 'Settings', icon: '⚙️', path: '/dashboard/settings', description: 'App Configuration' }
 ]

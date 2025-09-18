@@ -7,6 +7,7 @@ import Toast from './Toast';
 import { fetchPartiesByUserId, getPartyBalance } from '@/http/parties';
 import { Settings } from 'lucide-react';
 import { jwtDecode } from 'jwt-decode';
+import { useBankAccounts } from '../hooks/useBankAccounts';
 
 interface PaymentOutModalProps {
   isOpen: boolean;
@@ -21,12 +22,16 @@ interface PaymentOutModalProps {
   showRemainingAmount?: boolean; // New prop to control remaining amount display
 }
 
-const paymentTypeOptions = [
+const getPaymentTypeOptions = (bankAccounts: any[]) => [
   { value: 'Cash', label: 'Cash' },
   { value: 'Cheque', label: 'Cheque' },
+  ...bankAccounts.map(bank => ({
+    value: `bank_${bank._id}`,
+    label: bank.accountDisplayName
+  }))
 ];
 
-function PaymentTypeDropdown({ value, onChange }: { value: string; onChange: (val: string) => void }) {
+function PaymentTypeDropdown({ value, onChange, bankAccounts }: { value: string; onChange: (val: string) => void; bankAccounts: any[] }) {
   const [open, setOpen] = useState(false);
   const btnRef = React.useRef<HTMLButtonElement>(null);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
@@ -67,7 +72,7 @@ function PaymentTypeDropdown({ value, onChange }: { value: string; onChange: (va
         aria-expanded={open ? 'true' : 'false'}
         style={{ fontWeight: 500, fontSize: 15, minHeight: 44 }}
       >
-        <span className="truncate">{paymentTypeOptions.find((o) => o.value === value)?.label || 'Select'}</span>
+        <span className="truncate">{getPaymentTypeOptions(bankAccounts).find((o) => o.value === value)?.label || 'Select'}</span>
         <svg className={`w-5 h-5 ml-2 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
       </button>
       {open && (
@@ -82,7 +87,7 @@ function PaymentTypeDropdown({ value, onChange }: { value: string; onChange: (va
           tabIndex={-1}
           role="listbox"
         >
-          {paymentTypeOptions.map((opt) => (
+          {getPaymentTypeOptions(bankAccounts).map((opt) => (
             <li
               key={opt.value}
               className={`px-4 py-2 cursor-pointer rounded-lg transition-all hover:bg-blue-50 ${value === opt.value ? 'font-semibold text-blue-600' : 'text-gray-700'}`}
@@ -101,6 +106,7 @@ function PaymentTypeDropdown({ value, onChange }: { value: string; onChange: (va
 
 const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, partyName: initialPartyName, total, dueBalance, purchaseId, onSave, showDiscount = true, showPartyBalance = true, showRemainingAmount = true }) => {
   const [paymentType, setPaymentType] = useState('Cash');
+  const { bankAccounts } = useBankAccounts();
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [paidAmount, setPaidAmount] = useState('');
   const [discount, setDiscount] = useState('');
@@ -456,7 +462,7 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
               )}
               <div style={{ marginBottom: 22, position: 'relative' }}>
                 <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Payment Type</label>
-                <PaymentTypeDropdown value={paymentType} onChange={setPaymentType} />
+                <PaymentTypeDropdown value={paymentType} onChange={setPaymentType} bankAccounts={bankAccounts} />
               </div>
               <div style={{ marginBottom: 22 }}>
                 <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Date</label>

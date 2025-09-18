@@ -15,7 +15,11 @@ const BankTransactionSchema = new mongoose.Schema({
       'Bank to Cash Transfer',
       'Cash to Bank Transfer', 
       'Bank to Bank Transfer',
-      'Bank Adjustment Entry'
+      'Bank Adjustment Entry',
+      'Payment In',
+      'Payment Out',
+      'Sale',
+      'Purchase'
     ], 
     required: true 
   },

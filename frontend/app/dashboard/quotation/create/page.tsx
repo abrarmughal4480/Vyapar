@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Toast from '../../../components/Toast'
 import React, { useRef } from 'react'
@@ -153,7 +153,7 @@ interface FormData {
 
 type DropdownOption = { value: string; label: string };
 
-export default function CreateSalesOrderPage() {
+function CreateSalesOrderPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [isEditMode, setIsEditMode] = useState(false)
@@ -1381,5 +1381,13 @@ export default function CreateSalesOrderPage() {
       </div>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
+  )
+}
+
+export default function CreateSalesOrderPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <CreateSalesOrderPageContent />
+    </Suspense>
   )
 }

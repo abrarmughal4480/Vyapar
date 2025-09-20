@@ -1481,7 +1481,7 @@ function CreateSalesOrderPageContent() {
                   ) : null}
                 </div>
               </div>
-
+            </div>
 
               {/* Totals */}
               <div>

@@ -515,7 +515,7 @@ function ItemRow({
 const AddSalePageWithSearchParams = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { bankAccounts } = useBankAccounts();
+  const { bankAccounts, refetchBankAccounts } = useBankAccounts();
   const [viewMode, setViewMode] = useState<'credit' | 'cash'>('credit');
   const [newSale, setNewSale] = useState({
     partyName: '',
@@ -2194,6 +2194,7 @@ const AddSalePageWithSearchParams = () => {
                       className="mb-1"
                       dropdownIndex={paymentTypeDropdownIndex}
                       setDropdownIndex={setPaymentTypeDropdownIndex}
+                      onBankAccountAdded={refetchBankAccounts}
                     />
                     {viewMode === 'credit' && (
                       <div className="mt-2">

@@ -1,6 +1,9 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
+import BankAccountModal from './BankAccountModal';
+import { bankAccountAPI } from '../../http/cash-bank';
+import { getToken } from '../lib/auth';
 
 export interface BankAccount {
   _id: string;
@@ -17,6 +20,7 @@ export interface PaymentMethodDropdownProps {
   className?: string;
   dropdownIndex: number;
   setDropdownIndex: React.Dispatch<React.SetStateAction<number>>;
+  onBankAccountAdded?: () => void;
 }
 
 export function PaymentMethodDropdown({ 
@@ -25,14 +29,17 @@ export function PaymentMethodDropdown({
   bankAccounts = [],
   className = '',
   dropdownIndex,
-  setDropdownIndex
+  setDropdownIndex,
+  onBankAccountAdded
 }: PaymentMethodDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  const [showBankModal, setShowBankModal] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  // Create options for payment methods
   const options = React.useMemo(() => {
     const baseOptions = [
       { value: 'Cash', label: 'Cash' },
@@ -44,7 +51,12 @@ export function PaymentMethodDropdown({
       label: account.accountDisplayName
     }));
     
-    return [...baseOptions, ...bankOptions];
+    const addBankOption = {
+      value: 'add_new_bank',
+      label: '+ Add New Bank'
+    };
+    
+    return [...baseOptions, ...bankOptions, addBankOption];
   }, [bankAccounts]);
 
   useEffect(() => {
@@ -121,15 +133,8 @@ export function PaymentMethodDropdown({
       }, 0);
     } else if (e.key === 'Enter' || e.key === ' ') {
       if (dropdownIndex >= 0 && dropdownIndex < options.length) {
-        const selectedValue = options[dropdownIndex].value;
-        if (selectedValue.startsWith('bank_')) {
-          const accountId = selectedValue.replace('bank_', '');
-          const account = bankAccounts.find(acc => acc._id === accountId || acc.accountDisplayName === accountId);
-          onChange(account?.accountDisplayName || selectedValue);
-        } else {
-          onChange(selectedValue);
-        }
-        setOpen(false);
+        const selectedOption = options[dropdownIndex];
+        handleOptionClick(selectedOption);
       }
     } else if (e.key === 'Escape') {
       setOpen(false);
@@ -143,6 +148,65 @@ export function PaymentMethodDropdown({
       return account?.accountDisplayName || value;
     }
     return value;
+  };
+
+  const handleBankAccountSubmit = async (formData: any) => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      const token = getToken();
+      if (!token) {
+        setError('Please login to continue');
+        return;
+      }
+
+      const accountData = {
+        accountDisplayName: formData.accountDisplayName,
+        openingBalance: parseFloat(formData.openingBalance) || 0,
+        asOfDate: formData.asOfDate,
+        accountNumber: formData.accountNumber,
+        ifscCode: formData.ifscCode,
+        upiId: formData.upiId,
+        bankName: formData.bankName,
+        accountHolderName: formData.accountHolderName,
+        printBankDetails: formData.printBankDetails
+      };
+
+      const response = await bankAccountAPI.create(token, accountData);
+      
+      if (response.success) {
+        setShowBankModal(false);
+        // Call the callback to refresh bank accounts
+        if (onBankAccountAdded) {
+          onBankAccountAdded();
+        }
+        // Set the newly created account as selected
+        onChange(formData.accountDisplayName);
+      } else {
+        setError(response.message || 'Failed to create bank account');
+      }
+    } catch (err) {
+      console.error('Error creating bank account:', err);
+      setError('Failed to create bank account');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOptionClick = (opt: { value: string; label: string }) => {
+    if (opt.value === 'add_new_bank') {
+      setOpen(false);
+      setShowBankModal(true);
+    } else if (opt.value.startsWith('bank_')) {
+      const accountId = opt.value.replace('bank_', '');
+      const account = bankAccounts.find(acc => acc._id === accountId || acc.accountDisplayName === accountId);
+      onChange(account?.accountDisplayName || opt.value);
+      setOpen(false);
+    } else {
+      onChange(opt.value);
+      setOpen(false);
+    }
   };
 
   return (
@@ -178,31 +242,23 @@ export function PaymentMethodDropdown({
             <li
               key={opt.value}
               data-payment-method-index={idx}
-              className={`px-4 py-2 cursor-pointer flex items-center gap-2 transition-colors ${value === opt.value ? 'font-semibold text-gray-700 bg-blue-100' : 'text-gray-700'} ${dropdownIndex === idx ? 'font-semibold text-gray-700 bg-blue-50' : 'bg-white hover:bg-blue-50'}`}
+              className={`px-4 py-2 cursor-pointer flex items-center gap-2 transition-colors ${
+                opt.value === 'add_new_bank' 
+                  ? 'text-blue-600 font-medium border-t border-gray-200 bg-blue-50 hover:bg-blue-100' 
+                  : value === opt.value 
+                    ? 'font-semibold text-gray-700 bg-blue-100' 
+                    : 'text-gray-700'
+              } ${dropdownIndex === idx ? 'font-semibold text-gray-700 bg-blue-50' : 'bg-white hover:bg-blue-50'}`}
               onMouseDown={e => { 
                 e.preventDefault(); 
-                if (opt.value.startsWith('bank_')) {
-                  const accountId = opt.value.replace('bank_', '');
-                  const account = bankAccounts.find(acc => acc._id === accountId || acc.accountDisplayName === accountId);
-                  onChange(account?.accountDisplayName || opt.value);
-                } else {
-                  onChange(opt.value);
-                }
-                setOpen(false); 
+                handleOptionClick(opt);
                 setDropdownIndex(idx); 
               }}
               tabIndex={0}
               onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { 
                 if (e.key === 'Enter' || e.key === ' ') { 
                   e.preventDefault();
-                  if (opt.value.startsWith('bank_')) {
-                    const accountId = opt.value.replace('bank_', '');
-                    const account = bankAccounts.find(acc => acc._id === accountId || acc.accountDisplayName === accountId);
-                    onChange(account?.accountDisplayName || opt.value);
-                  } else {
-                    onChange(opt.value);
-                  }
-                  setOpen(false); 
+                  handleOptionClick(opt);
                   setDropdownIndex(idx); 
                 }
               }}
@@ -215,6 +271,16 @@ export function PaymentMethodDropdown({
         </ul>,
         document.body
       )}
+      
+      {/* Bank Account Modal */}
+      <BankAccountModal
+        isOpen={showBankModal}
+        onClose={() => setShowBankModal(false)}
+        onSubmit={handleBankAccountSubmit}
+        loading={loading}
+        error={error}
+        useDivInsteadOfForm={true}
+      />
     </div>
   );
 }

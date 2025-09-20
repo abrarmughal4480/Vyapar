@@ -413,7 +413,7 @@ export default function CreateSalesOrderPage() {
   const [quotationId, setQuotationId] = useState<string | null>(null)
   
   // Bank accounts and payment method dropdown state
-  const { bankAccounts, loading: bankAccountsLoading } = useBankAccounts()
+  const { bankAccounts, loading: bankAccountsLoading, refetch: refetchBankAccounts } = useBankAccounts()
   const [paymentMethodDropdownIndex, setPaymentMethodDropdownIndex] = useState(0)
 
   const [isLoading, setIsLoading] = useState(false)
@@ -1452,6 +1452,7 @@ export default function CreateSalesOrderPage() {
                       className="mb-1"
                       dropdownIndex={paymentMethodDropdownIndex}
                       setDropdownIndex={setPaymentMethodDropdownIndex}
+                      onBankAccountAdded={refetchBankAccounts}
                     />
                     <div className="text-xs text-gray-500 min-h-[20px] sm:min-h-[24px] mt-1"></div>
                   </div>

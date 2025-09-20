@@ -17,6 +17,7 @@ import { useSidebar } from '../../contexts/SidebarContext';
 import { UnitsDropdown } from '../../components/UnitsDropdown';
 import { ItemsDropdown } from '../../components/ItemsDropdown';
 import { CustomDropdown } from '../../components/CustomDropdown';
+import { PaymentMethodDropdown } from '../../components/PaymentMethodDropdown';
 import { useBankAccounts } from '../../hooks/useBankAccounts';
 
 // Utility functions for unit conversion
@@ -234,7 +235,7 @@ export default function AddPurchasePage() {
   const [wasSidebarCollapsed, setWasSidebarCollapsed] = useState(false);
   
   // Bank accounts hook
-  const { bankAccounts, loading: bankAccountsLoading } = useBankAccounts();
+  const { bankAccounts, loading: bankAccountsLoading, refetch: refetchBankAccounts } = useBankAccounts();
   const [formData, setFormData] = useState<FormData>({
     billNumber: 'Purchase #1',
     billDate: '19/06/2025',
@@ -2949,22 +2950,36 @@ export default function AddPurchasePage() {
                       <label className="block text-xs sm:text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
                         <span>💳</span> Payment Method
                       </label>
-                      <CustomDropdown
-                        options={[
-                          { value: 'Cash', label: 'Cash' },
-                          { value: 'Cheque', label: 'Cheque' },
-                          // Add bank accounts as options
-                          ...bankAccounts.map(bank => ({
-                            value: `bank_${bank._id}`,
-                            label: bank.accountDisplayName
-                          }))
-                        ]}
+                      <PaymentMethodDropdown
                         value={newPurchase.paymentType}
-                        onChange={val => setNewPurchase(prev => ({ ...prev, paymentType: val }))}
+                        onChange={val => {
+                          // Handle different payment method types
+                          if (val === 'Cash' || val === 'Cheque') {
+                            setNewPurchase(prev => ({ 
+                              ...prev, 
+                              paymentType: val
+                            }));
+                          } else {
+                            // Bank account selected - find the bank account ID
+                            const bankAccount = bankAccounts.find(bank => bank.accountDisplayName === val);
+                            if (bankAccount) {
+                              setNewPurchase(prev => ({ 
+                                ...prev, 
+                                paymentType: `bank_${bankAccount._id}`
+                              }));
+                            } else {
+                              setNewPurchase(prev => ({ 
+                                ...prev, 
+                                paymentType: val
+                              }));
+                            }
+                          }
+                        }}
+                        bankAccounts={bankAccounts}
                         className="mb-1 w-full"
                         dropdownIndex={paymentMethodDropdownIndex}
                         setDropdownIndex={setPaymentMethodDropdownIndex}
-                        optionsCount={2 + bankAccounts.length}
+                        onBankAccountAdded={refetchBankAccounts}
                       />
                       
                       {/* Paid Amount Field - Always Show */}

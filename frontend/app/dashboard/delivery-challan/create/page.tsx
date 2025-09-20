@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from
 import { useRouter } from 'next/navigation'
 import Toast from '../../../components/Toast'
 import { CustomDropdown, type DropdownOption } from '../../../components/CustomDropdown'
+import { PaymentMethodDropdown } from '../../../components/PaymentMethodDropdown'
+import { useBankAccounts } from '../../../hooks/useBankAccounts'
 import ReactDOM from 'react-dom'
 import { getToken } from '../../../lib/auth'
 import { createDeliveryChallan } from '../../../../http/deliveryChallan'
@@ -604,6 +606,10 @@ function ItemRow({
 
 export default function CreateSalesOrderPage() {
   const router = useRouter()
+  
+  // Bank accounts hook
+  const { bankAccounts, refetch: refetchBankAccounts } = useBankAccounts();
+  
   const [formData, setFormData] = useState<FormData>({
     refNo: '1',
     invoiceDate: new Date().toISOString().split('T')[0],
@@ -1303,17 +1309,28 @@ export default function CreateSalesOrderPage() {
                   <span>💳</span> Payment Type
                 </label>
                 <div className="flex flex-col">
-                  <CustomDropdown
-                    options={[
-                      { value: 'Credit', label: 'Credit' },
-                      { value: 'Cash', label: 'Cash' },
-                    ]}
+                  <PaymentMethodDropdown
                     value="Credit"
-                    onChange={e => {}}
+                    onChange={(val) => {
+                      // Handle different payment method types
+                      if (val === 'Cash' || val === 'Cheque') {
+                        // Update form data if needed
+                        console.log('Payment method changed to:', val);
+                      } else {
+                        // Bank account selected - find the bank account ID
+                        const bankAccount = bankAccounts.find(bank => bank.accountDisplayName === val);
+                        if (bankAccount) {
+                          console.log('Bank account selected:', bankAccount);
+                        } else {
+                          console.log('Payment method changed to:', val);
+                        }
+                      }
+                    }}
+                    bankAccounts={bankAccounts}
                     className="mb-1 border-2 border-blue-100 rounded-lg h-11"
                     dropdownIndex={paymentTypeDropdownIndex}
                     setDropdownIndex={setPaymentTypeDropdownIndex}
-                    optionsCount={2}
+                    onBankAccountAdded={refetchBankAccounts}
                   />
                   <div className="text-xs text-gray-500 min-h-[24px] mt-1"></div>
                 </div>

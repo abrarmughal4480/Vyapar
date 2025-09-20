@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { receivePayment } from '@/http/sales';
 import Toast from '../../../components/Toast';
+import { PaymentMethodDropdown } from '../../../components/PaymentMethodDropdown';
+import { useBankAccounts } from '../../../hooks/useBankAccounts';
 
 interface PaymentInModalProps {
   isOpen: boolean;
@@ -15,85 +17,12 @@ interface PaymentInModalProps {
   onSave?: (data: any) => void;
 }
 
-const paymentTypeOptions = [
-  { value: 'Cash', label: 'Cash' },
-  { value: 'Cheque', label: 'Cheque' },
-];
-
-function PaymentTypeDropdown({ value, onChange }: { value: string; onChange: (val: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const btnRef = React.useRef<HTMLButtonElement>(null);
-  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
-
-  React.useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (!btnRef.current) return;
-      if (!(event.target instanceof Node)) return;
-      if (!btnRef.current.contains(event.target as Node)) setOpen(false);
-    }
-    if (open) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
-
-  React.useEffect(() => {
-    if (open && btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
-      setDropdownStyle({
-        position: 'absolute',
-        top: rect.bottom + window.scrollY + 6,
-        left: rect.left + window.scrollX,
-        width: rect.width,
-        zIndex: 1000,
-        maxHeight: '12rem',
-        overflowY: 'auto',
-      });
-    }
-  }, [open]);
-
-  return (
-    <div style={{ position: 'relative' }}>
-      <button
-        ref={btnRef}
-        type="button"
-        className="w-full px-4 py-2.5 rounded-full bg-white/80 shadow border border-gray-200 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all group flex items-center justify-between"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="listbox"
-        aria-expanded={open ? 'true' : 'false'}
-        style={{ fontWeight: 500, fontSize: 15, minHeight: 44 }}
-      >
-        <span className="truncate">{paymentTypeOptions.find((o) => o.value === value)?.label || 'Select'}</span>
-        <svg className={`w-5 h-5 ml-2 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-      </button>
-      {open && (
-        <ul
-          className="absolute z-[9999] bg-white rounded-xl shadow-lg border border-gray-100 py-1 max-h-60 overflow-auto animate-fadeinup"
-          style={{
-            top: '110%',
-            left: 0,
-            width: '100%',
-            position: 'absolute',
-          }}
-          tabIndex={-1}
-          role="listbox"
-        >
-          {paymentTypeOptions.map((opt) => (
-            <li
-              key={opt.value}
-              className={`px-4 py-2 cursor-pointer rounded-lg transition-all hover:bg-blue-50 ${value === opt.value ? 'font-semibold text-blue-600' : 'text-gray-700'}`}
-              onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); }}
-              role="option"
-              aria-selected={value === opt.value}
-            >
-              {opt.label}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyName, total, dueBalance, saleId, onSave }) => {
+  // Bank accounts hook
+  const { bankAccounts, refetch: refetchBankAccounts } = useBankAccounts();
+  const [paymentMethodDropdownIndex, setPaymentMethodDropdownIndex] = useState(0);
+  
   const [paymentType, setPaymentType] = useState('Cash');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [receivedAmount, setReceivedAmount] = useState('');
@@ -186,7 +115,28 @@ const PaymentInModal: React.FC<PaymentInModalProps> = ({ isOpen, onClose, partyN
             </div>
             <div style={{ marginBottom: 22, position: 'relative' }}>
               <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Payment Type</label>
-              <PaymentTypeDropdown value={paymentType} onChange={setPaymentType} />
+              <PaymentMethodDropdown
+                value={paymentType}
+                onChange={(val) => {
+                  // Handle different payment method types
+                  if (val === 'Cash' || val === 'Cheque') {
+                    setPaymentType(val);
+                  } else {
+                    // Bank account selected - find the bank account ID
+                    const bankAccount = bankAccounts.find(bank => bank.accountDisplayName === val);
+                    if (bankAccount) {
+                      setPaymentType(`bank_${bankAccount._id}`);
+                    } else {
+                      setPaymentType(val);
+                    }
+                  }
+                }}
+                bankAccounts={bankAccounts}
+                className="w-full"
+                dropdownIndex={paymentMethodDropdownIndex}
+                setDropdownIndex={setPaymentMethodDropdownIndex}
+                onBankAccountAdded={refetchBankAccounts}
+              />
             </div>
             <div style={{ marginBottom: 22 }}>
               <label style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Date</label>

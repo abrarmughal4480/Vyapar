@@ -104,7 +104,10 @@ const _getCashInHandForUser = async (userId) => {
     
     const [cashFlowData, purchaseData, expenseData, creditNotesData, cashAdjustmentsData] = await Promise.all([
       Sale.aggregate([
-        { $match: { userId: objectUserId } },
+        { $match: { 
+          userId: objectUserId,
+          paymentMethod: { $nin: ['Cheque', 'Bank Transfer'] }
+        }},
         { $group: { 
           _id: null, 
           totalReceived: { $sum: { $ifNull: ['$received', 0] } },
@@ -113,7 +116,10 @@ const _getCashInHandForUser = async (userId) => {
       ]).allowDiskUse(true),
 
       Purchase.aggregate([
-        { $match: { userId: objectUserId } },
+        { $match: { 
+          userId: objectUserId,
+          paymentMethod: { $nin: ['Cheque', 'Bank Transfer'] }
+        }},
         { $group: { 
           _id: null, 
           totalPaid: { $sum: { $ifNull: ['$paid', 0] } },
@@ -122,7 +128,10 @@ const _getCashInHandForUser = async (userId) => {
       ]).allowDiskUse(true),
 
       Expense.aggregate([
-        { $match: { userId: objectUserId } },
+        { $match: { 
+          userId: objectUserId,
+          paymentType: { $nin: ['Cheque', 'Card', 'UPI'] }
+        }},
         { $group: { _id: null, total: { $sum: { $ifNull: ['$totalAmount', 0] } } }}
       ]).allowDiskUse(true),
 
@@ -179,6 +188,39 @@ const _getCashInHandForUser = async (userId) => {
   }
 };
 
+const _getCashInBankForUser = async (userId) => {
+  try {
+    const BankAccount = (await import('../models/bankAccount.js')).default;
+    
+    // Get all active bank accounts for the user
+    const bankAccounts = await BankAccount.find({ 
+      userId: userId, 
+      isActive: true 
+    }).select('currentBalance accountDisplayName');
+    
+    // Calculate total balance across all bank accounts
+    const totalBankBalance = bankAccounts.reduce((sum, account) => {
+      return sum + (account.currentBalance || 0);
+    }, 0);
+    
+    return {
+      totalBalance: totalBankBalance,
+      accountsCount: bankAccounts.length,
+      accounts: bankAccounts.map(account => ({
+        name: account.accountDisplayName,
+        balance: account.currentBalance || 0
+      }))
+    };
+  } catch (error) {
+    console.error('Error calculating cash in bank:', error);
+    return {
+      totalBalance: 0,
+      accountsCount: 0,
+      accounts: []
+    };
+  }
+};
+
 export const getDashboardStats = async (req, res) => {
   try {
     const userId = req.user && (req.user._id || req.user.id);
@@ -204,7 +246,8 @@ export const getDashboardStats = async (req, res) => {
       revenueStats,
       monthlyStats,
       stockStats,
-      additionalStats
+      additionalStats,
+      cashInBankData
     ] = await Promise.all([
       Promise.all([
         Sale.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$grandTotal' } } }], queryOptions),
@@ -336,7 +379,10 @@ export const getDashboardStats = async (req, res) => {
       Promise.all([
         Expense.aggregate([{ $match: { userId: objectUserId } }, { $group: { _id: null, total: { $sum: '$totalAmount' } } }], queryOptions),
         CashBank.findOne({ userId: objectUserId }).sort({ createdAt: -1 }).select('cashInHand').lean()
-      ])
+      ]),
+      
+      // Calculate cash in bank
+      _getCashInBankForUser(userId)
     ]);
 
     const [sales, purchases, customers, items, totalOrders] = basicStats;
@@ -344,6 +390,7 @@ export const getDashboardStats = async (req, res) => {
     const [thisMonthAgg, lastMonthAgg, thisMonthOrders, lastMonthOrders, thisMonthProducts, lastMonthProducts, thisMonthCustomers, lastMonthCustomers] = monthlyStats;
     const [stockValueAgg, lowStockItems] = stockStats;
     const [expenseAgg, cashBankData] = additionalStats;
+    const cashInBank = cashInBankData;
 
     const [totalExpenses, cashInHand, parties] = await Promise.all([
       _getExpenseStatsForUser(userId),
@@ -476,6 +523,9 @@ export const getDashboardStats = async (req, res) => {
         negativeStockItems: 0,
         totalExpenses: totalExpenses,
         cashInHand: cashInHand,
+        cashInBank: cashInBank.totalBalance,
+        bankAccountsCount: cashInBank.accountsCount,
+        bankAccounts: cashInBank.accounts,
         revenueBreakdown: revenueBreakdown
       }
     };

@@ -650,10 +650,10 @@ function CreateSalesOrderPageContent() {
 
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-2 sm:px-4 md:px-8">
-      <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-6">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-1 sm:p-2">
+      <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-1 sm:my-3">
         {/* Sticky Header */}
-        <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 flex justify-between items-center px-6 py-4">
+        <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 flex justify-between items-center px-2 sm:px-4 py-4">
           <h1 className="text-xl md:text-2xl font-bold text-gray-900">
             {isEditMode ? 'Edit Quotation' : 'Add Quotation'}
           </h1>
@@ -686,7 +686,7 @@ function CreateSalesOrderPageContent() {
           )}
 
           {/* Customer Section */}
-          <div className="bg-gray-50 px-6 py-6 w-full">
+          <div className="bg-gray-50 px-2 sm:px-4 py-6 w-full">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-blue-600 mb-2">Customer *</label>
@@ -755,7 +755,7 @@ function CreateSalesOrderPageContent() {
           </div>
 
           {/* Items Table Section */}
-          <div className="bg-white px-6 py-6 w-full rounded-b-2xl">
+          <div className="bg-white px-2 sm:px-4 py-6 w-full rounded-b-2xl">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-semibold text-blue-800 flex items-center gap-2">
                 <span>🛒</span> Items
@@ -763,12 +763,13 @@ function CreateSalesOrderPageContent() {
               <button
                 type="button"
                 onClick={addRow}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-sm hover:shadow-lg transform hover:scale-105"
+                className="inline-flex items-center gap-2 px-3 py-2 sm:px-5 sm:py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-xs sm:text-sm hover:shadow-lg transform hover:scale-105"
               >
-                <span className="text-xl">+</span> Add Row
+                <span className="text-lg sm:text-xl">+</span> <span className="hidden sm:inline">Add Row</span><span className="sm:hidden">Add</span>
               </button>
             </div>
-            <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100">
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100 w-full">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10">
                   <tr className="border-b border-gray-200 bg-blue-100">
@@ -1162,10 +1163,174 @@ function CreateSalesOrderPageContent() {
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-3">
+              {formData.items.map((item: { id: number; item: string; qty: number; unit: string; price: number; amount: number; discountPercentage: string; discountAmount: string }, index: number) => (
+                <div key={item.id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                  {/* Item Name - Full Width */}
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Item Name</label>
+                    <ItemsDropdown
+                      items={itemSuggestions}
+                      value={item.item}
+                      onChange={(val) => updateItem(item.id, 'item', val)}
+                      onItemSelect={(selectedItem) => {
+                        const unitDisplay = getUnitDisplay(selectedItem.unit);
+                        updateItem(item.id, 'unit', unitDisplay);
+                        updateItem(item.id, 'price', selectedItem.salePrice || 0);
+                        updateItem(item.id, 'qty', 1);
+                      }}
+                      className="w-full"
+                      placeholder="Enter item name..."
+                      showSuggestions={false}
+                      setShowSuggestions={() => {}}
+                    />
+                  </div>
+
+                  {/* Quantity and Unit - Side by Side */}
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Quantity</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={item.qty}
+                        onChange={(e) => {
+                          const newQty = parseFloat(e.target.value) || 0;
+                          updateItem(item.id, 'qty', newQty);
+                          
+                          if (index === formData.items.length - 1 && newQty > 0) {
+                            addRow();
+                          }
+                        }}
+                        className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Unit</label>
+                      <UnitsDropdown
+                        units={(() => {
+                          const units: any[] = [];
+                          if (item.item) {
+                            const selectedItem = itemSuggestions.find(i => i.name === item.item);
+                            if (selectedItem && selectedItem.unit) {
+                              const unit = selectedItem.unit;
+                              if (typeof unit === 'object' && unit.base) {
+                                if (unit.base && unit.base !== 'NONE') {
+                                  units.push({ value: unit.base, label: unit.base });
+                                }
+                                if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) {
+                                  units.push({ value: unit.secondary, label: unit.secondary });
+                                }
+                              } else if (typeof unit === 'string' && unit.includes(' / ')) {
+                                const parts = unit.split(' / ');
+                                if (parts[0] && parts[0] !== 'NONE') {
+                                  units.push({ value: parts[0], label: parts[0] });
+                                }
+                                if (parts[1] && parts[1] !== 'None') {
+                                  units.push({ value: parts[1], label: parts[1] });
+                                }
+                              } else if (typeof unit === 'string') {
+                                units.push({ value: unit, label: unit });
+                              }
+                            }
+                          }
+                          if (units.length === 0) {
+                            units.push({ value: 'NONE', label: 'NONE' });
+                          }
+                          return units;
+                        })()}
+                        value={item.unit}
+                        onChange={(val) => updateItem(item.id, 'unit', val)}
+                        dropdownIndex={0}
+                        setDropdownIndex={() => {}}
+                        optionsCount={1}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Price per Unit - Full Width */}
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Price per Unit</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.price}
+                      onChange={(e) => updateItem(item.id, 'price', parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  {/* Discount - Side by Side */}
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Discount %</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.discountPercentage}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value) || 0;
+                          const calculatedAmount = (item.price * item.qty * value) / 100;
+                          updateItem(item.id, 'discountPercentage', value);
+                          updateItem(item.id, 'discountAmount', calculatedAmount.toFixed(2));
+                        }}
+                        className="w-full px-2 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all text-center"
+                        placeholder="0.00"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Discount Amount</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.discountAmount}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value) || 0;
+                          const calculatedPercentage = item.price * item.qty > 0 ? (value / (item.price * item.qty)) * 100 : 0;
+                          updateItem(item.id, 'discountAmount', value);
+                          updateItem(item.id, 'discountPercentage', calculatedPercentage.toFixed(2));
+                        }}
+                        className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all text-center"
+                        placeholder="0.00"
+                        autoComplete="off"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Final Amount and Actions */}
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="text-xs text-gray-500">Amount:</span>
+                      <span className="ml-2 text-sm font-semibold text-gray-900">
+                        PKR {item.amount.toFixed(2)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeRow(item.id)}
+                      className="text-red-500 hover:text-red-700 p-1"
+                      title="Delete row"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Image Upload & Description Section */}
-          <div className="bg-gray-50 px-6 py-6 w-full">
+          <div className="bg-gray-50 px-2 sm:px-4 py-6 w-full">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Add Image</label>
@@ -1232,51 +1397,53 @@ function CreateSalesOrderPageContent() {
           </div>
 
           {/* Summary Section */}
-          <div className="bg-white px-6 py-8 w-full rounded-xl shadow-sm mt-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-              {/* Discount */}
-              <div>
-                <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                  <span>💸</span> Discount
-                </label>
-                <div className="flex flex-row items-center gap-2">
-                  <div className="flex flex-col flex-1">
-                    <div className="flex flex-row gap-2">
-                      <input
-                        type="number"
-                        value={formData.discount}
-                        onChange={(e) => setFormData(prev => ({ ...prev, discount: parseFloat(e.target.value) || 0 }))}
-                        className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
-                        autoComplete="off"
-                        autoCorrect="off"
-                        spellCheck={false}
-                      />
-                      <CustomDropdown
-                        options={[
-                          { value: '%', label: '%' },
-                          { value: 'PKR', label: '(PKR)' },
-                        ]}
-                        value={formData.discountType}
-                        onChange={val => setFormData(prev => ({ ...prev, discountType: val }))}
-                        className="w-28 min-w-[72px] mb-1 h-11 border-2 border-blue-100 rounded-lg"
-                        dropdownIndex={dropdownIndex}
-                        setDropdownIndex={setDropdownIndex}
-                        optionsCount={2}
-                      />
-                    </div>
-                    <div className="text-xs text-gray-500 min-h-[24px] mt-1">
-                      {formData.discount && !isNaN(Number(formData.discount)) ? (
-                        <>
-                          Global Discount: 
-                          {formData.discountType === '%'
-                            ? `${formData.discount}% = PKR ${(originalSubtotal * formData.discount / 100).toFixed(2)}`
-                            : `PKR ${Number(formData.discount).toFixed(2)}`}
-                        </>
-                      ) : null}
+          <div className="bg-white px-2 sm:px-4 py-8 w-full rounded-xl shadow-sm mt-4">
+            <div className="flex flex-col lg:flex-row justify-between items-end gap-6">
+              {/* Left Side - Discount and Tax */}
+              <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 w-full">
+                {/* Discount */}
+                <div className="w-full sm:w-auto sm:min-w-[200px]">
+                  <label className="block text-xs sm:text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                    <span>💸</span> Discount
+                  </label>
+                  <div className="flex flex-row items-center gap-2">
+                    <div className="flex flex-col flex-1">
+                      <div className="flex flex-row gap-2">
+                        <input
+                          type="number"
+                          value={formData.discount}
+                          onChange={(e) => setFormData(prev => ({ ...prev, discount: parseFloat(e.target.value) || 0 }))}
+                          className="w-20 sm:w-24 h-10 sm:h-11 px-2 sm:px-3 text-sm sm:text-base border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                          autoComplete="off"
+                          autoCorrect="off"
+                          spellCheck={false}
+                        />
+                        <CustomDropdown
+                          options={[
+                            { value: '%', label: '%' },
+                            { value: 'PKR', label: '(PKR)' },
+                          ]}
+                          value={formData.discountType}
+                          onChange={val => setFormData(prev => ({ ...prev, discountType: val }))}
+                          className="w-20 sm:w-28 min-w-[60px] sm:min-w-[72px] mb-1 h-10 sm:h-11 border-2 border-blue-100 rounded-lg"
+                          dropdownIndex={dropdownIndex}
+                          setDropdownIndex={setDropdownIndex}
+                          optionsCount={2}
+                        />
+                      </div>
+                      <div className="text-xs text-gray-500 min-h-[20px] sm:min-h-[24px] mt-1">
+                        {formData.discount && !isNaN(Number(formData.discount)) ? (
+                          <>
+                            Global Discount: 
+                            {formData.discountType === '%'
+                              ? `${formData.discount}% = PKR ${(originalSubtotal * formData.discount / 100).toFixed(2)}`
+                              : `PKR ${Number(formData.discount).toFixed(2)}`}
+                          </>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
               {/* Tax */}
               <div>

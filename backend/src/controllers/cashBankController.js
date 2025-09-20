@@ -585,14 +585,20 @@ export const getCashInHandSummary = async (req, res) => {
 
     let cashInHand = 0;
 
-    // Fetch transaction data
-    const sales = await Sale.find({ userId })
-      .select('invoiceNo partyName grandTotal received balance paymentType createdAt')
+    // Fetch transaction data - exclude bank payment methods
+    const sales = await Sale.find({ 
+      userId,
+      paymentMethod: { $nin: ['Cheque', 'Bank Transfer'] }
+    })
+      .select('invoiceNo partyName grandTotal received balance paymentType paymentMethod createdAt')
       .sort({ createdAt: -1 })
       .limit(50);
 
-    const purchases = await Purchase.find({ userId })
-      .select('billNo supplierName grandTotal paid balance paymentType createdAt')
+    const purchases = await Purchase.find({ 
+      userId,
+      paymentMethod: { $nin: ['Cheque', 'Bank Transfer'] }
+    })
+      .select('billNo supplierName grandTotal paid balance paymentType paymentMethod createdAt')
       .sort({ createdAt: -1 })
       .limit(50);
 
@@ -601,12 +607,15 @@ export const getCashInHandSummary = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(50);
 
-    const expenses = await Expense.find({ userId })
+    const expenses = await Expense.find({ 
+      userId,
+      paymentType: { $nin: ['Cheque', 'Card', 'UPI'] }
+    })
       .select('expenseNumber party totalAmount paymentType expenseDate createdAt')
       .sort({ createdAt: -1 })
       .limit(50);
 
-    // Calculate transaction totals
+    // Calculate transaction totals - only cash transactions are included
     const totalSales = sales.reduce((sum, sale) => sum + (sale.grandTotal || 0), 0);
     const totalReceived = sales.reduce((sum, sale) => sum + (sale.received || 0), 0);
     const totalSalesBalance = sales.reduce((sum, sale) => sum + (sale.balance || 0), 0);
@@ -704,20 +713,32 @@ export const getCashFlowDetails = async (req, res) => {
       typeQuery = { type };
     }
 
-    // Fetch transactions by date range
-    const sales = await Sale.find({ userId, ...dateQuery })
-      .select('invoiceNo partyName grandTotal received balance paymentType createdAt')
+    // Fetch transactions by date range - exclude bank payment methods
+    const sales = await Sale.find({ 
+      userId, 
+      ...dateQuery,
+      paymentMethod: { $nin: ['Cheque', 'Bank Transfer'] }
+    })
+      .select('invoiceNo partyName grandTotal received balance paymentType paymentMethod createdAt')
       .sort({ createdAt: -1 });
 
-    const purchases = await Purchase.find({ userId, ...dateQuery })
-      .select('billNo supplierName grandTotal paid balance paymentType createdAt')
+    const purchases = await Purchase.find({ 
+      userId, 
+      ...dateQuery,
+      paymentMethod: { $nin: ['Cheque', 'Bank Transfer'] }
+    })
+      .select('billNo supplierName grandTotal paid balance paymentType paymentMethod createdAt')
       .sort({ createdAt: -1 });
 
     const creditNotes = await CreditNote.find({ userId, ...dateQuery })
       .select('creditNoteNo partyName amount type createdAt')
       .sort({ createdAt: -1 });
 
-    const expenses = await Expense.find({ userId, ...dateQuery })
+    const expenses = await Expense.find({ 
+      userId, 
+      ...dateQuery,
+      paymentType: { $nin: ['Cheque', 'Card', 'UPI'] }
+    })
       .select('expenseNumber party totalAmount paymentType expenseDate createdAt')
       .sort({ createdAt: -1 });
 
@@ -794,12 +815,21 @@ export const addCashAdjustment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
-    // Calculate current balance
+    // Calculate current balance - exclude bank payment methods
     const [sales, purchases, creditNotes, expenses, existingCashAdjustments] = await Promise.all([
-      Sale.find({ userId }).select('grandTotal received'),
-      Purchase.find({ userId }).select('grandTotal paid'),
+      Sale.find({ 
+        userId,
+        paymentMethod: { $nin: ['Cheque', 'Bank Transfer'] }
+      }).select('grandTotal received'),
+      Purchase.find({ 
+        userId,
+        paymentMethod: { $nin: ['Cheque', 'Bank Transfer'] }
+      }).select('grandTotal paid'),
       CreditNote.find({ userId }).select('amount type'),
-      Expense.find({ userId }).select('totalAmount'),
+      Expense.find({ 
+        userId,
+        paymentType: { $nin: ['Cheque', 'Card', 'UPI'] }
+      }).select('totalAmount'),
       CashBank.find({ userId }).sort({ createdAt: 1 })
     ]);
 
@@ -883,15 +913,21 @@ export const getCashBankTransactions = async (req, res) => {
     
     const skip = (page - 1) * limit;
     
-    // Fetch all transaction types
+    // Fetch all transaction types - exclude bank payment methods
     const [sales, purchases, creditNotes, expenses, cashAdjustments] = await Promise.all([
-      Sale.find({ userId })
-        .select('invoiceNo partyName grandTotal received balance paymentType createdAt')
+      Sale.find({ 
+        userId,
+        paymentMethod: { $nin: ['Cheque', 'Bank Transfer'] }
+      })
+        .select('invoiceNo partyName grandTotal received balance paymentType paymentMethod createdAt')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
-      Purchase.find({ userId })
-        .select('billNo supplierName grandTotal paid balance paymentType createdAt')
+      Purchase.find({ 
+        userId,
+        paymentMethod: { $nin: ['Cheque', 'Bank Transfer'] }
+      })
+        .select('billNo supplierName grandTotal paid balance paymentType paymentMethod createdAt')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
@@ -900,7 +936,10 @@ export const getCashBankTransactions = async (req, res) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
-      Expense.find({ userId })
+      Expense.find({ 
+        userId,
+        paymentType: { $nin: ['Cheque', 'Card', 'UPI'] }
+      })
         .select('expenseNumber party totalAmount paymentType expenseDate createdAt')
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -1022,12 +1061,21 @@ export const updateCashAdjustment = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Cash adjustment not found' });
     }
 
-    // Calculate current cash balance using the same logic as getCashInHandSummary
+    // Calculate current cash balance using the same logic as getCashInHandSummary - exclude bank payment methods
     const [sales, purchases, creditNotes, expenses, existingCashAdjustments] = await Promise.all([
-      Sale.find({ userId }).select('grandTotal received'),
-      Purchase.find({ userId }).select('grandTotal paid'),
+      Sale.find({ 
+        userId,
+        paymentMethod: { $nin: ['Cheque', 'Bank Transfer'] }
+      }).select('grandTotal received'),
+      Purchase.find({ 
+        userId,
+        paymentMethod: { $nin: ['Cheque', 'Bank Transfer'] }
+      }).select('grandTotal paid'),
       CreditNote.find({ userId }).select('amount type'),
-      Expense.find({ userId }).select('totalAmount'),
+      Expense.find({ 
+        userId,
+        paymentType: { $nin: ['Cheque', 'Card', 'UPI'] }
+      }).select('totalAmount'),
       CashBank.find({ userId }).sort({ createdAt: 1 })
     ]);
 

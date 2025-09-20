@@ -212,7 +212,7 @@ export function ItemsDropdown({
               <li
                 key={item.id || `${item.name}-${idx}`}
                 data-dropdown-index={idx}
-                className={`px-4 py-2 cursor-pointer flex items-center gap-2 transition-colors ${value === item.name ? 'font-semibold text-gray-700 bg-blue-100' : 'text-gray-700'} ${highlightedIndex === idx ? 'font-semibold text-gray-700 bg-blue-50' : 'bg-white hover:bg-blue-50'}`}
+                className={`px-2 py-2 cursor-pointer transition-colors ${value === item.name ? 'font-semibold text-gray-700 bg-blue-100' : 'text-gray-700'} ${highlightedIndex === idx ? 'font-semibold text-gray-700 bg-blue-50' : 'bg-white hover:bg-blue-50'}`}
                 onMouseDown={e => { e.preventDefault(); handleItemClick(item); }}
                 tabIndex={0}
                 onKeyDown={(e: React.KeyboardEvent<HTMLLIElement>) => { 
@@ -223,24 +223,25 @@ export function ItemsDropdown({
                 }}
                 aria-selected={value === item.name}
                 role="option"
-
               >
-                <span className="flex-1">{item.name}</span>
-                <div className="flex items-center text-xs text-gray-500">
+                <div className="w-full text-xs sm:text-sm font-medium text-gray-900 mb-1">
+                  {item.name}
+                </div>
+                <div className="flex items-center justify-end text-xs text-gray-500 whitespace-nowrap mr-2">
                   {item.purchasePrice && (
-                    <span>Purchase: PKR {item.purchasePrice}</span>
+                    <span className="text-xs">P: {item.purchasePrice}</span>
                   )}
                   {item.salePrice && (
                     <>
-                      {item.purchasePrice && <span className="mx-2">•</span>}
-                      <span>Sale: PKR {item.salePrice}</span>
+                      {item.purchasePrice && <span className="mx-1">•</span>}
+                      <span className="text-xs">S: {item.salePrice}</span>
                     </>
                   )}
                   {(item.stock !== undefined || item.unit) && (
                     <>
-                      {(item.purchasePrice || item.salePrice) && <span className="mx-2">•</span>}
-                      <span>
-                        {item.stock !== undefined && `Qty: ${item.stock}`}
+                      {(item.purchasePrice || item.salePrice) && <span className="mx-1">•</span>}
+                      <span className="text-xs">
+                        {item.stock !== undefined && `Q:${item.stock}`}
                         {item.stock !== undefined && item.unit && ' '}
                         {item.unit && (typeof item.unit === 'object' ? (item.unit.base || item.unit.secondary || 'Unit') : item.unit)}
                       </span>

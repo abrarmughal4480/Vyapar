@@ -59,6 +59,9 @@ type BusinessStats = {
   outOfStockItems?: number;
   negativeStockItems?: number;
   cashInHand?: number;
+  cashInBank?: number;
+  bankAccountsCount?: number;
+  bankAccounts?: Array<{name: string; balance: number}>;
   totalExpenses?: number;
 };
 
@@ -541,6 +544,20 @@ export default function Dashboard() {
       color: 'text-purple-600',
       bgGradient: 'from-purple-500 to-indigo-600',
       bgLight: 'bg-purple-50',
+      trend: 'up',
+      onClick: () => {
+        router.push('/dashboard/cash-bank');
+      },
+    },
+    // New Stat: Cash In Bank
+    {
+      title: 'Cash In Bank',
+      value: `PKR ${(businessStats.cashInBank ?? 0).toLocaleString()}`,
+      change: `${businessStats.bankAccountsCount || 0} accounts`,
+      icon: Activity,
+      color: 'text-blue-600',
+      bgGradient: 'from-blue-500 to-cyan-600',
+      bgLight: 'bg-blue-50',
       trend: 'up',
       onClick: () => {
         router.push('/dashboard/cash-bank');

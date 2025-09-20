@@ -1964,7 +1964,8 @@ export default function AddPurchasePage() {
                     <span className="text-xl">+</span> Add Row
                   </button>
                 </div>
-                <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100">
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 z-10">
                       <tr className="border-b border-gray-200 bg-blue-100">
@@ -2416,6 +2417,377 @@ export default function AddPurchasePage() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Mobile Card View */}
+                <div className="md:hidden space-y-4">
+                  {newPurchase.items.map((item, index) => {
+                    // Get the current unit value for the dropdown
+                    const getCurrentUnitValue = () => {
+                      if (!item.item) return 'NONE';
+                      
+                      const selectedItem = itemSuggestions.find(i => i.name === item.item);
+                      if (!selectedItem || !selectedItem.unit) return 'NONE';
+                      
+                      // If the current unit is a display string, extract the base unit
+                      if (item.unit && item.unit.includes(' / ')) {
+                        const parts = item.unit.split(' / ');
+                        return parts[0] || 'NONE';
+                      }
+                      
+                      // If it's a single unit, return it
+                      if (item.unit && item.unit !== 'NONE') {
+                        return item.unit;
+                      }
+                      
+                      // Default to base unit from item data
+                      const unit = selectedItem.unit;
+                      if (typeof unit === 'object' && unit.base) {
+                        return unit.base || 'NONE';
+                      } else if (typeof unit === 'string' && unit.includes(' / ')) {
+                        const parts = unit.split(' / ');
+                        return parts[0] || 'NONE';
+                      } else if (typeof unit === 'string') {
+                        return unit || 'NONE';
+                      }
+                      
+                      return 'NONE';
+                    };
+
+                    return (
+                      <div key={item.id} className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
+                        {/* Row Number */}
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="text-sm font-semibold text-gray-600">#{index + 1}</span>
+                          {newPurchase.items.length > 1 && (
+                            <button
+                              type="button"
+                              className="text-red-600 hover:text-red-700 px-2 py-1 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 transition-colors text-sm"
+                              onClick={() => deleteRow(item.id)}
+                              title="Delete row"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Item Name - Full Width */}
+                        <div className="mb-3">
+                          <label className="block text-xs font-medium text-blue-600 mb-1">Item Name</label>
+                          {!isFromExpenses ? (
+                            <ItemsDropdown
+                              items={itemSuggestions}
+                              value={item.item}
+                              onChange={(val) => handleItemChange(item.id, 'item', val)}
+                              onItemSelect={(selectedItem: any) => {
+                                const unitDisplay = getUnitDisplay(selectedItem.unit);
+                                handleItemChange(item.id, 'unit', unitDisplay);
+                                
+                                // Set price based on the selected unit
+                                let initialPrice = selectedItem.purchasePrice || 0;
+                                if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                                  // purchasePrice is for base unit (Box), so use it directly for base unit
+                                  if (unitDisplay === selectedItem.unit.base) {
+                                    // For base unit, use the price directly
+                                    initialPrice = selectedItem.purchasePrice || 0;
+                                  } else if (unitDisplay === selectedItem.unit.secondary) {
+                                    // For secondary unit, multiply by conversion factor
+                                    initialPrice = (selectedItem.purchasePrice || 0) * selectedItem.unit.conversionFactor;
+                                  }
+                                }
+                                
+                                handleItemChange(item.id, 'price', initialPrice);
+                                handleItemChange(item.id, 'qty', '');
+                              }}
+                              showSuggestions={showItemSuggestions[item.id] || false}
+                              setShowSuggestions={(show) => setShowItemSuggestions(prev => ({ ...prev, [item.id]: show }))}
+                              placeholder="Enter item name..."
+                            />
+                          ) : (
+                            <input
+                              type="text"
+                              value={item.item}
+                              onChange={e => {
+                                handleItemChange(item.id, 'item', e.target.value);
+                              }}
+                              onFocus={(event: React.FocusEvent<HTMLInputElement>) => {
+                                // For expenses, show expense suggestions with proper positioning
+                                setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: true }));
+                                
+                                // Set dropdown position like purchase items
+                                const rect = event.target.getBoundingClientRect();
+                                const style: React.CSSProperties = {
+                                  position: 'absolute',
+                                  top: rect.bottom + window.scrollY + 4,
+                                  left: rect.left + window.scrollX,
+                                  width: rect.width,
+                                  zIndex: 9999,
+                                  maxHeight: '200px',
+                                  overflowY: 'auto' as const
+                                };
+                                setExpenseDropdownStyles(prev => ({ ...prev, [item.id]: style }));
+                              }}
+                              onBlur={() => setTimeout(() => {
+                                setShowExpenseSuggestions(prev => ({ ...prev, [item.id]: false }));
+                                // Clean up dropdown style
+                                setExpenseDropdownStyles(prev => {
+                                  const newStyles = { ...prev };
+                                  delete newStyles[item.id];
+                                  return newStyles;
+                                });
+                              }, 200)}
+                              className="w-full px-3 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                              placeholder="Enter expense item..."
+                            />
+                          )}
+                        </div>
+
+                        {/* Quantity and Unit - Second Line */}
+                        {!isFromExpenses && (
+                          <div className="grid grid-cols-2 gap-3 mb-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Quantity</label>
+                              <input
+                                type="number"
+                                value={item.qty}
+                                min={0}
+                                onChange={e => {
+                                  handleItemChange(item.id, 'qty', e.target.value);
+                                  // If this is the last row and qty is not empty, add a new row
+                                  if (
+                                    index === newPurchase.items.length - 1 &&
+                                    e.target.value
+                                  ) {
+                                    // Add a new row
+                                    addNewRow();
+                                  }
+                                }}
+                                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Unit</label>
+                              <UnitsDropdown
+                                units={(() => {
+                                  const units: any[] = [];
+                                  
+                                  // Add base and secondary units if they exist in the item data
+                                  if (item.item) {
+                                    const selectedItem = itemSuggestions.find(i => i.name === item.item);
+                                    if (selectedItem && selectedItem.unit) {
+                                      units.push(selectedItem.unit);
+                                    }
+                                  }
+                                  
+                                  // Always add NONE as a fallback option
+                                  if (units.length === 0) {
+                                    units.push('NONE');
+                                  }
+                                  
+                                  return units;
+                                })()}
+                                value={getCurrentUnitValue()}
+                                onChange={val => {
+                                  // Get the selected item data for conversion
+                                  const selectedItem = itemSuggestions.find(i => i.name === item.item);
+                                  if (selectedItem) {
+                                    // Don't convert quantity - keep it the same
+                                    // Only update price based on the new unit
+                                    let newPrice = item.price || 0;
+                                    
+                                    if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                                      if (val === selectedItem.unit.base) {
+                                        // Converting to base unit - use base price
+                                        newPrice = selectedItem.purchasePrice || 0;
+                                      } else if (val === selectedItem.unit.secondary) {
+                                        // Converting to secondary unit - multiply by conversion factor
+                                        newPrice = (selectedItem.purchasePrice || 0) * selectedItem.unit.conversionFactor;
+                                      }
+                                    }
+                                    
+                                    // Apply the new price
+                                    handleItemChange(item.id, 'price', newPrice);
+                                  }
+                                  
+                                  // Update the unit
+                                  handleItemChange(item.id, 'unit', val);
+                                }}
+                                dropdownIndex={unitsDropdownIndices[item.id] || 0}
+                                setDropdownIndex={(value: React.SetStateAction<number>) => {
+                                  if (typeof value === 'function') {
+                                    setUnitsDropdownIndices(prev => ({ ...prev, [item.id]: value(prev[item.id] || 0) }));
+                                  } else {
+                                    setUnitsDropdownIndices(prev => ({ ...prev, [item.id]: value }));
+                                  }
+                                }}
+                                optionsCount={(() => {
+                                  const units: any[] = [];
+                                  if (item.item) {
+                                    const selectedItem = itemSuggestions.find(i => i.name === item.item);
+                                    if (selectedItem && selectedItem.unit) {
+                                      units.push(selectedItem.unit);
+                                    }
+                                  }
+                                  
+                                  // Always add NONE as a fallback option
+                                  if (units.length === 0) {
+                                    units.push('NONE');
+                                  }
+                                  
+                                  // Calculate actual options count based on how UnitsDropdown processes units
+                                  let count = 0;
+                                  units.forEach(unit => {
+                                    if (typeof unit === 'string') {
+                                      count++;
+                                    } else if (unit.base) {
+                                      count++;
+                                      if (unit.secondary && unit.secondary !== 'None') {
+                                        count++;
+                                      }
+                                    }
+                                  });
+                                  
+                                  // Add Custom option
+                                  count++;
+                                  
+                                  return count;
+                                })()}
+                              />
+                              {item.unit === 'Custom' && (
+                                <input
+                                  type="text"
+                                  value={item.customUnit}
+                                  onChange={e => handleItemChange(item.id, 'customUnit', e.target.value)}
+                                  className="mt-2 w-full px-3 py-2 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                  placeholder="Enter custom unit"
+                                />
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Price per Unit - Third Line */}
+                        <div className="mb-3">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            {isFromExpenses ? 'Price' : 'Price per Unit'}
+                          </label>
+                          <input
+                            type="number"
+                            value={item.price}
+                            min={0}
+                            onChange={e => {
+                              handleItemChange(item.id, 'price', e.target.value);
+                              // Auto-add new row for expenses when typing price in last row
+                              if (isFromExpenses && e.target.value) {
+                                const currentItems = newPurchase.items;
+                                const isLastRow = index === currentItems.length - 1;
+                                if (isLastRow) {
+                                  // Last row has price, add new row
+                                  setTimeout(() => {
+                                    setNewPurchase(prev => ({
+                                      ...prev,
+                                      items: [
+                                        ...prev.items,
+                                        { id: Date.now(), item: '', itemCode: '', qty: '', unit: 'NONE', customUnit: '', price: '', amount: 0, discountPercentage: '', discountAmount: '' }
+                                      ]
+                                    }));
+                                  }, 100);
+                                }
+                              }
+                            }}
+                            className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                          />
+                        </div>
+
+                        {/* Discount and Amount - Fourth Line */}
+                        {!isFromExpenses && pageType === 'purchase-bill' && (
+                          <div className="grid grid-cols-2 gap-3 mb-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Discount %</label>
+                              <input
+                                type="number"
+                                value={item.discountPercentage || ''}
+                                min={0}
+                                onChange={e => {
+                                  const value = e.target.value;
+                                  const qty = parseFloat(item.qty) || 1; // Default to 1 if empty
+                                  const price = parseFloat(item.price) || 0;
+                                  const totalAmount = qty * price;
+                                  
+                                  // Calculate amount when percentage changes
+                                  const percentage = parseFloat(value) || 0;
+                                  const calculatedAmount = (totalAmount * percentage) / 100;
+                                  
+                                  // Update both fields simultaneously
+                                  handleItemChange(item.id, 'discountPercentage', value);
+                                  handleItemChange(item.id, 'discountAmount', calculatedAmount.toFixed(2));
+                                }}
+                                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all text-center"
+                                placeholder="0.00"
+                                autoComplete="off"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Discount Amount</label>
+                              <input
+                                type="number"
+                                value={item.discountAmount || ''}
+                                min={0}
+                                onChange={e => {
+                                  const value = e.target.value;
+                                  const qty = parseFloat(item.qty) || 1; // Default to 1 if empty
+                                  const price = parseFloat(item.price) || 0;
+                                  const totalAmount = qty * price;
+                                  
+                                  // Calculate percentage when amount changes
+                                  const amount = parseFloat(value) || 0;
+                                  const calculatedPercentage = totalAmount > 0 ? (amount / totalAmount) * 100 : 0;
+                                  
+                                  // Update both fields simultaneously
+                                  handleItemChange(item.id, 'discountAmount', value);
+                                  handleItemChange(item.id, 'discountPercentage', calculatedPercentage.toFixed(2));
+                                }}
+                                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all text-center"
+                                placeholder="0.00"
+                                autoComplete="off"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Final Amount */}
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium text-gray-600">Amount:</span>
+                            <span className="text-lg font-bold text-blue-700">
+                              {(() => {
+                                if (isFromExpenses) {
+                                  return isNaN(item.amount) ? '0.00' : item.amount.toFixed(2);
+                                } else {
+                                  const qty = parseFloat(item.qty) || 0;
+                                  const price = parseFloat(item.price) || 0;
+                                  const originalAmount = qty * price;
+                                  
+                                  // Calculate discount amount
+                                  let discountAmount = 0;
+                                  if (item.discountPercentage) {
+                                    discountAmount = (originalAmount * parseFloat(item.discountPercentage)) / 100;
+                                  } else if (item.discountAmount) {
+                                    discountAmount = parseFloat(item.discountAmount);
+                                  }
+                                  
+                                  // Final amount after discount
+                                  const finalAmount = Math.max(0, originalAmount - discountAmount);
+                                  
+                                  return `PKR ${finalAmount.toFixed(2)} ${item.unit === 'Custom' && item.customUnit ? item.customUnit : item.unit !== 'NONE' ? item.unit : ''}`;
+                                }
+                              })()}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
                 {formErrors.items && <p className="text-xs text-red-500 mt-2">{formErrors.items}</p>}
               </div>
               {/* Image Upload & Description Section (match sale) */}
@@ -2486,11 +2858,11 @@ export default function AddPurchasePage() {
               <div className="bg-white px-6 py-8 w-full rounded-xl shadow-sm mt-4">
                 <div className="flex flex-col md:flex-row justify-between items-end gap-6">
                   {/* Left Side - Discount and Tax */}
-                  <div className="flex flex-col md:flex-row gap-6">
+                  <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 w-full">
                     {/* Discount */}
                     {!isFromExpenses && (
-                      <div>
-                        <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                      <div className="w-full sm:w-auto sm:min-w-[200px]">
+                        <label className="block text-xs sm:text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
                           <span>💸</span> Discount
                         </label>
                         <div className="flex flex-row items-center gap-2">
@@ -2501,7 +2873,7 @@ export default function AddPurchasePage() {
                                 name="discount"
                                 value={newPurchase.discount}
                                 onChange={e => setNewPurchase({ ...newPurchase, discount: e.target.value })}
-                                className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                className="w-20 sm:w-24 h-10 sm:h-11 px-2 sm:px-3 text-sm sm:text-base border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
                               />
                               <CustomDropdown
                                 options={[
@@ -2510,13 +2882,13 @@ export default function AddPurchasePage() {
                                 ]}
                                 value={newPurchase.discountType}
                                 onChange={val => setNewPurchase({ ...newPurchase, discountType: val })}
-                                className="w-28 min-w-[72px] mb-1 h-11"
+                                className="w-20 sm:w-28 min-w-[60px] sm:min-w-[72px] mb-1 h-10 sm:h-11"
                                 dropdownIndex={discountTypeDropdownIndex}
                                 setDropdownIndex={setDiscountTypeDropdownIndex}
                                 optionsCount={2}
                               />
                             </div>
-                            <div className="text-xs text-gray-500 min-h-[24px] mt-1">
+                            <div className="text-xs text-gray-500 min-h-[20px] sm:min-h-[24px] mt-1">
                               {newPurchase.discount && !isNaN(Number(newPurchase.discount)) ? (
                                 <>
                                   Discount: 
@@ -2532,8 +2904,8 @@ export default function AddPurchasePage() {
                     )}
                     {/* Tax */}
                     {!isFromExpenses && (
-                      <div>
-                        <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                      <div className="w-full sm:w-auto sm:min-w-[200px]">
+                        <label className="block text-xs sm:text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
                           <span>🧾</span> Tax
                         </label>
                         <div className="flex flex-row items-center gap-2">
@@ -2542,7 +2914,7 @@ export default function AddPurchasePage() {
                             name="tax"
                             value={newPurchase.tax}
                             onChange={e => setNewPurchase({ ...newPurchase, tax: e.target.value })}
-                            className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                            className="w-20 sm:w-24 h-10 sm:h-11 px-2 sm:px-3 text-sm sm:text-base border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
                           />
                           <CustomDropdown
                             options={[
@@ -2551,13 +2923,13 @@ export default function AddPurchasePage() {
                             ]}
                             value={newPurchase.taxType}
                             onChange={val => setNewPurchase({ ...newPurchase, taxType: val })}
-                            className="w-28 min-w-[72px] mb-1 h-11"
+                            className="w-20 sm:w-28 min-w-[60px] sm:min-w-[72px] mb-1 h-10 sm:h-11"
                             dropdownIndex={taxTypeDropdownIndex}
                             setDropdownIndex={setTaxTypeDropdownIndex}
                             optionsCount={2}
                           />
                         </div>
-                        <div className="text-xs text-gray-500 min-h-[24px] mt-1">
+                        <div className="text-xs text-gray-500 min-h-[20px] sm:min-h-[24px] mt-1">
                           {newPurchase.tax && !isNaN(Number(newPurchase.tax)) ? (
                             <>
                               Tax: {newPurchase.taxType === '%'
@@ -2571,10 +2943,10 @@ export default function AddPurchasePage() {
                   </div>
                   
                   {/* Right Side - Payment Method and Totals */}
-                  <div className="flex flex-row items-start gap-8">
+                  <div className="flex flex-col lg:flex-row items-start gap-4 lg:gap-8 w-full">
                     {/* Payment Method */}
-                    <div className="min-w-[280px]">
-                      <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                    <div className="w-full lg:min-w-[280px] lg:max-w-[320px]">
+                      <label className="block text-xs sm:text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
                         <span>💳</span> Payment Method
                       </label>
                       <CustomDropdown
@@ -2607,7 +2979,7 @@ export default function AddPurchasePage() {
                           min={0}
                           max={grandTotal}
                           onChange={e => setNewPurchase(prev => ({ ...prev, paid: e.target.value }))}
-                          className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 ${
+                          className={`w-full px-3 py-2 sm:px-4 sm:py-3 text-sm sm:text-base border-2 rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 ${
                             formErrors.paid ? 'border-red-300 bg-red-50 focus:ring-red-200' : 'border-green-200 focus:ring-green-200'
                           }`}
                           placeholder={`Enter ${isFromExpenses ? 'amount received' : 'amount paid'} (max PKR ${grandTotal.toFixed(2)})`}
@@ -2625,14 +2997,14 @@ export default function AddPurchasePage() {
                     </div>
                     
                     {/* Totals */}
-                    <div className="min-w-[280px]">
-                      <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                    <div className="w-full lg:min-w-[280px]">
+                      <label className="block text-xs sm:text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
                         <span>💰</span> {isFromExpenses ? 'Total' : 'Totals'}
                       </label>
                       {isFromExpenses ? (
                         // Simple total for expenses
-                        <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full">
-                          <div className="flex justify-between text-lg font-bold text-blue-900">
+                        <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-4 sm:px-8 py-3 sm:py-4 text-right shadow w-full">
+                          <div className="flex justify-between text-sm sm:text-lg font-bold text-blue-900">
                             <span>Total Amount</span>
                             <span>PKR {isFromExpenses ? subTotal.toFixed(2) : originalSubTotal.toFixed(2)}</span>
                           </div>
@@ -2640,11 +3012,11 @@ export default function AddPurchasePage() {
                             {newPurchase.paid && Number(newPurchase.paid) > 0 && (
                               <>
                                 <div className="border-t border-blue-200 my-2"></div>
-                                <div className="flex justify-between text-sm text-green-700">
+                                <div className="flex justify-between text-xs sm:text-sm text-green-700">
                                   <span>Received Amount</span>
                                   <span>PKR {Number(newPurchase.paid).toFixed(2)}</span>
                                 </div>
-                                <div className="flex justify-between text-sm text-red-700 font-semibold">
+                                <div className="flex justify-between text-xs sm:text-sm text-red-700 font-semibold">
                                   <span>Credit Amount</span>
                                   <span>PKR {(subTotal - Number(newPurchase.paid)).toFixed(2)}</span>
                                 </div>
@@ -2653,7 +3025,7 @@ export default function AddPurchasePage() {
                         </div>
                       ) : (
                         // Full totals for purchases
-                        <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full">
+                        <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-4 sm:px-8 py-3 sm:py-4 text-right shadow w-full">
                           <div className="flex flex-col gap-1">
                             <div className="flex justify-between text-xs text-gray-600">
                               <span>Sub Total</span>

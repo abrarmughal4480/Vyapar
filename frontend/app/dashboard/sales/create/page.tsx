@@ -772,20 +772,20 @@ export default function CreateSalesOrderPage() {
   const [customerDropdownIndex, setCustomerDropdownIndex] = useState(0);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-6">
-        <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 flex justify-between items-center px-6 py-4">
+    <div className="min-h-screen bg-gray-50 p-1 sm:p-2">
+      <div className="w-full h-auto bg-white/90 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden mx-auto my-1 sm:my-3">
+        <div className="sticky top-0 z-10 bg-white/90 border-b border-gray-200 flex justify-between items-center px-2 sm:px-4 py-4">
           <h1 className="text-xl md:text-2xl font-bold text-gray-900">Add Sale Order</h1>
           <button
             type="button"
             onClick={() => router.push('/dashboard/sales')}
-            className="text-gray-400 hover:text-gray-600 text-2xl"
+            className="text-gray-400 hover:text-gray-600 text-xl sm:text-2xl p-1"
             aria-label="Cancel"
           >
             ✕
           </button>
         </div>
-        <form className="divide-y divide-gray-200 w-full px-6 py-6">
+        <form className="divide-y divide-gray-200 w-full px-2 sm:px-4 py-6">
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
               <div className="flex items-center">
@@ -983,12 +983,13 @@ export default function CreateSalesOrderPage() {
               <button
                 type="button"
                 onClick={addRow}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-sm hover:shadow-lg transform hover:scale-105"
+                className="inline-flex items-center gap-2 px-3 py-2 sm:px-5 sm:py-2.5 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors font-semibold text-xs sm:text-sm hover:shadow-lg transform hover:scale-105"
               >
-                <span className="text-xl">+</span> Add Row
+                <span className="text-lg sm:text-xl">+</span> <span className="hidden sm:inline">Add Row</span><span className="sm:hidden">Add</span>
               </button>
             </div>
-            <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100">
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100 w-full">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10">
                   <tr className="border-b border-gray-200 bg-blue-100">
@@ -1018,6 +1019,243 @@ export default function CreateSalesOrderPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-3">
+              {formData.items.map((item, index) => (
+                <div key={item.id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                  {/* Item Name - Full Width */}
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Item Name</label>
+                    <ItemsDropdown
+                      items={itemSuggestions}
+                      value={item.item}
+                      onChange={(val) => updateItem(item.id, 'item', val)}
+                      onItemSelect={(selectedItem) => {
+                        const unitDisplay = getUnitDisplay(selectedItem.unit);
+                        updateItem(item.id, 'unit', unitDisplay);
+                        updateItem(item.id, 'price', selectedItem.salePrice || 0);
+                        updateItem(item.id, 'qty', '');
+                      }}
+                      className="w-full"
+                      placeholder="Enter item name..."
+                      showSuggestions={showItemSuggestions[item.id]}
+                      setShowSuggestions={(show) => setShowItemSuggestions((prev: any) => ({ ...prev, [item.id]: show }))}
+                    />
+                  </div>
+
+                  {/* Quantity and Unit - Side by Side */}
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Quantity</label>
+                      <input
+                        type="number"
+                        value={item.qty}
+                        min={0}
+                        onChange={e => {
+                          const newQty = e.target.value;
+                          updateItem(item.id, 'qty', newQty);
+                          
+                          if (index === formData.items.length - 1 && newQty) {
+                            addRow();
+                          }
+                        }}
+                        className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Unit</label>
+                      <UnitsDropdown
+                        units={(() => {
+                          const options: DropdownOption[] = [];
+                          if (item.item) {
+                            const selectedItem = itemSuggestions.find(i => i.name === item.item);
+                            if (selectedItem && selectedItem.unit) {
+                              const unit = selectedItem.unit;
+                              if (typeof unit === 'object' && unit.base) {
+                                if (unit.base && unit.base !== 'NONE') {
+                                  options.push({ value: unit.base, label: unit.base });
+                                }
+                                if (unit.secondary && unit.secondary !== 'None' && unit.secondary !== unit.base) {
+                                  options.push({ value: unit.secondary, label: unit.secondary });
+                                }
+                              } else if (typeof unit === 'string' && unit.includes(' / ')) {
+                                const parts = unit.split(' / ');
+                                if (parts[0] && parts[0] !== 'NONE') {
+                                  options.push({ value: parts[0], label: parts[0] });
+                                }
+                                if (parts[1] && parts[1] !== 'None') {
+                                  options.push({ value: parts[1], label: parts[1] });
+                                }
+                              } else if (typeof unit === 'string') {
+                                options.push({ value: unit, label: unit });
+                              }
+                            }
+                          }
+                          if (options.length === 0) {
+                            options.push({ value: 'NONE', label: 'NONE' });
+                          }
+                          return options;
+                        })()}
+                        value={(() => {
+                          if (!item.item) return 'NONE';
+                          
+                          const selectedItem = itemSuggestions.find(i => i.name === item.item);
+                          if (!selectedItem || !selectedItem.unit) return 'NONE';
+                          
+                          if (item.unit && item.unit !== 'NONE') {
+                            return item.unit;
+                          }
+                          
+                          const unit = selectedItem.unit;
+                          if (typeof unit === 'object' && unit.base) {
+                            return unit.base || 'NONE';
+                          } else if (typeof unit === 'string' && unit.includes(' / ')) {
+                            const parts = unit.split(' / ');
+                            return parts[0] || 'NONE';
+                          } else if (typeof unit === 'string') {
+                            return unit || 'NONE';
+                          }
+                          
+                          return 'NONE';
+                        })()}
+                        onChange={val => {
+                          const selectedItem = itemSuggestions.find(i => i.name === item.item);
+                          if (selectedItem) {
+                            if (item.qty) {
+                              let convertedQty = parseFloat(item.qty) || 0;
+                              if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                                if (val === selectedItem.unit.secondary) {
+                                  convertedQty = convertedQty * selectedItem.unit.conversionFactor;
+                                }
+                              }
+                              
+                              const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
+                              const wholesalePrice = selectedItem.wholesalePrice || 0;
+                              
+                              let finalPrice;
+                              if (convertedQty >= minWholesaleQty && wholesalePrice > 0) {
+                                if (val === selectedItem.unit?.base) {
+                                  finalPrice = wholesalePrice;
+                                } else if (val === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                                  finalPrice = wholesalePrice * selectedItem.unit.conversionFactor;
+                                } else {
+                                  finalPrice = wholesalePrice;
+                                }
+                              } else {
+                                if (val === selectedItem.unit?.base) {
+                                  finalPrice = selectedItem.salePrice || 0;
+                                } else if (val === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                                  finalPrice = (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor;
+                                } else {
+                                  finalPrice = selectedItem.salePrice || 0;
+                                }
+                              }
+                              
+                              updateItem(item.id, 'price', finalPrice);
+                            } else {
+                              if (val === selectedItem.unit?.base) {
+                                updateItem(item.id, 'price', selectedItem.salePrice || 0);
+                              } else if (val === selectedItem.unit?.secondary && selectedItem.unit?.conversionFactor) {
+                                updateItem(item.id, 'price', (selectedItem.salePrice || 0) * selectedItem.unit.conversionFactor);
+                              } else {
+                                updateItem(item.id, 'price', selectedItem.salePrice || 0);
+                              }
+                            }
+                          }
+                          
+                          updateItem(item.id, 'unit', val);
+                        }}
+                        dropdownIndex={0}
+                        setDropdownIndex={() => {}}
+                        optionsCount={1}
+                      />
+                      {item.unit === 'Custom' && (
+                        <input
+                          type="text"
+                          value={item.customUnit}
+                          onChange={e => updateItem(item.id, 'customUnit', e.target.value)}
+                          className="mt-2 w-full px-3 py-2 text-sm border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                          placeholder="Enter custom unit"
+                          autoComplete="off"
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Price per Unit - Full Width */}
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Price per Unit</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={item.price}
+                        min={0}
+                        onChange={e => updateItem(item.id, 'price', e.target.value)}
+                        className="w-full px-3 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
+                        autoComplete="off"
+                      />
+                      {/* Wholesale price indicator */}
+                      {(() => {
+                        const selectedItem = itemSuggestions.find(i => i.name === item.item);
+                        if (selectedItem && item.qty) {
+                          const qty = parseFloat(item.qty) || 0;
+                          const minWholesaleQty = selectedItem.minimumWholesaleQuantity || 0;
+                          const wholesalePrice = selectedItem.wholesalePrice || 0;
+                          const currentPrice = parseFloat(item.price) || 0;
+                          
+                          let convertedQty = qty;
+                          if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                            if (item.unit === selectedItem.unit.secondary) {
+                              convertedQty = qty * selectedItem.unit.conversionFactor;
+                            }
+                          }
+                          
+                          let expectedWholesalePrice = wholesalePrice;
+                          if (selectedItem.unit && typeof selectedItem.unit === 'object' && selectedItem.unit.conversionFactor) {
+                            if (item.unit === selectedItem.unit.secondary) {
+                              expectedWholesalePrice = wholesalePrice * selectedItem.unit.conversionFactor;
+                            }
+                          }
+                          
+                          if (convertedQty >= minWholesaleQty && wholesalePrice > 0 && Math.abs(currentPrice - expectedWholesalePrice) < 0.01) {
+                            return (
+                              <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full shadow-sm">
+                                Wholesale
+                              </div>
+                            );
+                          }
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Final Amount and Actions */}
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="text-xs text-gray-500">Amount:</span>
+                      <span className="ml-2 text-sm font-semibold text-gray-900">
+                        PKR {item.amount.toFixed(2)}
+                      </span>
+                    </div>
+                    {removeRow && (
+                      <button
+                        type="button"
+                        onClick={() => removeRow(item.id)}
+                        className="text-red-500 hover:text-red-700 p-1"
+                        title="Delete row"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -1083,154 +1321,163 @@ export default function CreateSalesOrderPage() {
           </div>
 
           <div className="bg-white px-6 py-8 w-full rounded-xl shadow-sm mt-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-              <div>
-                <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                  <span>💸</span> Discount
-                </label>
-                <div className="flex flex-row items-center gap-2">
-                  <div className="flex flex-col flex-1">
-                    <div className="flex flex-row gap-2">
-                      <input
-                        type="number"
-                        name="discount"
-                        value={formData.discount}
-                        onChange={e => setFormData(prev => ({ ...prev, discount: Number(e.target.value) }))}
-                        className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
-                      />
-                      <CustomDropdown
-                        options={[
-                          { value: '%', label: '%' },
-                          { value: 'PKR', label: '(PKR)' },
-                        ]}
-                        value={formData.discountType}
-                        onChange={e => setFormData(prev => ({ ...prev, discountType: e }))}
-                        className="w-28 min-w-[72px] mb-1 h-11 border-2 border-blue-100 rounded-lg"
-                        dropdownIndex={0}
-                        setDropdownIndex={() => { }}
-                        optionsCount={2}
-                      />
-                    </div>
-                    <div className="text-xs text-gray-500 min-h-[24px] mt-1">
-                      {formData.discount && !isNaN(Number(formData.discount)) ? (
-                        <>
-                          Discount:
-                          {formData.discountType === '%'
-                            ? `${formData.discount}% = PKR ${(subtotal * formData.discount / 100).toFixed(2)}`
-                            : `PKR ${Number(formData.discount).toFixed(2)}`}
-                        </>
-                      ) : null}
+            <div className="flex flex-col lg:flex-row justify-between items-end gap-6">
+              {/* Left Side - Discount and Tax */}
+              <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 w-full">
+                <div className="w-full sm:w-auto sm:min-w-[200px]">
+                  <label className="block text-xs sm:text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                    <span>💸</span> Discount
+                  </label>
+                  <div className="flex flex-row items-center gap-2">
+                    <div className="flex flex-col flex-1">
+                      <div className="flex flex-row gap-2">
+                        <input
+                          type="number"
+                          name="discount"
+                          value={formData.discount}
+                          onChange={e => setFormData(prev => ({ ...prev, discount: Number(e.target.value) }))}
+                          className="w-20 sm:w-24 h-10 sm:h-11 px-2 sm:px-3 text-sm sm:text-base border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        />
+                        <CustomDropdown
+                          options={[
+                            { value: '%', label: '%' },
+                            { value: 'PKR', label: '(PKR)' },
+                          ]}
+                          value={formData.discountType}
+                          onChange={e => setFormData(prev => ({ ...prev, discountType: e }))}
+                          className="w-20 sm:w-28 min-w-[60px] sm:min-w-[72px] mb-1 h-10 sm:h-11 border-2 border-blue-100 rounded-lg"
+                          dropdownIndex={0}
+                          setDropdownIndex={() => { }}
+                          optionsCount={2}
+                        />
+                      </div>
+                      <div className="text-xs text-gray-500 min-h-[20px] sm:min-h-[24px] mt-1">
+                        {formData.discount && !isNaN(Number(formData.discount)) ? (
+                          <>
+                            Discount:
+                            {formData.discountType === '%'
+                              ? `${formData.discount}% = PKR ${(subtotal * formData.discount / 100).toFixed(2)}`
+                              : `PKR ${Number(formData.discount).toFixed(2)}`}
+                          </>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                  <span>🧾</span> Tax
-                </label>
-                <div className="flex flex-row items-center gap-2">
-                  <input
-                    type="number"
-                    name="tax"
-                    value={formData.tax}
-                    onChange={e => setFormData(prev => ({ ...prev, tax: e.target.value }))}
-                    className="w-24 h-11 px-3 border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                  <CustomDropdown
-                    options={[
-                      { value: '%', label: '%' },
-                      { value: 'PKR', label: '(PKR)' },
-                    ]}
-                    value={formData.taxType}
-                    onChange={e => setFormData(prev => ({ ...prev, taxType: e }))}
-                    className="w-28 min-w-[72px] mb-1 h-11 border-2 border-blue-100 rounded-lg"
-                    dropdownIndex={0}
-                    setDropdownIndex={() => { }}
-                    optionsCount={2}
-                  />
+                <div className="w-full sm:w-auto sm:min-w-[200px]">
+                  <label className="block text-xs sm:text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                    <span>🧾</span> Tax
+                  </label>
+                  <div className="flex flex-row items-center gap-2">
+                    <input
+                      type="number"
+                      name="tax"
+                      value={formData.tax}
+                      onChange={e => setFormData(prev => ({ ...prev, tax: e.target.value }))}
+                      className="w-20 sm:w-24 h-10 sm:h-11 px-2 sm:px-3 text-sm sm:text-base border-2 border-blue-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    />
+                    <CustomDropdown
+                      options={[
+                        { value: '%', label: '%' },
+                        { value: 'PKR', label: '(PKR)' },
+                      ]}
+                      value={formData.taxType}
+                      onChange={e => setFormData(prev => ({ ...prev, taxType: e }))}
+                      className="w-20 sm:w-28 min-w-[60px] sm:min-w-[72px] mb-1 h-10 sm:h-11 border-2 border-blue-100 rounded-lg"
+                      dropdownIndex={0}
+                      setDropdownIndex={() => { }}
+                      optionsCount={2}
+                    />
+                  </div>
+                  <div className="text-xs text-gray-500 min-h-[20px] sm:min-h-[24px] mt-1">
+                    {formData.tax && !isNaN(Number(formData.tax)) ? (
+                      <>
+                        Tax: {formData.taxType === '%'
+                          ? `${formData.tax}% = PKR ${((subtotal - (formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount))) * Number(formData.tax) / 100).toFixed(2)}`
+                          : `PKR ${Number(formData.tax).toFixed(2)}`}
+                      </>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="text-xs text-gray-500 min-h-[24px] mt-1">
-                  {formData.tax && !isNaN(Number(formData.tax)) ? (
-                    <>
-                      Tax: {formData.taxType === '%'
-                        ? `${formData.tax}% = PKR ${((subtotal - (formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount))) * Number(formData.tax) / 100).toFixed(2)}`
-                        : `PKR ${Number(formData.tax).toFixed(2)}`}
-                    </>
-                  ) : null}
-                </div>
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                  <span>💳</span> Payment Method
-                </label>
-                <div className="flex flex-col">
-                  <PaymentMethodDropdown
-                    value={formData.paymentMethod}
-                    onChange={(val) => {
-                      if (val === 'Cash' || val === 'Cheque') {
-                        setFormData(prev => ({ 
-                          ...prev, 
-                          paymentMethod: val,
-                          bankAccountId: null as string | null,
-                          bankAccountName: ''
-                        }));
-                      } else if (val.startsWith('bank_')) {
-                        const accountId = val.replace('bank_', '');
-                        const account = bankAccounts.find(acc => acc._id === accountId);
-                        if (account) {
-                          setFormData(prev => ({ 
-                            ...prev, 
-                            paymentMethod: val,
-                            bankAccountId: account._id as string | null,
-                            bankAccountName: account.accountDisplayName
-                          }));
-                        }
-                      } else {
-                        const account = bankAccounts.find(acc => acc.accountDisplayName === val);
-                        if (account) {
-                          setFormData(prev => ({ 
-                            ...prev, 
-                            paymentMethod: `bank_${account._id}`,
-                            bankAccountId: account._id as string | null,
-                            bankAccountName: account.accountDisplayName
-                          }));
-                        } else {
+              {/* Right Side - Payment Method and Totals */}
+              <div className="flex flex-col lg:flex-row items-start gap-4 lg:gap-8 w-full">
+                {/* Payment Method */}
+                <div className="w-full lg:min-w-[280px] lg:max-w-[320px]">
+                  <label className="block text-xs sm:text-sm font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                    <span>💳</span> Payment Method
+                  </label>
+                  <div className="flex flex-col">
+                    <PaymentMethodDropdown
+                      value={formData.paymentMethod}
+                      onChange={(val) => {
+                        if (val === 'Cash' || val === 'Cheque') {
                           setFormData(prev => ({ 
                             ...prev, 
                             paymentMethod: val,
                             bankAccountId: null as string | null,
                             bankAccountName: ''
                           }));
+                        } else if (val.startsWith('bank_')) {
+                          const accountId = val.replace('bank_', '');
+                          const account = bankAccounts.find(acc => acc._id === accountId);
+                          if (account) {
+                            setFormData(prev => ({ 
+                              ...prev, 
+                              paymentMethod: val,
+                              bankAccountId: account._id as string | null,
+                              bankAccountName: account.accountDisplayName
+                            }));
+                          }
+                        } else {
+                          const account = bankAccounts.find(acc => acc.accountDisplayName === val);
+                          if (account) {
+                            setFormData(prev => ({ 
+                              ...prev, 
+                              paymentMethod: `bank_${account._id}`,
+                              bankAccountId: account._id as string | null,
+                              bankAccountName: account.accountDisplayName
+                            }));
+                          } else {
+                            setFormData(prev => ({ 
+                              ...prev, 
+                              paymentMethod: val,
+                              bankAccountId: null as string | null,
+                              bankAccountName: ''
+                            }));
+                          }
                         }
-                      }
-                    }}
-                    bankAccounts={bankAccounts}
-                    className="mb-1"
-                    dropdownIndex={paymentMethodDropdownIndex}
-                    setDropdownIndex={setPaymentMethodDropdownIndex}
-                  />
-                  <div className="text-xs text-gray-500 min-h-[24px] mt-1"></div>
+                      }}
+                      bankAccounts={bankAccounts}
+                      className="mb-1"
+                      dropdownIndex={paymentMethodDropdownIndex}
+                      setDropdownIndex={setPaymentMethodDropdownIndex}
+                    />
+                    <div className="text-xs text-gray-500 min-h-[20px] sm:min-h-[24px] mt-1"></div>
+                  </div>
                 </div>
-              </div>
-              <div className="md:col-span-1 flex flex-col items-end gap-2">
-                <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-8 py-4 text-right shadow w-full min-w-[220px]">
-                  <div className="flex flex-col gap-1">
-                    <div className="flex justify-between text-xs text-gray-600">
-                      <span>Sub Total</span>
-                      <span>PKR {subtotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs text-gray-600">
-                      <span>Discount</span>
-                      <span>- PKR {(formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount)).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs text-gray-600">
-                      <span>Tax</span>
-                      <span>+ PKR {(formData.taxType === '%' ? ((subtotal - (formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount))) * Number(formData.tax) / 100) : Number(formData.tax)).toFixed(2)}</span>
-                    </div>
-                    <div className="border-t border-blue-200 my-2"></div>
-                    <div className="flex justify-between text-lg font-bold text-blue-900">
-                      <span>Grand Total</span>
-                      <span>PKR {(subtotal - (formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount)) + (formData.taxType === '%' ? ((subtotal - (formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount))) * Number(formData.tax) / 100) : Number(formData.tax))).toFixed(2)}</span>
+                
+                {/* Totals */}
+                <div className="w-full lg:min-w-[280px]">
+                  <div className="bg-gradient-to-r from-blue-100 to-blue-50 border border-blue-200 rounded-xl px-4 sm:px-8 py-3 sm:py-4 text-right shadow w-full">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex justify-between text-xs text-gray-600">
+                        <span>Sub Total</span>
+                        <span>PKR {subtotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-600">
+                        <span>Discount</span>
+                        <span>- PKR {(formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount)).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-600">
+                        <span>Tax</span>
+                        <span>+ PKR {(formData.taxType === '%' ? ((subtotal - (formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount))) * Number(formData.tax) / 100) : Number(formData.tax)).toFixed(2)}</span>
+                      </div>
+                      <div className="border-t border-blue-200 my-2"></div>
+                      <div className="flex justify-between text-sm sm:text-lg font-bold text-blue-900">
+                        <span>Grand Total</span>
+                        <span>PKR {(subtotal - (formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount)) + (formData.taxType === '%' ? ((subtotal - (formData.discountType === '%' ? (subtotal * formData.discount / 100) : Number(formData.discount))) * Number(formData.tax) / 100) : Number(formData.tax))).toFixed(2)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1238,16 +1485,16 @@ export default function CreateSalesOrderPage() {
             </div>
           </div>
         </form>
-        <div className="flex justify-end gap-4 px-6 py-6 bg-gray-50 border-t border-gray-200 w-full">
+        <div className="flex justify-end gap-3 sm:gap-4 px-2 sm:px-4 py-4 sm:py-6 bg-gray-50 border-t border-gray-200 w-full">
           <button
             type="button"
             onClick={handleSave}
             disabled={isLoading || !formData.customer.trim()}
-            className={`px-8 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 ${isLoading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+            className={`w-full sm:w-auto px-4 sm:px-8 py-2.5 sm:py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base ${isLoading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
           >
             {isLoading ? (
               <>
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <svg className="animate-spin -ml-1 mr-3 h-4 w-4 sm:h-5 sm:w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
@@ -1256,7 +1503,7 @@ export default function CreateSalesOrderPage() {
             ) : (
               <>
                 <span>Save</span>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </>

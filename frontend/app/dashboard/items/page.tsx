@@ -490,7 +490,7 @@ export default function ItemsPage() {
         </div>
         <div className="bg-gradient-to-br from-green-100 to-green-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
           <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-green-500 text-white mb-3 text-xl">PKR</div>
-          <div className="text-2xl font-bold text-green-700">PKR {stats.totalValue.toLocaleString()}</div>
+          <div className="text-2xl font-bold text-green-700">PKR {(stats.totalValue ?? 0).toLocaleString()}</div>
           <div className="text-sm text-gray-500">Total Value</div>
         </div>
         <div className="bg-gradient-to-br from-orange-100 to-orange-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
@@ -645,7 +645,7 @@ export default function ItemsPage() {
                       </div>
                     </div>
                     <div className="flex justify-between items-center mt-2">
-                      <div className="text-sm font-medium text-blue-700">PKR {item.salePrice.toLocaleString()}</div>
+                      <div className="text-sm font-medium text-blue-700">PKR {(item.salePrice ?? 0).toLocaleString()}</div>
                       <div className="flex gap-3">
                         {isClient && canEditData() ? (
                           <button
@@ -678,7 +678,7 @@ export default function ItemsPage() {
                         <div className="text-xs text-gray-500">HSN: {item.hsn}</div>
                       )}
                       {item.wholesalePrice && (
-                        <div className="text-xs text-gray-500">Wholesale: PKR {item.wholesalePrice.toLocaleString()}</div>
+                        <div className="text-xs text-gray-500">Wholesale: PKR {(item.wholesalePrice ?? 0).toLocaleString()}</div>
                       )}
                       {getTaxDisplay(item) && (
                         <div className="text-xs text-gray-500">Tax: {getTaxDisplay(item)}</div>

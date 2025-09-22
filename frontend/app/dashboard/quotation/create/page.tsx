@@ -272,6 +272,7 @@ function CreateSalesOrderPageContent() {
 
   // Fetch items on component mount
   useEffect(() => {
+    console.log('Quotation create page mounted, initializing data...');
     const initializeData = async () => {
       await fetchItemSuggestions();
     };
@@ -628,10 +629,13 @@ function CreateSalesOrderPageContent() {
   const fetchItemSuggestions = async () => {
     const token = getToken();
     if (!token) {
+      console.log('No token found for fetching items');
       return;
     }
     try {
+      console.log('Fetching items with token...');
       const items = await getUserItems(token);
+      console.log('Raw items response:', items);
       
       // Normalize items to match the expected interface
       const normalizedItems = (items || []).map((item: any) => ({
@@ -640,6 +644,8 @@ function CreateSalesOrderPageContent() {
         name: item.name || item.itemName || '' // Ensure name field exists
       }));
       
+      console.log('Normalized items:', normalizedItems);
+      console.log('Number of items:', normalizedItems.length);
       setItemSuggestions(normalizedItems);
     } catch (error) {
       console.error('Error fetching items:', error);

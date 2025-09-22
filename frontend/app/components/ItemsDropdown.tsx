@@ -50,6 +50,12 @@ export function ItemsDropdown({
     item.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Debug logging
+  console.log('ItemsDropdown - items prop:', items);
+  console.log('ItemsDropdown - searchTerm:', searchTerm);
+  console.log('ItemsDropdown - filteredItems:', filteredItems);
+  console.log('ItemsDropdown - isOpen:', isOpen);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (!ref.current) return;

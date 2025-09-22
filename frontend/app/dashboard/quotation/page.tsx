@@ -203,10 +203,10 @@ function ViewQuotationModal({
               <tbody>
                 {(quotation.items || []).map((item: any, idx: number) => (
                   <tr key={idx}>
-                    <td className="px-4 py-2">{item.name}</td>
+                    <td className="px-4 py-2">{item.item || item.name || 'N/A'}</td>
                     <td className="px-4 py-2">{item.qty}</td>
-                    <td className="px-4 py-2">₹{item.price}</td>
-                    <td className="px-4 py-2 text-right">₹{(item.qty * item.price).toFixed(2)}</td>
+                    <td className="px-4 py-2">PKR {item.price}</td>
+                    <td className="px-4 py-2 text-right">PKR {(item.qty * item.price).toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>

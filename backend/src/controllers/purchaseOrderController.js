@@ -255,15 +255,3 @@ export const deletePurchaseOrder = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
-
-export default {
-  createPurchaseOrder,
-  getPurchaseOrdersByUser,
-  updatePurchaseOrderStatus,
-  convertPurchaseOrderToInvoice,
-  updatePurchaseOrderTotals,
-  updatePurchaseOrder,
-  fixCompletedPurchaseOrders,
-  getPurchaseOrderById,
-  deletePurchaseOrder,
-}; 

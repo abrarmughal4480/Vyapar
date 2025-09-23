@@ -1544,16 +1544,3 @@ export const getPaymentRecords = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
-
-export default {
-  createSale,
-  getSalesByUser,
-  receivePayment,
-  receivePartyPayment,
-  getSalesStatsByUser,
-  deleteSale,
-  updateSale,
-  getBillWiseProfit,
-  getItemPurchasePrices,
-  getPaymentRecords,
-}; 

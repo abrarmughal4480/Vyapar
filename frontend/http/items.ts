@@ -30,6 +30,28 @@ export async function addItem(userId: string, item: any, token: string) {
   return res.json();
 }
 
+export async function checkExistingItems(userId: string, itemCodes: string[], token: string) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/items/${userId}/check-existing`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ itemCodes }),
+    });
+    
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    
+    return res.json();
+  } catch (error: any) {
+    console.error('Check existing items error:', error);
+    throw error;
+  }
+}
+
 export async function bulkImportItems(userId: string, items: any[], token: string) {
   try {
     // Calculate timeout based on number of items (faster for smaller batches)

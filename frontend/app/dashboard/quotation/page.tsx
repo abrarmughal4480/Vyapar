@@ -28,10 +28,11 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // Enhanced QuotationActions with convert dropdown that renders outside table
-function QuotationActions({ quotation, onConvertToSale, onConvertToSaleOrder }: { 
+function QuotationActions({ quotation, onConvertToSale, onConvertToSaleOrder, router }: { 
   quotation: any;
   onConvertToSale: (quotation: any) => void;
   onConvertToSaleOrder: (quotation: any) => void;
+  router: any;
 }) {
   const [showConvertDropdown, setShowConvertDropdown] = useState(false);
   const convertRef = useRef<HTMLDivElement>(null);
@@ -147,93 +148,10 @@ function QuotationActions({ quotation, onConvertToSale, onConvertToSaleOrder }: 
   )
 }
 
-// Modal to view quotation details
-function ViewQuotationModal({
-  open,
-  onClose,
-  quotation,
-}: {
-  open: boolean
-  onClose: () => void
-  quotation: any
-}) {
-  if (!open || !quotation) return null
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto flex flex-col">
-        <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-8 py-6 rounded-t-2xl flex justify-between items-center">
-          <div>
-            <h2 className="text-2xl font-bold text-white">Quotation #{quotation.number}</h2>
-            <p className="text-purple-100 text-sm mt-1">Details for {quotation.customerName || quotation.customer}</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-white hover:text-gray-200 text-2xl transition-colors"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="p-8 overflow-y-auto flex-1">
-          <div className="mb-4">
-            <div className="flex justify-between">
-              <div>
-                <div className="font-semibold text-gray-700">Customer:</div>
-                <div className="text-gray-900">{quotation.customerName || quotation.customer}</div>
-              </div>
-              <div>
-                <div className="font-semibold text-gray-700">Date:</div>
-                <div className="text-gray-900">{quotation.date}</div>
-              </div>
-            </div>
-            <div className="mt-2">
-              <StatusBadge status={quotation.status} />
-            </div>
-          </div>
-          <div>
-            <div className="font-semibold text-gray-700 mb-2">Items:</div>
-            <table className="w-full border rounded-lg mb-4">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-4 py-2 text-xs text-gray-500">Item Name</th>
-                  <th className="px-4 py-2 text-xs text-gray-500">Qty</th>
-                  <th className="px-4 py-2 text-xs text-gray-500">Price</th>
-                  <th className="px-4 py-2 text-xs text-gray-500">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(quotation.items || []).map((item: any, idx: number) => (
-                  <tr key={idx}>
-                    <td className="px-4 py-2">{item.item || item.name || 'N/A'}</td>
-                    <td className="px-4 py-2">{item.qty}</td>
-                    <td className="px-4 py-2">PKR {item.price}</td>
-                    <td className="px-4 py-2 text-right">PKR {(item.qty * item.price).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="flex justify-end">
-              <span className="text-lg font-bold text-purple-700">
-                Total: PKR {quotation.amount?.toLocaleString() || '0'}
-              </span>
-            </div>
-          </div>
-          {quotation.notes && (
-            <div className="mt-4">
-              <div className="font-semibold text-gray-700 mb-1">Notes:</div>
-              <div className="text-gray-800">{quotation.notes}</div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 export default function QuotationPage() {
   const router = useRouter()
   const [quotations, setQuotations] = useState<any[]>([])
-  const [showViewModal, setShowViewModal] = useState(false)
-  const [viewQuotation, setViewQuotation] = useState<any>(null)
   
   // API related state
   const [loading, setLoading] = useState(false)
@@ -342,6 +260,7 @@ export default function QuotationPage() {
           customer: quotation.customerName || quotation.customer,
           customerPhone: quotation.customerPhone || '',
           amount: quotation.totalAmount || quotation.total || 0,
+          subTotal: quotation.subTotal || quotation.amount || 0,
           date: quotation.date,
           status: quotation.status,
           items: quotation.items || [],
@@ -351,7 +270,15 @@ export default function QuotationPage() {
           updatedAt: quotation.updatedAt,
           customerBalance: quotation.customerBalance || 0,
           convertedToSale: quotation.convertedToSale || null,
-          convertedToSaleOrder: quotation.convertedToSaleOrder || null
+          convertedToSaleOrder: quotation.convertedToSaleOrder || null,
+          // Discount fields
+          discount: quotation.discount || '',
+          discountType: quotation.discountType || '%',
+          discountAmount: quotation.discountAmount || '',
+          // Tax fields
+          tax: quotation.tax || '',
+          taxType: quotation.taxType || '%',
+          taxAmount: quotation.taxAmount || ''
         }));
         
         setQuotations(transformedQuotations);
@@ -674,6 +601,7 @@ export default function QuotationPage() {
                           quotation={quotation}
                           onConvertToSale={handleConvertToSale}
                           onConvertToSaleOrder={handleConvertToSaleOrder}
+                          router={router}
                         />
                       ) : (
                         <div className="text-gray-400 text-sm">Convert (Restricted)</div>
@@ -683,7 +611,13 @@ export default function QuotationPage() {
                           <TableActionMenu
                             onEdit={canEditSalesData() ? () => router.push(`/dashboard/quotation/create?id=${quotation.id}`) : undefined}
                             onDelete={canDeleteSalesData() ? () => handleDeleteQuotation(quotation) : undefined}
-                            onView={() => { setViewQuotation(quotation); setShowViewModal(true); }}
+                            onView={() => router.push(`/dashboard/invoices?saleId=${quotation.id}&invoiceNo=${quotation.number}`)}
+                            extraActions={[
+                              {
+                                label: 'Open PDF',
+                                onClick: () => router.push(`/dashboard/invoices?saleId=${quotation.id}&invoiceNo=${quotation.number}`)
+                              }
+                            ]}
                           />
                         ) : (
                           <div className="text-gray-400 text-sm">No actions</div>
@@ -698,12 +632,6 @@ export default function QuotationPage() {
         </div>
       </div>
 
-      {/* View Quotation Modal */}
-      <ViewQuotationModal
-        open={showViewModal}
-        onClose={() => setShowViewModal(false)}
-        quotation={viewQuotation}
-      />
 
       <ConfirmDialog
         open={deleteDialogOpen}

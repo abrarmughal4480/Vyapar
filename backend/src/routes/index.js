@@ -3,7 +3,7 @@ import authRoutes from './auth.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import { requirePageAccess } from '../middlewares/accessControlMiddleware.js';
 import partiesRoutes from './parties.js';
-import { addItem, bulkImportItems, getItems, getItemsByLoggedInUser, deleteItem, updateItem, getItemsPerformanceStats } from '../controllers/itemsController.js';
+import { addItem, bulkImportItems, getItems, getItemsByLoggedInUser, deleteItem, updateItem, getItemsPerformanceStats, checkExistingItems } from '../controllers/itemsController.js';
 import saleRoutes from './sale.js';
 import purchaseRoutes from './purchase.js';
 import saleOrderRoutes from './saleOrder.js';
@@ -73,6 +73,7 @@ router.get('/items/count', authMiddleware, (req, res) => {
 router.get('/items', authMiddleware, getItemsByLoggedInUser);
 router.post('/items/:userId', authMiddleware, addItem);
 router.post('/items/:userId/bulk-import', authMiddleware, bulkImportItems);
+router.post('/items/:userId/check-existing', authMiddleware, checkExistingItems);
 router.get('/items/:userId', authMiddleware, getItems);
 router.delete('/items/:userId/:itemId', authMiddleware, deleteItem);
 router.put('/items/:userId/:itemId', authMiddleware, updateItem);

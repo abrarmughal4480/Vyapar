@@ -1279,9 +1279,7 @@ export default function AddPurchasePage() {
       }
 
 
-      const paidValue = newPurchase.paymentType === 'Cash'
-        ? grandTotal
-        : (newPurchase.paid !== undefined && newPurchase.paid !== '' ? Number(newPurchase.paid) : 0);
+      const paidValue = newPurchase.paid !== undefined && newPurchase.paid !== '' ? Number(newPurchase.paid) : 0;
       // Prepare common data
       const commonData = {
         supplierName: newPurchase.partyName,

@@ -546,7 +546,7 @@ export default function Dashboard() {
       bgLight: 'bg-purple-50',
       trend: 'up',
       onClick: () => {
-        router.push('/dashboard/cash-bank');
+        router.push('/dashboard/cash-in-hand');
       },
     },
     // New Stat: Cash In Bank

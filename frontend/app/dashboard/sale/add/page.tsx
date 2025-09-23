@@ -515,7 +515,7 @@ function ItemRow({
 const AddSalePageWithSearchParams = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { bankAccounts, refetchBankAccounts } = useBankAccounts();
+  const { bankAccounts, refetch } = useBankAccounts();
   const [viewMode, setViewMode] = useState<'credit' | 'cash'>('credit');
   const [newSale, setNewSale] = useState({
     partyName: '',
@@ -1384,6 +1384,8 @@ const AddSalePageWithSearchParams = () => {
               customUnit: item.customUnit || '',
               price: item.price || '',
               amount: item.amount || 0,
+              discountPercentage: item.discountPercentage || '',
+              discountAmount: item.discountAmount || '',
               // Preserve batch information for profit calculation
               consumedBatches: item.consumedBatches || [],
               totalCost: item.totalCost || 0
@@ -2194,7 +2196,7 @@ const AddSalePageWithSearchParams = () => {
                       className="mb-1"
                       dropdownIndex={paymentTypeDropdownIndex}
                       setDropdownIndex={setPaymentTypeDropdownIndex}
-                      onBankAccountAdded={refetchBankAccounts}
+                      onBankAccountAdded={refetch}
                     />
                     {viewMode === 'credit' && (
                       <div className="mt-2">

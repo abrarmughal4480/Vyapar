@@ -1,12 +1,13 @@
 'use client'
 
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Upload, Download, Eye, CheckCircle, AlertCircle, X, FileText, Package, ArrowLeft, BarChart3 } from 'lucide-react'
 import Toast from '../../../components/Toast'
-import { addItem, bulkImportItems } from '@/http/items'
+import { addItem, bulkImportItems, checkExistingItems } from '@/http/items'
 import * as XLSX from 'xlsx'
 import { getToken, getUserIdFromToken } from '../../../lib/auth'
+import { useSidebar } from '../../../contexts/SidebarContext'
 
 interface ImportItem {
   name: string
@@ -42,6 +43,7 @@ interface ValidationError {
 export default function BulkImportItemsPage() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { setIsCollapsed } = useSidebar()
   const [isLoading, setIsLoading] = useState(false)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [items, setItems] = useState<ImportItem[]>([])
@@ -61,13 +63,27 @@ export default function BulkImportItemsPage() {
   const [pastedData, setPastedData] = useState('')
   const [isDragOver, setIsDragOver] = useState(false)
   const [rawDataPreview, setRawDataPreview] = useState<string>('')
+  const [duplicateItems, setDuplicateItems] = useState<Set<string>>(new Set())
+  const [duplicateCount, setDuplicateCount] = useState(0)
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false)
+  const [detectedHeaders, setDetectedHeaders] = useState<{ [key: string]: number }>({})
+
+  // Auto-collapse sidebar when page loads, expand when leaving
+  useEffect(() => {
+    setIsCollapsed(true)
+    
+    // Cleanup function to expand sidebar when component unmounts
+    return () => {
+      setIsCollapsed(false)
+    }
+  }, [setIsCollapsed])
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
 
     if (!file.name.endsWith('.csv') && !file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-      setToast({ message: 'Please upload a CSV or Excel file', type: 'error' })
+      setToast({ message: 'Invalid file format', type: 'error' })
       return
     }
 
@@ -94,7 +110,7 @@ export default function BulkImportItemsPage() {
 
     const file = files[0]
     if (!file.name.endsWith('.csv') && !file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-      setToast({ message: 'Please upload a CSV or Excel file', type: 'error' })
+      setToast({ message: 'Invalid file format', type: 'error' })
       return
     }
 
@@ -111,7 +127,7 @@ export default function BulkImportItemsPage() {
       }
       reader.onerror = () => {
         console.error('Error reading CSV file')
-        setToast({ message: 'Error reading CSV file. Please try again.', type: 'error' })
+        setToast({ message: 'Failed to read CSV file', type: 'error' })
       }
       reader.readAsText(file)
     } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
@@ -122,7 +138,7 @@ export default function BulkImportItemsPage() {
       }
       reader.onerror = () => {
         console.error('Error reading Excel file')
-        setToast({ message: 'Error reading Excel file. Please try again.', type: 'error' })
+        setToast({ message: 'Failed to read Excel file', type: 'error' })
       }
       reader.readAsArrayBuffer(file)
     }
@@ -145,11 +161,99 @@ export default function BulkImportItemsPage() {
       parseCSV(csvData)
     } catch (error) {
       console.error('Error parsing Excel file:', error)
-      setToast({ message: 'Error parsing Excel file. Please check the file format.', type: 'error' })
+      setToast({ message: 'Invalid Excel format', type: 'error' })
     }
   }
 
 
+
+  const createHeaderMap = (headers: string[]) => {
+    const map: { [key: string]: number } = {}
+    
+    headers.forEach((header, index) => {
+      const normalizedHeader = header.toLowerCase().trim()
+      
+      // Map various possible header names to standard fields
+      if (normalizedHeader.includes('item name') || normalizedHeader.includes('name')) {
+        map['name'] = index
+      } else if (normalizedHeader.includes('item code') || normalizedHeader.includes('code') || normalizedHeader.includes('sku')) {
+        map['itemCode'] = index
+      } else if (normalizedHeader.includes('category')) {
+        map['category'] = index
+      } else if (normalizedHeader.includes('hsn') || normalizedHeader.includes('sac')) {
+        map['hsn'] = index
+      } else if (normalizedHeader.includes('sale price') || normalizedHeader.includes('selling price')) {
+        map['salePrice'] = index
+      } else if (normalizedHeader.includes('purchase price') || normalizedHeader.includes('cost price') || normalizedHeader.includes('buying price')) {
+        map['purchasePrice'] = index
+      } else if (normalizedHeader.includes('wholesale') || normalizedHeader.includes('online store price') || normalizedHeader.includes('bulk price')) {
+        map['wholesalePrice'] = index
+      } else if (normalizedHeader.includes('discount type')) {
+        map['discountType'] = index
+      } else if (normalizedHeader.includes('sale discount') || normalizedHeader.includes('discount')) {
+        map['saleDiscount'] = index
+      } else if (normalizedHeader.includes('current stock') || normalizedHeader.includes('opening stock') || normalizedHeader.includes('stock quantity')) {
+        map['openingStockQuantity'] = index
+      } else if (normalizedHeader.includes('minimum stock') || normalizedHeader.includes('min stock')) {
+        map['minimumStockQuantity'] = index
+      } else if (normalizedHeader.includes('location') || normalizedHeader.includes('warehouse')) {
+        map['itemLocation'] = index
+      } else if (normalizedHeader.includes('tax rate') || normalizedHeader.includes('tax')) {
+        map['taxRate'] = index
+      } else if (normalizedHeader.includes('inclusive') || normalizedHeader.includes('tax inclusive')) {
+        map['inclusiveOfTax'] = index
+      } else if (normalizedHeader.includes('base unit') || normalizedHeader.includes('primary unit')) {
+        map['baseUnit'] = index
+      } else if (normalizedHeader.includes('secondary unit') || normalizedHeader.includes('alternative unit')) {
+        map['secondaryUnit'] = index
+      } else if (normalizedHeader.includes('conversion rate') || normalizedHeader.includes('conversion factor')) {
+        map['conversionRate'] = index
+      }
+    })
+    
+    console.log('Header mapping detected:', map)
+    return map
+  }
+
+  const checkForDuplicates = async (parsedItems: ImportItem[]) => {
+    try {
+      setIsCheckingDuplicates(true)
+      const token = getToken()
+      const userId = getUserIdFromToken()
+      
+      if (!token || !userId) {
+        console.warn('No token or userId available for duplicate check')
+        return
+      }
+
+      // Extract item codes from parsed items
+      const itemCodes = parsedItems
+        .map(item => item.itemCode || item.name)
+        .filter(code => code && code.trim() !== '')
+
+      if (itemCodes.length === 0) {
+        console.warn('No item codes to check for duplicates')
+        return
+      }
+
+      console.log(`Checking ${itemCodes.length} items for duplicates...`)
+      
+      const result = await checkExistingItems(userId, itemCodes, token)
+      
+      if (result.success) {
+        const existingItemIds = new Set(result.data.existingItemIds as string[])
+        setDuplicateItems(existingItemIds)
+        setDuplicateCount(result.data.duplicatesFound)
+        
+        console.log(`Found ${result.data.duplicatesFound} duplicate items out of ${result.data.totalChecked}`)
+      }
+    } catch (error) {
+      console.error('Error checking for duplicates:', error)
+      setToast({ message: 'Failed to check duplicates', type: 'error' })
+    } finally {
+      setIsCheckingDuplicates(false)
+    }
+  }
 
   const parseCSV = (csvText: string) => {
     const lines = csvText.split('\n')
@@ -167,6 +271,9 @@ export default function BulkImportItemsPage() {
     }
     
     const headers = lines[0]?.split(delimiter).map(h => h.trim().replace(/"/g, '')) || []
+    
+    // Create header mapping for dynamic column detection
+    const headerMap = createHeaderMap(headers)
     
     const parsedItems: ImportItem[] = []
     const errors: ValidationError[] = []
@@ -209,47 +316,47 @@ export default function BulkImportItemsPage() {
         continue
       }
 
-      // Map columns based on actual Excel structure:
-      // 0: Item name*, 1: Item code, 2: Category, 3: HSN, 4: Sale price, 5: Purchase price, 
-      // 6: Online Store Price, 7: Discount Type, 8: Sale Discount, 9: Current stock quantity, 
-      // 10: Minimum stock quantity, 11: Item Location, 12: Tax Rate, 13: Inclusive Of Tax, 
-      // 14: Base Unit (x), 15: Secondary Unit (y), 16: Conversion Rate (n) (x = ny)
+      // Use dynamic header mapping to extract values
+      const getValue = (field: string) => {
+        const index = headerMap[field]
+        return index !== undefined ? values[index] || '' : ''
+      }
       
       // Tax Rate: extract number, but keep original
-      const taxRateRaw = values[12] || ''
+      const taxRateRaw = getValue('taxRate')
       const taxRateMatch = taxRateRaw.match(/([\d.]+)/)
       const taxRate = taxRateMatch ? parseFloat(taxRateMatch[1]) : 0
       
       // Inclusive/Exclusive: keep original, parse boolean
-      const inclusiveOfTaxRaw = values[13] || ''
+      const inclusiveOfTaxRaw = getValue('inclusiveOfTax')
       const inclusiveOfTax = inclusiveOfTaxRaw.toLowerCase() === 'inclusive' || 
                             inclusiveOfTaxRaw.toLowerCase() === 'yes' ||
                             inclusiveOfTaxRaw.toLowerCase() === 'true'
       
       // Conversion Rate: keep original, parse number or empty
-      const conversionRateRaw = values[16] || ''
+      const conversionRateRaw = getValue('conversionRate')
       const conversionRate = conversionRateRaw ? parseFloat(conversionRateRaw) : ''
 
       const item: ImportItem = {
-        name: values[0] || '',
-        itemCode: values[1] || '',
-        category: values[2] || '',
-        hsn: values[3] || '',
-        salePrice: parseFloat(values[4]) || 0,
-        purchasePrice: parseFloat(values[5]) || 0,
-        wholesalePrice: parseFloat(values[6]) || 0, // Online Store Price maps to wholesale
-        minimumWholesaleQuantity: 0, // Not in your data
-        discountType: values[7] || '',
-        saleDiscount: parseFloat(values[8]) || 0,
-        openingStockQuantity: parseFloat(values[9]) || 0, // Current stock quantity
-        minimumStockQuantity: parseFloat(values[10]) || 0,
-        itemLocation: values[11] || '',
+        name: getValue('name'),
+        itemCode: getValue('itemCode'),
+        category: getValue('category'),
+        hsn: getValue('hsn'),
+        salePrice: parseFloat(getValue('salePrice')) || 0,
+        purchasePrice: parseFloat(getValue('purchasePrice')) || 0,
+        wholesalePrice: parseFloat(getValue('wholesalePrice')) || 0,
+        minimumWholesaleQuantity: 0, // Not typically in CSV
+        discountType: getValue('discountType'),
+        saleDiscount: parseFloat(getValue('saleDiscount')) || 0,
+        openingStockQuantity: parseFloat(getValue('openingStockQuantity')) || 0,
+        minimumStockQuantity: parseFloat(getValue('minimumStockQuantity')) || 0,
+        itemLocation: getValue('itemLocation'),
         taxRate, // parsed
         taxRateRaw, // original
         inclusiveOfTax, // parsed
         inclusiveOfTaxRaw, // original
-        baseUnit: values[14] || '',
-        secondaryUnit: values[15] || '',
+        baseUnit: getValue('baseUnit'),
+        secondaryUnit: getValue('secondaryUnit'),
         conversionRate, // parsed or ''
         conversionRateRaw, // original
         status: 'Active'
@@ -266,7 +373,11 @@ export default function BulkImportItemsPage() {
 
     setItems(parsedItems)
     setValidationErrors(errors)
+    setDetectedHeaders(headerMap)
     setShowPreview(true)
+    
+    // Check for duplicates after parsing
+    checkForDuplicates(parsedItems)
   }
 
   // Helper function to properly parse CSV lines with quoted fields
@@ -309,7 +420,7 @@ export default function BulkImportItemsPage() {
 
   const handlePasteData = () => {
     if (!pastedData.trim()) {
-      setToast({ message: 'Please paste some data first', type: 'error' })
+      setToast({ message: 'No data to process', type: 'error' })
       return
     }
     
@@ -380,7 +491,7 @@ export default function BulkImportItemsPage() {
       'HSN',
       'Sale price',
       'Purchase price',
-
+      'Online Store Price',
       'Discount Type',
       'Sale Discount',
       'Current stock quantity',
@@ -400,7 +511,7 @@ export default function BulkImportItemsPage() {
       '85171200',
       '1000.00',
       '800.00',
-
+      '900.00',
       'Discount %',
       '5.00',
       '50',
@@ -432,7 +543,7 @@ export default function BulkImportItemsPage() {
 
   const handleImport = async () => {
     if (validationErrors.length > 0) {
-      setToast({ message: 'Please fix validation errors before importing', type: 'error' })
+      setToast({ message: 'Fix errors before importing', type: 'error' })
       return
     }
 
@@ -450,7 +561,7 @@ export default function BulkImportItemsPage() {
       
       // Check if token is available
       if (!token) {
-        setToast({ message: 'Authentication token not found. Please login again.', type: 'error' })
+        setToast({ message: 'Please login again', type: 'error' })
         setIsImporting(false)
         return
       }
@@ -460,13 +571,14 @@ export default function BulkImportItemsPage() {
       
       // Check if userId is available
       if (!userId) {
-        setToast({ message: 'User not found. Please login again.', type: 'error' })
+        setToast({ message: 'Please login again', type: 'error' })
         setIsImporting(false)
         return
       }
       
-      // Prepare items for bulk import with all the new fields
-      const itemsToImport = items.map(item => ({
+      // Prepare items for bulk import - only new items (skip duplicates)
+      const newItemsOnly = getFilteredItems()
+      const itemsToImport = newItemsOnly.map(item => ({
         name: item.name,
         itemCode: item.itemCode,
         category: item.category,
@@ -559,7 +671,8 @@ export default function BulkImportItemsPage() {
 
       // Final success message
       const avgProcessingTime = chunks.length > 0 ? Math.round(totalProcessingTime / chunks.length) : 0;
-      const successMessage = `Import completed! ${totalSuccessCount} items imported successfully, ${totalErrorCount} failed. Average processing time: ${avgProcessingTime}ms per chunk.`;
+      const skippedCount = duplicateCount;
+      const successMessage = `${totalSuccessCount} items imported${totalErrorCount > 0 ? `, ${totalErrorCount} failed` : ''}${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}`;
       
       setToast({ 
         message: successMessage, 
@@ -567,7 +680,7 @@ export default function BulkImportItemsPage() {
       })
 
       setImportProgress(100)
-      setImportStatus(`Import completed successfully! ${totalSuccessCount} items imported.`)
+      setImportStatus(`${totalSuccessCount} items imported${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}`)
       
       setTimeout(() => {
         router.push('/dashboard/items')
@@ -575,14 +688,14 @@ export default function BulkImportItemsPage() {
       
     } catch (error: any) {
       console.error('Import error:', error)
-      let errorMessage = 'Import failed. Please try again.'
+      let errorMessage = 'Import failed'
       
       if (error.message?.includes('Payload too large')) {
-        errorMessage = 'File too large. Please try importing fewer items at once or split your file into smaller chunks.'
+        errorMessage = 'File too large'
       } else if (error.message?.includes('timeout')) {
-        errorMessage = 'Import timed out. Please try again with fewer items.'
+        errorMessage = 'Import timed out'
       } else if (error.message?.includes('413')) {
-        errorMessage = 'Server rejected the request due to size. Please try importing fewer items.'
+        errorMessage = 'File too large'
       }
       
       setToast({ message: errorMessage, type: 'error' })
@@ -606,6 +719,10 @@ export default function BulkImportItemsPage() {
     setErrorCount(0)
     setPastedData('')
     setRawDataPreview('')
+    setDuplicateItems(new Set())
+    setDuplicateCount(0)
+    setIsCheckingDuplicates(false)
+    setDetectedHeaders({})
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -617,6 +734,16 @@ export default function BulkImportItemsPage() {
 
   const getFieldError = (row: number, field: string) => {
     return validationErrors.find(error => error.row === row && error.field === field)
+  }
+
+  const isDuplicateItem = (item: ImportItem) => {
+    const itemCode = item.itemCode || item.name
+    return duplicateItems.has(itemCode)
+  }
+
+  const getFilteredItems = () => {
+    // Filter out duplicate items - only show new items for import
+    return items.filter(item => !isDuplicateItem(item))
   }
 
   return (
@@ -779,7 +906,14 @@ export default function BulkImportItemsPage() {
                 <div className="flex items-center space-x-2">
                   <span className="text-sm text-gray-600">
                     {items.length} items • {validationErrors.length} errors
+                    {duplicateCount > 0 && ` • ${duplicateCount} duplicates`}
                   </span>
+                  {isCheckingDuplicates && (
+                    <div className="flex items-center space-x-1">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                      <span className="text-xs text-blue-600">Checking duplicates...</span>
+                    </div>
+                  )}
                   <button
                     onClick={resetImport}
                     className="text-sm text-red-600 hover:text-red-800"
@@ -789,56 +923,27 @@ export default function BulkImportItemsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <div className="bg-gradient-to-br from-blue-100 to-blue-50 p-6 rounded-xl shadow-sm border border-blue-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-3xl font-bold text-blue-700">{items.length}</div>
-                      <div className="text-sm text-blue-600 font-medium">Total Items</div>
-                    </div>
-                    <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
-                      <Package className="h-6 w-6 text-white" />
-                    </div>
-                  </div>
+                  <div className="text-3xl font-bold text-blue-700">{items.length}</div>
+                  <div className="text-sm text-blue-600 font-medium">Total Items</div>
                 </div>
                 <div className="bg-gradient-to-br from-green-100 to-green-50 p-6 rounded-xl shadow-sm border border-green-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-3xl font-bold text-green-700">
-                        {items.length - validationErrors.length}
-                      </div>
-                      <div className="text-sm text-green-600 font-medium">Valid Items</div>
-                    </div>
-                    <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
-                      <CheckCircle className="h-6 w-6 text-white" />
-                    </div>
+                  <div className="text-3xl font-bold text-green-700">
+                    {items.length - validationErrors.length - duplicateCount}
                   </div>
+                  <div className="text-sm text-green-600 font-medium">New Items</div>
+                </div>
+                <div className="bg-gradient-to-br from-orange-100 to-orange-50 p-6 rounded-xl shadow-sm border border-orange-200">
+                  <div className="text-3xl font-bold text-orange-700">{duplicateCount}</div>
+                  <div className="text-sm text-orange-600 font-medium">Will Skip</div>
                 </div>
                 <div className="bg-gradient-to-br from-red-100 to-red-50 p-6 rounded-xl shadow-sm border border-red-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-3xl font-bold text-red-700">{validationErrors.length}</div>
-                      <div className="text-sm text-red-600 font-medium">Errors</div>
-                    </div>
-                    <div className="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center">
-                      <AlertCircle className="h-6 w-6 text-white" />
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-gradient-to-br from-gray-100 to-gray-50 p-6 rounded-xl shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-3xl font-bold text-gray-700">
-                        {items.length > 0 ? Math.round(((items.length - validationErrors.length) / items.length) * 100) : 0}%
-                      </div>
-                      <div className="text-sm text-gray-600 font-medium">Success Rate</div>
-                    </div>
-                    <div className="w-12 h-12 bg-gray-500 rounded-full flex items-center justify-center">
-                      <BarChart3 className="h-6 w-6 text-white" />
-                    </div>
-                  </div>
+                  <div className="text-3xl font-bold text-red-700">{validationErrors.length}</div>
+                  <div className="text-sm text-red-600 font-medium">Errors</div>
                 </div>
               </div>
+
 
               {validationErrors.length === 0 ? (
                 <div className="space-y-3">
@@ -858,50 +963,20 @@ export default function BulkImportItemsPage() {
                     ) : (
                       <div className="flex items-center justify-center">
                         <Package className="h-5 w-5 mr-2" />
-                        <span className="text-lg">Import {items.length} Items</span>
+                        <span className="text-lg">
+                          Import {getFilteredItems().length} New Items
+                          {duplicateCount > 0 && ` (${duplicateCount} duplicates will be skipped)`}
+                        </span>
                       </div>
                     )}
                   </button>
-                  
-                  {/* Import Summary */}
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium text-blue-900">Import Summary</h4>
-                      <div className="text-sm text-blue-600 font-medium">{items.length} items ready</div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-blue-700">Total Items:</span>
-                        <span className="ml-2 font-medium">{items.length}</span>
-                      </div>
-                      <div>
-                        <span className="text-blue-700">Chunks:</span>
-                        <span className="ml-2 font-medium">{Math.ceil(items.length / 500)}</span>
-                      </div>
-                      <div>
-                        <span className="text-blue-700">Estimated Time:</span>
-                        <span className="ml-2 font-medium">~{Math.ceil(items.length / 500) * 2}s</span>
-                      </div>
-                      <div>
-                        <span className="text-blue-700">Status:</span>
-                        <span className="ml-2 font-medium text-green-600">Ready to Import</span>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               ) : (
-                <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-6">
-                  <div className="flex items-center">
-                    <div className="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center mr-4">
-                      <AlertCircle className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-yellow-800 mb-1">Validation Required</h4>
-                      <p className="text-yellow-700">
-                        Please fix validation errors before importing
-                      </p>
-                    </div>
-                  </div>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <h4 className="font-medium text-yellow-800 mb-1">Validation Required</h4>
+                  <p className="text-yellow-700 text-sm">
+                    Please fix validation errors before importing
+                  </p>
                 </div>
               )}
             </div>
@@ -967,7 +1042,23 @@ export default function BulkImportItemsPage() {
             {/* Items Table */}
             <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900">Items to Import</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-gray-900">Items to Import</h3>
+                  <div className="flex items-center space-x-4 text-sm">
+                    <div className="flex items-center space-x-1">
+                      <div className="w-3 h-3 bg-green-100 border border-green-300 rounded"></div>
+                      <span className="text-green-700">New Items</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <div className="w-3 h-3 bg-orange-100 border border-orange-300 rounded"></div>
+                      <span className="text-orange-700">Will Skip</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <div className="w-3 h-3 bg-red-100 border border-red-300 rounded"></div>
+                      <span className="text-red-700">Errors</span>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div className="overflow-x-auto overflow-y-auto">
                 <table className="min-w-full divide-y divide-gray-200">
@@ -1031,8 +1122,17 @@ export default function BulkImportItemsPage() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {items.map((item, index) => (
-                      <tr key={index} className={getErrorCount(index + 1) > 0 ? 'bg-red-50' : ''}>
+                    {items.map((item, index) => {
+                      const hasErrors = getErrorCount(index + 1) > 0
+                      const isDuplicate = isDuplicateItem(item)
+                      const rowClass = hasErrors 
+                        ? 'bg-red-50' 
+                        : isDuplicate 
+                        ? 'bg-orange-50' 
+                        : ''
+                      
+                      return (
+                      <tr key={index} className={rowClass}>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
                           {index + 1}
                         </td>
@@ -1126,18 +1226,33 @@ export default function BulkImportItemsPage() {
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
                           <div className="flex items-center">
-                            {getErrorCount(index + 1) === 0 ? (
-                              <CheckCircle className="h-4 w-4 text-green-600" />
+                            {hasErrors ? (
+                              <>
+                                <AlertCircle className="h-4 w-4 text-red-600" />
+                                <span className="ml-2 text-sm text-red-600">
+                                  {getErrorCount(index + 1)} errors
+                                </span>
+                              </>
+                            ) : isDuplicate ? (
+                              <>
+                                <AlertCircle className="h-4 w-4 text-orange-600" />
+                                <span className="ml-2 text-sm text-orange-600">
+                                  Will Skip
+                                </span>
+                              </>
                             ) : (
-                              <AlertCircle className="h-4 w-4 text-red-600" />
+                              <>
+                                <CheckCircle className="h-4 w-4 text-green-600" />
+                                <span className="ml-2 text-sm text-green-600">
+                                  New Item
+                                </span>
+                              </>
                             )}
-                            <span className="ml-2 text-sm text-gray-900">
-                              {getErrorCount(index + 1) === 0 ? 'Valid' : `${getErrorCount(index + 1)} errors`}
-                            </span>
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1172,7 +1287,7 @@ export default function BulkImportItemsPage() {
                   value={pastedData}
                   onChange={(e) => setPastedData(e.target.value)}
                   className="w-full h-64 p-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Item Name	Item Code	Category	HSN	Sale Price	Purchase Price	Wholesale Price	Minimum Wholesale Quantity	Discount Type	Sale Discount	Opening Stock Quantity	Minimum Stock Quantity	Item Location	Tax Rate	Inclusive of Tax	Base Unit (x)	Secondary Unit (y)	Conversion Rate n (x=ny)&#10;Sample Item	ITM001	Electronics	85171200	1000.00	800.00	900.00	10	Percentage	5.00	50	5	Warehouse A	18.00	Yes	Pieces	Boxes	10"
+                  placeholder="Item Name	Item Code	Category	HSN	Sale Price	Purchase Price	Online Store Price	Discount Type	Sale Discount	Current Stock Quantity	Minimum Stock Quantity	Item Location	Tax Rate	Inclusive of Tax	Base Unit (x)	Secondary Unit (y)	Conversion Rate n (x=ny)&#10;Sample Item	ITM001	Electronics	85171200	1000.00	800.00	900.00	Discount %	5.00	50	5	Warehouse A	18.00	Yes	Pieces	Boxes	10"
                 />
               </div>
               

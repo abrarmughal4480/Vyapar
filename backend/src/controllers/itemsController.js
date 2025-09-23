@@ -374,6 +374,48 @@ export const bulkImportItems = async (req, res) => {
   }
 };
 
+// Check existing items by item codes
+export const checkExistingItems = async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const { itemCodes } = req.body;
+    
+    if (!Array.isArray(itemCodes) || itemCodes.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No item codes provided' 
+      });
+    }
+
+    // Find existing items by itemId (which includes itemCode)
+    const existingItems = await Item.find({ 
+      userId, 
+      itemId: { $in: itemCodes }
+    }).select('itemId name').lean();
+    
+    const existingItemIds = existingItems.map(item => item.itemId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        existingItemIds,
+        existingItems,
+        totalChecked: itemCodes.length,
+        duplicatesFound: existingItemIds.length,
+        newItems: itemCodes.length - existingItemIds.length
+      }
+    });
+    
+  } catch (err) {
+    console.error('Check existing items error:', err);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error while checking existing items',
+      error: err.message 
+    });
+  }
+};
+
 // Get all items for a user
 export const getItems = async (req, res) => {
   try {

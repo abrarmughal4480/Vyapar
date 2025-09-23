@@ -1,11 +1,12 @@
 'use client'
 
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Upload, Download, Eye, CheckCircle, AlertCircle, X, FileText, Users, ArrowLeft, BarChart3 } from 'lucide-react'
 import Toast from '../../../components/Toast'
 import { createParty } from '@/http/parties'
 import * as XLSX from 'xlsx'
+import { useSidebar } from '../../../contexts/SidebarContext'
 
 interface ImportParty {
   name: string
@@ -28,6 +29,7 @@ interface ValidationError {
 export default function BulkImportPartiesPage() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { setIsCollapsed } = useSidebar()
   const [isLoading, setIsLoading] = useState(false)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [parties, setParties] = useState<ImportParty[]>([])
@@ -39,6 +41,16 @@ export default function BulkImportPartiesPage() {
   const [isDragOver, setIsDragOver] = useState(false)
   const [showPasteModal, setShowPasteModal] = useState(false)
   const [pastedData, setPastedData] = useState('')
+
+  // Auto-collapse sidebar when page loads, expand when leaving
+  useEffect(() => {
+    setIsCollapsed(true)
+    
+    // Cleanup function to expand sidebar when component unmounts
+    return () => {
+      setIsCollapsed(false)
+    }
+  }, [setIsCollapsed])
 
   const pakistaniProvinces = [
     'Punjab', 'Sindh', 'Khyber Pakhtunkhwa', 'Balochistan', 'Gilgit-Baltistan',

@@ -3,6 +3,7 @@ import React, { useRef, useState, useEffect, Suspense } from "react";
 import { QrCode, FileText, Printer, ArrowLeft } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { getSaleById } from "../../../http/sales";
+import { getQuotationsForUser } from "../../../http/quotations";
 import { jwtDecode } from "jwt-decode";
 
 // Constants
@@ -31,18 +32,18 @@ const defaultInvoiceData = {
     email: "info@deveasedigital.com",
   },
   items: [
-    { name: "Rice - Basmati 1kg", qty: 5, unit: "kg", rate: 250, amount: 1250 },
-    { name: "Sugar - 2kg", qty: 2, unit: "kg", rate: 180, amount: 360 },
-    { name: "Cooking Oil 1L", qty: 3, unit: "ltr", rate: 500, amount: 1500 },
-    { name: "Tea Pack", qty: 1, unit: "box", rate: 800, amount: 800 },
-    { name: "Wheat Flour - 5kg", qty: 2, unit: "kg", rate: 400, amount: 800 },
-    { name: "Red Lentils - 1kg", qty: 3, unit: "kg", rate: 200, amount: 600 },
-    { name: "Chicken - Fresh 1kg", qty: 2, unit: "kg", rate: 600, amount: 1200 },
-    { name: "Tomatoes - Fresh 1kg", qty: 4, unit: "kg", rate: 80, amount: 320 },
-    { name: "Onions - Red 1kg", qty: 3, unit: "kg", rate: 60, amount: 180 },
-    { name: "Potatoes - Fresh 1kg", qty: 5, unit: "kg", rate: 40, amount: 200 },
-    { name: "Milk - 1 Liter", qty: 2, unit: "ltr", rate: 120, amount: 240 },
-    { name: "Bread - Whole Wheat", qty: 3, unit: "pcs", rate: 80, amount: 240 },
+    { name: "Rice - Basmati 1kg", qty: 5, unit: "kg", rate: 250, amount: 1250, discountPercentage: null, discountAmount: null },
+    { name: "Sugar - 2kg", qty: 2, unit: "kg", rate: 180, amount: 360, discountPercentage: null, discountAmount: null },
+    { name: "Cooking Oil 1L", qty: 3, unit: "ltr", rate: 500, amount: 1500, discountPercentage: null, discountAmount: null },
+    { name: "Tea Pack", qty: 1, unit: "box", rate: 800, amount: 800, discountPercentage: null, discountAmount: null },
+    { name: "Wheat Flour - 5kg", qty: 2, unit: "kg", rate: 400, amount: 800, discountPercentage: null, discountAmount: null },
+    { name: "Red Lentils - 1kg", qty: 3, unit: "kg", rate: 200, amount: 600, discountPercentage: null, discountAmount: null },
+    { name: "Chicken - Fresh 1kg", qty: 2, unit: "kg", rate: 600, amount: 1200, discountPercentage: null, discountAmount: null },
+    { name: "Tomatoes - Fresh 1kg", qty: 4, unit: "kg", rate: 80, amount: 320, discountPercentage: null, discountAmount: null },
+    { name: "Onions - Red 1kg", qty: 3, unit: "kg", rate: 60, amount: 180, discountPercentage: null, discountAmount: null },
+    { name: "Potatoes - Fresh 1kg", qty: 5, unit: "kg", rate: 40, amount: 200, discountPercentage: null, discountAmount: null },
+    { name: "Milk - 1 Liter", qty: 2, unit: "ltr", rate: 120, amount: 240, discountPercentage: null, discountAmount: null },
+    { name: "Bread - Whole Wheat", qty: 3, unit: "pcs", rate: 80, amount: 240, discountPercentage: null, discountAmount: null },
   ],
   discount: 200,
   tax: 100,
@@ -318,6 +319,269 @@ const InvoiceSummary: React.FC<{
   );
 };
 
+// Simple Invoice Component (like estimate format)
+const SimpleInvoiceContent: React.FC<{ data: typeof defaultInvoiceData }> = ({ data }) => {
+  // Function to convert number to words (simple version)
+  const numberToWords = (num: number): string => {
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    
+    if (num === 0) return 'Zero';
+    if (num < 10) return ones[num];
+    if (num < 20) return teens[num - 10];
+    if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 ? ' ' + ones[num % 10] : '');
+    if (num < 1000) return ones[Math.floor(num / 100)] + ' Hundred' + (num % 100 ? ' ' + numberToWords(num % 100) : '');
+    if (num < 100000) return numberToWords(Math.floor(num / 1000)) + ' Thousand' + (num % 1000 ? ' ' + numberToWords(num % 1000) : '');
+    return 'Large Number';
+  };
+
+  const totals = calculateTotals(data.items, data.discount, data.tax, data.received);
+
+  return (
+    <div className="bg-white p-4 w-full" style={{ fontFamily: 'Arial, sans-serif' }}>
+      {/* Header Section */}
+      <div className="mb-2">
+            <h1 className="text-2xl font-bold text-black mb-1 text-center">
+              {(() => {
+                const invoiceNo = data.invoiceNumber;
+                const isFromQuotation = invoiceNo && (
+                  invoiceNo.includes('QUO') || 
+                  invoiceNo.includes('QUOT') || 
+                  invoiceNo.includes('QT') ||
+                  invoiceNo.startsWith('QT')
+                );
+                return isFromQuotation ? 'Estimate' : 'Invoice';
+              })()}
+            </h1>
+        <div className="text-lg font-bold text-black ml-4">{data.business.name}</div>
+      </div>
+
+      {/* Invoice Details Section */}
+      <div className="border border-gray-300 mb-2">
+        <div className="flex">
+          {/* Left Side - Customer */}
+          <div className="flex-1 p-2 border-r border-gray-300">
+            <div className="text-xs text-gray-700">Bill To:</div>
+            <div className="text-sm font-semibold text-black">{data.customer.name}</div>
+            <div className="text-xs text-gray-700">Phone: {data.business.phone || '3054561515'}</div>
+          </div>
+          
+          {/* Right Side - Details */}
+          <div className="flex-1 p-2">
+                <div className="text-xs text-gray-700">
+                  {(() => {
+                    const invoiceNo = data.invoiceNumber;
+                    const isFromQuotation = invoiceNo && (
+                      invoiceNo.includes('QUO') || 
+                      invoiceNo.includes('QUOT') || 
+                      invoiceNo.includes('QT') ||
+                      invoiceNo.startsWith('QT')
+                    );
+                    return isFromQuotation ? 'Estimate Details:' : 'Invoice Details:';
+                  })()}
+                </div>
+                <div className="text-xs text-black">No: {data.invoiceNumber}</div>
+                <div className="text-xs text-black">Date: {data.invoiceDate}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Items Table */}
+      <div className="border border-gray-300 mb-2">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-gray-100 border-b border-gray-300">
+              <th className="border-r border-gray-300 px-1 py-1 text-left text-xs font-semibold text-black">#</th>
+              <th className="border-r border-gray-300 px-1 py-1 text-left text-xs font-semibold text-black">Item name</th>
+              <th className="border-r border-gray-300 px-1 py-1 text-center text-xs font-semibold text-black">Quantity</th>
+              <th className="border-r border-gray-300 px-1 py-1 text-right text-xs font-semibold text-black">Price/ Unit(Rs)</th>
+              {(() => {
+                const hasAnyItemDiscount = data.items.some((item: any) => 
+                  (item.discountPercentage && item.discountPercentage > 0) || 
+                  (item.discountAmount && item.discountAmount > 0)
+                );
+                return hasAnyItemDiscount ? (
+                  <th className="border-r border-gray-300 px-1 py-1 text-right text-xs font-semibold text-black">Discount</th>
+                ) : null;
+              })()}
+              <th className="px-1 py-1 text-right text-xs font-semibold text-black">Amount(Rs)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.items.map((item, idx) => {
+              const itemDiscount = (item as any).discountPercentage ? 
+                (item.rate * item.qty * (item as any).discountPercentage / 100) : 
+                ((item as any).discountAmount || 0);
+              const finalAmount = (item.rate * item.qty) - itemDiscount;
+              
+              const hasAnyItemDiscount = data.items.some((item: any) => 
+                (item.discountPercentage && item.discountPercentage > 0) || 
+                (item.discountAmount && item.discountAmount > 0)
+              );
+              
+              return (
+                <tr key={idx} className="border-b border-gray-300">
+                  <td className="border-r border-gray-300 px-1 py-1 text-xs text-black">{idx + 1}</td>
+                  <td className="border-r border-gray-300 px-1 py-1 text-xs text-black">{item.name}</td>
+                  <td className="border-r border-gray-300 px-1 py-1 text-xs text-black text-center">{item.qty}</td>
+                  <td className="border-r border-gray-300 px-1 py-1 text-xs text-black text-right">Rs {item.rate.toLocaleString()}</td>
+                  {hasAnyItemDiscount && (
+                    <td className="border-r border-gray-300 px-1 py-1 text-xs text-black text-right">
+                      {itemDiscount > 0 ? (
+                        <>
+                          Rs {itemDiscount.toFixed(2)}
+                          {(item as any).discountPercentage && (
+                            <span className="text-gray-500"> ({(item as any).discountPercentage}%)</span>
+                          )}
+                        </>
+                      ) : '-'}
+                    </td>
+                  )}
+                  <td className="px-1 py-1 text-xs text-black text-right">Rs {finalAmount.toFixed(2)}</td>
+                </tr>
+              );
+            })}
+            
+            {/* Total Row */}
+            <tr className="border-b border-gray-300">
+              <td className="border-r border-gray-300 px-1 py-1"></td>
+              <td className="border-r border-gray-300 px-1 py-1 text-xs font-semibold text-black">Total</td>
+              <td className="border-r border-gray-300 px-1 py-1 text-xs font-semibold text-black text-center">
+                {data.items.reduce((sum, item) => sum + item.qty, 0)}
+              </td>
+              <td className="border-r border-gray-300 px-1 py-1"></td>
+              {(() => {
+                const hasAnyItemDiscount = data.items.some((item: any) => 
+                  (item.discountPercentage && item.discountPercentage > 0) || 
+                  (item.discountAmount && item.discountAmount > 0)
+                );
+                return hasAnyItemDiscount ? (
+                  <td className="border-r border-gray-300 px-1 py-1 text-xs font-semibold text-black text-right">
+                    Rs {data.items.reduce((sum, item) => {
+                      const itemDiscount = (item as any).discountPercentage ? 
+                        (item.rate * item.qty * (item as any).discountPercentage / 100) : 
+                        ((item as any).discountAmount || 0);
+                      return sum + itemDiscount;
+                    }, 0).toFixed(2)}
+                  </td>
+                ) : null;
+              })()}
+              <td className="px-1 py-1 text-xs font-semibold text-black text-right">
+                Rs {data.items.reduce((sum, item) => {
+                  const itemDiscount = (item as any).discountPercentage ? 
+                    (item.rate * item.qty * (item as any).discountPercentage / 100) : 
+                    ((item as any).discountAmount || 0);
+                  const finalAmount = (item.rate * item.qty) - itemDiscount;
+                  return sum + finalAmount;
+                }, 0).toFixed(2)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Summary Section */}
+      <div className="mb-2">
+        {(() => {
+          const totalItemDiscount = data.items.reduce((sum, item) => {
+            const itemDiscount = (item as any).discountPercentage ? 
+              (item.rate * item.qty * (item as any).discountPercentage / 100) : 
+              ((item as any).discountAmount || 0);
+            return sum + itemDiscount;
+          }, 0);
+          
+          const totalAfterItemDiscount = data.items.reduce((sum, item) => {
+            const itemDiscount = (item as any).discountPercentage ? 
+              (item.rate * item.qty * (item as any).discountPercentage / 100) : 
+              ((item as any).discountAmount || 0);
+            const finalAmount = (item.rate * item.qty) - itemDiscount;
+            return sum + finalAmount;
+          }, 0);
+          
+          const finalTotal = totalAfterItemDiscount + data.tax - data.discount;
+          
+          return (
+            <>
+              <div className="flex justify-between items-center py-1">
+                <span className="text-xs text-black">Sub Total:</span>
+                <span className="text-xs text-black">Rs {data.items.reduce((sum, item) => sum + (item.rate * item.qty), 0).toFixed(2)}</span>
+              </div>
+              
+              {data.discount > 0 && (
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-xs text-black">Discount:</span>
+                  <span className="text-xs text-black">- Rs {data.discount.toFixed(2)}</span>
+                </div>
+              )}
+              
+              {data.tax > 0 && (
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-xs text-black">Tax:</span>
+                  <span className="text-xs text-black">+ Rs {data.tax.toFixed(2)}</span>
+                </div>
+              )}
+              
+              <div className="flex justify-between items-center py-1">
+                <span className="text-xs font-bold text-black">Total:</span>
+                <span className="text-xs font-bold text-black">Rs {finalTotal.toFixed(2)}</span>
+              </div>
+              
+              <div className="flex justify-between items-center py-1">
+                <span className="text-xs text-black">Received:</span>
+                <span className="text-xs text-black">Rs {data.received}</span>
+              </div>
+              
+              <div className="flex justify-between items-center py-1">
+                <span className="text-xs text-black">Balance:</span>
+                <span className="text-xs text-black">Rs {Math.max(0, finalTotal - parseFloat(data.received)).toFixed(2)}</span>
+              </div>
+              
+              <div className="mt-1">
+                  <div className="text-xs text-black">
+                    {(() => {
+                      const invoiceNo = data.invoiceNumber;
+                      const isFromQuotation = invoiceNo && (
+                        invoiceNo.includes('QUO') || 
+                        invoiceNo.includes('QUOT') || 
+                        invoiceNo.includes('QT') ||
+                        invoiceNo.startsWith('QT')
+                      );
+                      return isFromQuotation ? 'Estimate Amount in Words:' : 'Invoice Amount in Words:';
+                    })()}
+                  </div>
+                <div className="text-xs text-black italic">
+                  {numberToWords(Math.floor(finalTotal))} Rupees only
+                </div>
+              </div>
+            </>
+          );
+        })()}
+      </div>
+
+      {/* Terms & Conditions */}
+      <div className="border border-gray-300 border-dashed p-2 mb-2">
+        <div className="text-xs text-black">Terms & Conditions:</div>
+        <div className="text-xs text-black">
+          {data.description || "Thanks for doing business with us!"}
+        </div>
+      </div>
+
+      {/* Signature Section */}
+      <div className="border border-gray-300 p-2">
+        <div className="flex justify-between">
+          <div className="flex-1"></div>
+          <div className="text-center">
+            <div className="text-xs text-black">For {data.business.name}:</div>
+            <div className="w-24 h-12 border border-gray-300 mx-auto mb-1"></div>
+            <div className="text-xs text-black">Authorized Signatory</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Main Invoice Component with auto page breaks
 const InvoiceContent: React.FC<{ size: keyof typeof PAPER_SIZES; data: typeof defaultInvoiceData }> = ({ size, data }) => {
   const { width, height } = PAPER_SIZES[size];
@@ -466,7 +730,8 @@ const ControlPanel: React.FC<{
   selectedSize: keyof typeof PAPER_SIZES;
   onSizeChange: (size: keyof typeof PAPER_SIZES) => void;
   onPrint: () => void;
-}> = ({ selectedSize, onSizeChange, onPrint }) => (
+  invoiceData: typeof defaultInvoiceData;
+}> = ({ selectedSize, onSizeChange, onPrint, invoiceData }) => (
   <div className="w-full md:w-80 bg-white rounded-xl shadow-lg border p-6 print:hidden">
     <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
       <FileText className="w-5 h-5" />
@@ -500,7 +765,16 @@ const ControlPanel: React.FC<{
         className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center justify-center gap-2 transform hover:scale-105"
       >
         <Printer className="w-4 h-4" />
-        Print Invoice
+        {(() => {
+          const invoiceNo = invoiceData.invoiceNumber;
+          const isFromQuotation = invoiceNo && (
+            invoiceNo.includes('QUO') || 
+            invoiceNo.includes('QUOT') || 
+            invoiceNo.includes('QT') ||
+            invoiceNo.startsWith('QT')
+          );
+          return isFromQuotation ? 'Print Estimate' : 'Print Invoice';
+        })()}
       </button>
     </div>
   </div>
@@ -523,8 +797,22 @@ const InvoicePageContent: React.FC = () => {
       // Prevent the default back navigation
       event.preventDefault();
       
-      // Redirect to sales page instead of going back
-      router.push('/dashboard/sale');
+      // Determine redirect destination based on invoice number
+      const invoiceNo = searchParams.get('invoiceNo');
+      const isFromQuotation = invoiceNo && (
+        invoiceNo.includes('QUO') || 
+        invoiceNo.includes('QUOT') || 
+        invoiceNo.includes('QT') ||
+        invoiceNo.startsWith('QT')
+      );
+      
+      if (isFromQuotation) {
+        // Redirect to quotation page if came from estimate
+        router.push('/dashboard/quotation');
+      } else {
+        // Redirect to sale page if came from sale
+        router.push('/dashboard/sale');
+      }
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -532,17 +820,46 @@ const InvoicePageContent: React.FC = () => {
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [router]);
+  }, [router, searchParams]);
 
-  // Fetch sale data if saleId is provided
+  // Fetch sale or quotation data if saleId is provided
   useEffect(() => {
-    const fetchSaleData = async () => {
+    const fetchData = async () => {
       const saleId = searchParams.get('saleId');
+      const invoiceNo = searchParams.get('invoiceNo');
+      
       if (saleId) {
         setLoading(true);
         try {
           const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
-          const result = await getSaleById(saleId, token);
+          
+          // Try to fetch as sale first
+          let result: any = { success: false, sale: null };
+          let dataType = 'sale';
+          
+          try {
+            result = await getSaleById(saleId, token);
+            if (result.success && result.sale) {
+              dataType = 'sale';
+              console.log('Found sale:', result.sale);
+            }
+          } catch (error) {
+            console.log('Sale not found, trying quotation...');
+            // If sale API fails, try to fetch as quotation
+            try {
+              const quotationResult = await getQuotationsForUser(token);
+              if (quotationResult.success && quotationResult.data) {
+                const quotation = quotationResult.data.find((q: any) => q._id === saleId || q.id === saleId);
+                if (quotation) {
+                  result = { success: true, sale: quotation };
+                  dataType = 'quotation';
+                  console.log('Found quotation:', quotation);
+                }
+              }
+            } catch (quotationError) {
+              console.error('Error fetching quotation:', quotationError);
+            }
+          }
           
           if (result.success && result.sale) {
             const sale = result.sale;
@@ -569,9 +886,13 @@ const InvoicePageContent: React.FC = () => {
               }
             }
             
-            // Transform sale data to invoice format
+            // Log the sale data to debug discount fields
+            console.log('Sale data:', sale);
+            console.log('Sale items:', sale.items);
+            
+            // Transform sale/quotation data to invoice format
             const transformedData = {
-              invoiceNumber: sale.invoiceNo || sale.invoiceNumber || "",
+              invoiceNumber: invoiceNo || sale.invoiceNo || sale.invoiceNumber || sale.quotationNo || sale.quotationNumber || sale.number || "",
               invoiceDate: (() => {
                 // Use actual creation date and time
                 if (sale.createdAt) {
@@ -630,6 +951,8 @@ const InvoicePageContent: React.FC = () => {
                 unit: item.unit || "pcs",
                 rate: item.price || item.rate || 0,
                 amount: item.amount || 0,
+                discountPercentage: item.discountPercentage || null,
+                discountAmount: item.discountAmount || null,
               })) || defaultInvoiceData.items,
               discount: sale.discount || 0,
               tax: sale.tax || 0,
@@ -644,6 +967,9 @@ const InvoicePageContent: React.FC = () => {
                   // For cash payments, received amount equals grand total
                   const grandTotal = sale.grandTotal || sale.amount || 0;
                   return grandTotal.toString();
+                } else if (dataType === 'quotation') {
+                  // For quotations, use amount as received
+                  return sale.amount?.toString() || sale.totalAmount?.toString() || "0.00";
                 }
                 return "0";
               })(),
@@ -651,17 +977,20 @@ const InvoicePageContent: React.FC = () => {
               qrUrl: sale.invoiceNo || sale.invoiceNumber ? `https://deveasedigital.com/invoice/${sale.invoiceNo || sale.invoiceNumber}` : "",
             };
             
+            console.log('Transformed data:', transformedData);
+            console.log('Transformed items:', transformedData.items);
+            
             setInvoiceData(transformedData);
           }
         } catch (error) {
-          console.error('Error fetching sale data:', error);
+          console.error('Error fetching data:', error);
         } finally {
           setLoading(false);
         }
       }
     };
 
-    fetchSaleData();
+    fetchData();
   }, [searchParams]);
 
   const handlePrint = () => {
@@ -697,11 +1026,40 @@ const InvoicePageContent: React.FC = () => {
         {/* Back Button */}
         <div className="mb-6">
           <button
-            onClick={() => router.push('/dashboard/sale')}
+            onClick={() => {
+              // Check if we came from quotation page or sale page
+              const saleId = searchParams.get('saleId');
+              const invoiceNo = searchParams.get('invoiceNo');
+              
+              // Determine if this is from quotation (estimate) or sale
+              const isFromQuotation = invoiceNo && (
+                invoiceNo.includes('QUO') || 
+                invoiceNo.includes('QUOT') || 
+                invoiceNo.includes('QT') ||
+                invoiceNo.startsWith('QT')
+              );
+              
+              if (isFromQuotation) {
+                // Redirect to quotation page if came from estimate
+                router.push('/dashboard/quotation');
+              } else {
+                // Redirect to sale page if came from sale
+                router.push('/dashboard/sale');
+              }
+            }}
             className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-gray-50 transition-colors text-gray-700 font-medium"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back to Sales
+            {(() => {
+              const invoiceNo = searchParams.get('invoiceNo');
+              const isFromQuotation = invoiceNo && (
+                invoiceNo.includes('QUO') || 
+                invoiceNo.includes('QUOT') || 
+                invoiceNo.includes('QT') ||
+                invoiceNo.startsWith('QT')
+              );
+              return isFromQuotation ? 'Back to Quotations' : 'Back to Sales';
+            })()}
           </button>
         </div>
         
@@ -709,16 +1067,19 @@ const InvoicePageContent: React.FC = () => {
           <div className="flex-1 invoice-print-area">
             {loading ? (
               <div className="flex items-center justify-center h-64">
-                <div className="text-lg text-gray-600">Loading invoice data...</div>
+                <div className="text-lg text-gray-600">Loading estimate data...</div>
               </div>
-            ) : (
+            ) : selectedSize === 'Thermal' ? (
               <InvoiceContent size={selectedSize} data={invoiceData} />
+            ) : (
+              <SimpleInvoiceContent data={invoiceData} />
             )}
           </div>
           <ControlPanel 
             selectedSize={selectedSize}
             onSizeChange={setSelectedSize}
             onPrint={handlePrint}
+            invoiceData={invoiceData}
           />
         </div>
       </div>

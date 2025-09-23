@@ -251,7 +251,7 @@ const PartyStatementPage = () => {
           refNo: sale.invoiceNo || `INV-${sale._id}`,
           paymentType: sale.paymentType || 'Credit',
           total: sale.grandTotal || 0,
-          received: 0,
+          received: sale.received || 0,
           paid: 0,
           balance: (sale.grandTotal || 0) - (sale.received || 0),
           partyName: sale.partyName,
@@ -286,7 +286,7 @@ const PartyStatementPage = () => {
           paymentType: purchase.paymentType || 'Credit',
           total: purchase.grandTotal || 0,
           received: 0,
-          paid: 0,
+          paid: purchase.paid || 0,
           balance: (purchase.grandTotal || 0) - (purchase.paid || 0),
           partyName: purchase.supplierName,
           description: purchase.description,
@@ -298,15 +298,15 @@ const PartyStatementPage = () => {
         allTransactions.push({
           id: payment._id || payment.id,
           date: payment.paymentDate || payment.createdAt,
-          txnType: 'Payment Out',
-          refNo: payment.billNo || `PAY-${payment._id}`,
+          txnType: 'Payment In',
+          refNo: payment.billNo || `PAY-IN-${payment._id}`,
           paymentType: payment.paymentType || 'Cash',
           total: 0,
-          received: 0,
-          paid: payment.amount || 0,
-          balance: -(payment.amount || 0),
+          received: payment.amount || 0,
+          paid: 0,
+          balance: payment.amount || 0,
           partyName: payment.supplierName,
-          description: payment.description,
+          description: payment.description || `Payment received from ${payment.supplierName}`,
           partyBalanceAfterTransaction: payment.partyBalanceAfterTransaction || 0
         });
       });
@@ -448,7 +448,7 @@ const PartyStatementPage = () => {
       setOpeningBalance(openingBal);
       setCurrentBalance(currentBal);
 
-      setFirstOpeningBalance(selectedPartyData?.firstOpeningBalance || 0);
+      setFirstOpeningBalance(selectedPartyData?.openingBalance || 0);
 
     } catch (error) {
       setError('Failed to load transactions. Please try again.');
@@ -1006,6 +1006,8 @@ const PartyStatementPage = () => {
                         if (txn.paymentType === 'Credit' && txn.balance > 0) {
                           runningBalance += txn.balance;
                         }
+                      } else if (txn.isOpeningBalance) {
+                        runningBalance = txn.balance;
                       }
                     }
 

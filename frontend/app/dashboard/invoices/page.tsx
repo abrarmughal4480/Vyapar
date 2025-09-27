@@ -1,6 +1,6 @@
 "use client";
 import React, { useRef, useState, useEffect, Suspense } from "react";
-import { QrCode, FileText, Printer, ArrowLeft } from "lucide-react";
+import { QrCode, FileText, Printer, ArrowLeft, Wifi, Usb } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { getSaleById } from "../../../http/sales";
 import { getQuotationsForUser } from "../../../http/quotations";
@@ -13,6 +13,118 @@ const PAPER_SIZES = {
 } as const;
 
 const mmToPx = (mm: number) => mm * 3.78;
+
+// Thermal Printer Interface
+interface ThermalPrinter {
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  print(text: string): Promise<void>;
+  cut(): Promise<void>;
+  feed(lines?: number): Promise<void>;
+  align(alignment: 'left' | 'center' | 'right'): Promise<void>;
+  bold(enabled: boolean): Promise<void>;
+  size(size: 'small' | 'normal' | 'large'): Promise<void>;
+}
+
+// Web-based Thermal Printer Implementation
+class WebThermalPrinter implements ThermalPrinter {
+  private port: any = null;
+  private writer: any = null;
+  private isConnected = false;
+
+  async connect(): Promise<void> {
+    try {
+      if ('serial' in navigator) {
+        // Web Serial API
+        this.port = await (navigator as any).serial.requestPort();
+        if (!this.port) {
+          throw new Error('No printer selected. Please select a thermal printer from the list.');
+        }
+        await this.port.open({ baudRate: 9600 });
+        this.writer = this.port.writable.getWriter();
+        this.isConnected = true;
+      } else if ('usb' in navigator) {
+        // WebUSB API
+        const device = await (navigator as any).usb.requestDevice({
+          filters: [{ classCode: 7 }] // Printer class
+        });
+        if (!device) {
+          throw new Error('No printer selected. Please select a thermal printer from the list.');
+        }
+        await device.open();
+        await device.selectConfiguration(1);
+        await device.claimInterface(0);
+        this.isConnected = true;
+      } else {
+        throw new Error('Web Serial or WebUSB not supported in this browser. Please use Chrome or Edge for thermal printing.');
+      }
+    } catch (error) {
+      console.error('Failed to connect to printer:', error);
+      if (error instanceof Error) {
+        if (error.name === 'NotFoundError') {
+          throw new Error('No thermal printer selected. Please connect a thermal printer and try again.');
+        } else if (error.name === 'NotAllowedError') {
+          throw new Error('Permission denied. Please allow access to the thermal printer.');
+        } else if (error.name === 'NotSupportedError') {
+          throw new Error('Thermal printing not supported. Please use Chrome or Edge browser.');
+        }
+      }
+      throw error;
+    }
+  }
+
+  async disconnect(): Promise<void> {
+    if (this.writer) {
+      await this.writer.releaseLock();
+    }
+    if (this.port) {
+      await this.port.close();
+    }
+    this.isConnected = false;
+  }
+
+  async print(text: string): Promise<void> {
+    if (!this.isConnected) throw new Error('Printer not connected');
+    
+    const encoder = new TextEncoder();
+    const data = encoder.encode(text);
+    
+    if (this.writer) {
+      await this.writer.write(data);
+    }
+  }
+
+  async cut(): Promise<void> {
+    await this.print('\x1D\x56\x00'); // ESC/POS cut command
+  }
+
+  async feed(lines: number = 3): Promise<void> {
+    await this.print('\n'.repeat(lines));
+  }
+
+  async align(alignment: 'left' | 'center' | 'right'): Promise<void> {
+    const commands = {
+      left: '\x1B\x61\x00',
+      center: '\x1B\x61\x01',
+      right: '\x1B\x61\x02'
+    };
+    await this.print(commands[alignment]);
+  }
+
+  async bold(enabled: boolean): Promise<void> {
+    const command = enabled ? '\x1B\x45\x01' : '\x1B\x45\x00';
+    await this.print(command);
+  }
+
+  async size(size: 'small' | 'normal' | 'large'): Promise<void> {
+    const commands = {
+      small: '\x1B\x21\x00',
+      normal: '\x1B\x21\x00',
+      large: '\x1B\x21\x11'
+    };
+    await this.print(commands[size]);
+  }
+}
 
 // Default sample data - will be overridden by real data
 const defaultInvoiceData = {
@@ -59,6 +171,101 @@ const calculateTotals = (items: typeof defaultInvoiceData.items, discount: numbe
   const grandTotal = subtotal - discount + tax;
   const balance = grandTotal - parseFloat(received);
   return { subtotal, grandTotal, balance };
+};
+
+// Thermal Printing Function
+const printThermalInvoice = async (data: typeof defaultInvoiceData) => {
+  const printer = new WebThermalPrinter();
+  
+  try {
+    // Show connection dialog
+    alert('Please select your thermal printer from the device list that appears.');
+    
+    await printer.connect();
+    
+    // Show printing progress
+    alert('Connecting to printer... Please wait.');
+    
+    // Header
+    await printer.align('center');
+    await printer.bold(true);
+    await printer.size('large');
+    await printer.print(data.business.name + '\n');
+    await printer.bold(false);
+    await printer.size('normal');
+    await printer.feed(1);
+    
+    // Invoice details
+    await printer.align('left');
+    await printer.print('Invoice: ' + data.invoiceNumber + '\n');
+    await printer.print('Date: ' + data.invoiceDate + '\n');
+    await printer.print('Customer: ' + data.customer.name + '\n');
+    await printer.print('Phone: ' + data.customer.phone + '\n');
+    await printer.print('--------------------------------\n');
+    
+    // Items header
+    await printer.print('Item                Qty  Rate  Amount\n');
+    await printer.print('--------------------------------\n');
+    
+    // Items
+    for (const item of data.items) {
+      const itemName = item.name.length > 15 ? item.name.substring(0, 15) + '...' : item.name;
+      const line = `${itemName.padEnd(18)} ${item.qty.toString().padStart(2)} ${item.rate.toString().padStart(4)} ${item.amount.toString().padStart(6)}\n`;
+      await printer.print(line);
+    }
+    
+    await printer.print('--------------------------------\n');
+    
+    // Totals
+    const totals = calculateTotals(data.items, data.discount, data.tax, data.received);
+    await printer.print(`Subtotal:           ${totals.subtotal.toString().padStart(10)}\n`);
+    await printer.print(`Discount:           -${data.discount.toString().padStart(9)}\n`);
+    await printer.print(`Tax:                +${data.tax.toString().padStart(9)}\n`);
+    await printer.print('--------------------------------\n');
+    await printer.bold(true);
+    await printer.print(`Total:              ${totals.grandTotal.toString().padStart(10)}\n`);
+    await printer.bold(false);
+    
+    // Payment info
+    await printer.print(`Payment: ${data.paymentType}\n`);
+    if (data.paymentType === 'Credit') {
+      await printer.print(`Received: ${data.received}\n`);
+      await printer.print(`Balance: ${Math.max(0, totals.balance).toFixed(2)}\n`);
+    }
+    
+    await printer.feed(2);
+    await printer.align('center');
+    await printer.print('Thank you for your business!\n');
+    await printer.print('Please visit again!\n');
+    await printer.feed(1);
+    await printer.cut();
+    
+    alert('✅ Invoice printed successfully!');
+    
+  } catch (error) {
+    console.error('Print failed:', error);
+    let errorMessage = 'Unknown error occurred';
+    
+    if (error instanceof Error) {
+      if (error.message.includes('No thermal printer selected')) {
+        errorMessage = '❌ No printer selected. Please connect a thermal printer and try again.';
+      } else if (error.message.includes('Permission denied')) {
+        errorMessage = '❌ Permission denied. Please allow browser access to the thermal printer.';
+      } else if (error.message.includes('not supported')) {
+        errorMessage = '❌ Thermal printing not supported. Please use Chrome or Edge browser.';
+      } else {
+        errorMessage = '❌ ' + error.message;
+      }
+    }
+    
+    alert(errorMessage);
+  } finally {
+    try {
+      await printer.disconnect();
+    } catch (e) {
+      console.error('Error disconnecting printer:', e);
+    }
+  }
 };
 
 // QR Code Component
@@ -730,8 +937,10 @@ const ControlPanel: React.FC<{
   selectedSize: keyof typeof PAPER_SIZES;
   onSizeChange: (size: keyof typeof PAPER_SIZES) => void;
   onPrint: () => void;
+  onThermalPrint: () => void;
   invoiceData: typeof defaultInvoiceData;
-}> = ({ selectedSize, onSizeChange, onPrint, invoiceData }) => (
+  isThermalConnected: boolean;
+}> = ({ selectedSize, onSizeChange, onPrint, onThermalPrint, invoiceData, isThermalConnected }) => (
   <div className="w-full md:w-80 bg-white rounded-xl shadow-lg border p-6 print:hidden">
     <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
       <FileText className="w-5 h-5" />
@@ -760,22 +969,71 @@ const ControlPanel: React.FC<{
         </div>
       </div>
       
-      <button
-        onClick={onPrint}
-        className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center justify-center gap-2 transform hover:scale-105"
-      >
-        <Printer className="w-4 h-4" />
-        {(() => {
-          const invoiceNo = invoiceData.invoiceNumber;
-          const isFromQuotation = invoiceNo && (
-            invoiceNo.includes('QUO') || 
-            invoiceNo.includes('QUOT') || 
-            invoiceNo.includes('QT') ||
-            invoiceNo.startsWith('QT')
-          );
-          return isFromQuotation ? 'Print Estimate' : 'Print Invoice';
-        })()}
-      </button>
+      {/* Thermal Printer Status */}
+      {selectedSize === 'Thermal' && (
+        <div className="bg-gray-50 p-3 rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <div className={`w-2 h-2 rounded-full ${isThermalConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <span className="text-sm font-medium">
+              {isThermalConnected ? 'Thermal Printer Ready' : 'Thermal Printer Setup Required'}
+            </span>
+          </div>
+          <div className="text-xs text-gray-600 space-y-1">
+            {isThermalConnected ? (
+              <p>Ready to print thermal receipts</p>
+            ) : (
+              <div>
+                <p className="font-medium mb-1">Setup Instructions:</p>
+                <ol className="list-decimal list-inside space-y-1 text-xs">
+                  <li>Connect thermal printer via USB</li>
+                  <li>Use Chrome or Edge browser</li>
+                  <li>Click print button to select printer</li>
+                  <li>Allow browser permission when prompted</li>
+                </ol>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {/* Print Buttons */}
+      <div className="space-y-2">
+        {selectedSize === 'Thermal' ? (
+          <button
+            onClick={onThermalPrint}
+            className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center justify-center gap-2 transform hover:scale-105"
+          >
+            <Usb className="w-4 h-4" />
+            {(() => {
+              const invoiceNo = invoiceData.invoiceNumber;
+              const isFromQuotation = invoiceNo && (
+                invoiceNo.includes('QUO') || 
+                invoiceNo.includes('QUOT') || 
+                invoiceNo.includes('QT') ||
+                invoiceNo.startsWith('QT')
+              );
+              return isFromQuotation ? 'Print Thermal Estimate' : 'Print Thermal Invoice';
+            })()}
+          </button>
+        ) : (
+          <button
+            onClick={onPrint}
+            className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center justify-center gap-2 transform hover:scale-105"
+          >
+            <Printer className="w-4 h-4" />
+            {(() => {
+              const invoiceNo = invoiceData.invoiceNumber;
+              const isFromQuotation = invoiceNo && (
+                invoiceNo.includes('QUO') || 
+                invoiceNo.includes('QUOT') || 
+                invoiceNo.includes('QT') ||
+                invoiceNo.startsWith('QT')
+              );
+              return isFromQuotation ? 'Print Estimate' : 'Print Invoice';
+            })()}
+          </button>
+        )}
+      </div>
     </div>
   </div>
 );
@@ -785,6 +1043,7 @@ const InvoicePageContent: React.FC = () => {
   const [selectedSize, setSelectedSize] = useState<keyof typeof PAPER_SIZES>('A4');
   const [invoiceData, setInvoiceData] = useState(defaultInvoiceData);
   const [loading, setLoading] = useState(false);
+  const [isThermalConnected, setIsThermalConnected] = useState(false);
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -993,6 +1252,26 @@ const InvoicePageContent: React.FC = () => {
     fetchData();
   }, [searchParams]);
 
+  // Check thermal printer availability
+  useEffect(() => {
+    const checkThermalSupport = () => {
+      const hasSerial = 'serial' in navigator;
+      const hasUSB = 'usb' in navigator;
+      setIsThermalConnected(hasSerial || hasUSB);
+    };
+    
+    checkThermalSupport();
+  }, []);
+
+  const handleThermalPrint = async () => {
+    try {
+      await printThermalInvoice(invoiceData);
+    } catch (error) {
+      console.error('Thermal print error:', error);
+      alert('Thermal printing failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
   const handlePrint = () => {
     const style = document.createElement('style');
     style.textContent = `
@@ -1079,7 +1358,9 @@ const InvoicePageContent: React.FC = () => {
             selectedSize={selectedSize}
             onSizeChange={setSelectedSize}
             onPrint={handlePrint}
+            onThermalPrint={handleThermalPrint}
             invoiceData={invoiceData}
+            isThermalConnected={isThermalConnected}
           />
         </div>
       </div>

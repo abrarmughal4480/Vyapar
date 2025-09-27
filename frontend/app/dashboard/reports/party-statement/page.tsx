@@ -261,7 +261,7 @@ const PartyStatementPage = () => {
 
         if (sale.received && sale.received > 0) {
           allTransactions.push({
-            id: `payment-in-${sale._id}`,
+            id: `payment-in-${sale._id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             date: sale.date || sale.createdAt,
             txnType: 'Payment In',
             refNo: `PAY-IN-${sale.invoiceNo || sale._id}`,
@@ -495,7 +495,7 @@ const PartyStatementPage = () => {
       const partyCreationDate = selectedPartyData?.createdAt || new Date().toISOString();
       
       const openingBalanceRow = {
-        id: 'opening-balance',
+        id: `opening-balance-${selectedParty}-${Date.now()}`,
         date: partyCreationDate,
         txnType: 'Opening Balance' as any,
         refNo: 'OB-001',
@@ -1012,7 +1012,7 @@ const PartyStatementPage = () => {
                     }
 
                     return (
-                      <tr key={transaction.id} className={`hover:bg-blue-50/40 transition-all ${
+                      <tr key={`${transaction.id}-${transaction.txnType}-${transaction.refNo}-${index}`} className={`hover:bg-blue-50/40 transition-all ${
                         transaction.isOpeningBalance 
                           ? 'bg-blue-50/70 hover:bg-blue-50/90 border-l-4 border-l-blue-500' 
                           : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'

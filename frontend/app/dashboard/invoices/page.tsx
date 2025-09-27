@@ -5,7 +5,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { getSaleById } from "../../../http/sales";
 import { getQuotationsForUser } from "../../../http/quotations";
 import { jwtDecode } from "jwt-decode";
-// Thermal printing implementation without external libraries
 
 // Constants
 const PAPER_SIZES = {
@@ -583,326 +582,6 @@ const SimpleInvoiceContent: React.FC<{ data: typeof defaultInvoiceData }> = ({ d
   );
 };
 
-// Thermal Printer Component using ESC/POS
-const ThermalPrinterComponent: React.FC<{ data: typeof defaultInvoiceData }> = ({ data }) => {
-  const totals = calculateTotals(data.items, data.discount, data.tax, data.received);
-  
-  const generateThermalPrintData = () => {
-    // Simple text-based thermal print data
-    let printText = '';
-    
-    // Header
-    printText += `\n\n${data.business.name}\n`;
-    printText += '='.repeat(32) + '\n';
-    printText += `Invoice: ${data.invoiceNumber}\n`;
-    printText += `Date: ${data.invoiceDate}\n`;
-    printText += `Customer: ${data.customer.name}\n`;
-    printText += `Phone: ${data.customer.phone}\n`;
-    printText += '-'.repeat(32) + '\n';
-    printText += 'ITEMS\n';
-    printText += '-'.repeat(32) + '\n';
-    
-    // Items
-    data.items.forEach((item, index) => {
-      printText += `${index + 1}. ${item.name}\n`;
-      printText += `   Qty: ${item.qty} ${item.unit} x Rs ${item.rate}\n`;
-      printText += `   Amount: Rs ${item.amount}\n`;
-    });
-    
-    // Totals
-    printText += '-'.repeat(32) + '\n';
-    printText += `Subtotal: Rs ${totals.subtotal}\n`;
-    printText += `Discount: -Rs ${data.discount}\n`;
-    printText += `Tax: +Rs ${data.tax}\n`;
-    printText += `Total: Rs ${totals.grandTotal}\n`;
-    
-    if (data.paymentType === 'Credit') {
-      printText += `Received: Rs ${data.received}\n`;
-      printText += `Balance: Rs ${Math.max(0, totals.balance).toFixed(2)}\n`;
-    }
-    
-    printText += '='.repeat(32) + '\n';
-    printText += 'Thank you for your business!\n';
-    printText += 'Please visit again!\n\n\n';
-    
-    return printText;
-  };
-  
-  const handleThermalPrint = async () => {
-    try {
-      // Try to print via Web Serial API (for USB thermal printers)
-      if ('serial' in navigator) {
-        try {
-          const port = await (navigator as any).serial.requestPort();
-          await port.open({ baudRate: 9600 });
-          const writer = port.writable.getWriter();
-          
-          // Convert text to Uint8Array for serial communication
-          const encoder = new TextEncoder();
-          const printData = encoder.encode(generateThermalPrintData());
-          
-          await writer.write(printData);
-          writer.releaseLock();
-          port.close();
-          return;
-        } catch (error) {
-          console.log('Web Serial not available or failed:', error);
-        }
-      }
-      
-      // Fallback to browser print with thermal styling
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        const thermalHTML = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>Thermal Receipt</title>
-            <style>
-              @page { 
-                size: 80mm 200mm; 
-                margin: 0; 
-              }
-              body { 
-                font-family: monospace; 
-                font-size: 11px; 
-                width: 80mm; 
-                margin: 0; 
-                padding: 3mm; 
-                line-height: 1.3;
-                text-align: left;
-              }
-              .center { text-align: center; }
-              .right { text-align: right; }
-              .bold { font-weight: bold; }
-              .separator { border-top: 1px dashed #000; margin: 3px 0; }
-              .item { margin: 2px 0; }
-              .flex { display: flex; justify-content: space-between; }
-              .header { font-size: 14px; font-weight: bold; margin-bottom: 5px; }
-            </style>
-          </head>
-          <body>
-            <div class="center header">${data.business.name}</div>
-            ${data.business.address ? `<div class="center" style="font-size: 10px;">${data.business.address}</div>` : ''}
-            ${data.business.phone ? `<div class="center" style="font-size: 10px;">${data.business.phone}</div>` : ''}
-            <div class="center">================================</div>
-            
-            <div class="flex">
-              <span>Invoice #:</span>
-              <span>${data.invoiceNumber}</span>
-            </div>
-            <div class="flex">
-              <span>Date:</span>
-              <span>${data.invoiceDate}</span>
-            </div>
-            <div class="flex">
-              <span>Payment:</span>
-              <span>${data.paymentType}</span>
-            </div>
-            
-            <div class="separator"></div>
-            
-            <div>
-              <div class="bold">Customer:</div>
-              <div>${data.customer.name}</div>
-              ${data.customer.phone && data.customer.phone !== 'N/A' ? `<div>${data.customer.phone}</div>` : ''}
-            </div>
-            
-            <div class="separator"></div>
-            <div class="center bold">ITEMS</div>
-            <div class="separator"></div>
-            
-            <table style="width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed;">
-              <thead>
-                <tr style="border-bottom: 1px dashed #000;">
-                  <th style="text-align: left; padding: 2px 4px 2px 8px; width: 8%;">#</th>
-                  <th style="text-align: left; padding: 2px 4px 2px 8px; width: 40%;">Item</th>
-                  <th style="text-align: center; padding: 2px 4px 2px 8px; width: 20%;">Qty</th>
-                  <th style="text-align: right; padding: 2px 4px 2px 8px; width: 16%;">Rate</th>
-                  <th style="text-align: right; padding: 2px 4px 2px 8px; width: 16%;">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${data.items.map((item, index) => `
-                  <tr style="border-bottom: 1px dashed #ccc;">
-                    <td style="padding: 2px 4px 2px 8px; width: 8%;">${index + 1}</td>
-                    <td style="padding: 2px 4px 2px 8px; width: 40%; font-weight: bold; word-wrap: break-word;">${item.name}</td>
-                    <td style="padding: 2px 4px 2px 8px; width: 20%; text-align: center;">${item.qty} ${item.unit}</td>
-                    <td style="padding: 2px 4px 2px 8px; width: 16%; text-align: right;">${item.rate}</td>
-                    <td style="padding: 2px 4px 2px 8px; width: 16%; text-align: right;">${item.amount}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-            
-            <div class="separator"></div>
-            
-            <div class="flex">
-              <span>Subtotal:</span>
-              <span>Rs ${totals.subtotal}</span>
-            </div>
-            ${data.discount > 0 ? `
-              <div class="flex">
-                <span>Discount:</span>
-                <span>-Rs ${data.discount}</span>
-              </div>
-            ` : ''}
-            ${data.tax > 0 ? `
-              <div class="flex">
-                <span>Tax:</span>
-                <span>+Rs ${data.tax}</span>
-              </div>
-            ` : ''}
-            <div class="flex bold" style="border-top: 1px solid #000; padding-top: 2px;">
-              <span>TOTAL:</span>
-              <span>Rs ${totals.grandTotal}</span>
-            </div>
-            
-            ${data.paymentType === 'Credit' ? `
-              <div class="flex">
-                <span>Received:</span>
-                <span>Rs ${data.received}</span>
-              </div>
-              <div class="flex bold">
-                <span>Balance:</span>
-                <span>Rs ${Math.max(0, totals.balance).toFixed(2)}</span>
-              </div>
-            ` : ''}
-            
-            <div class="separator"></div>
-            <div class="center bold">Thank you for your business!</div>
-            <div class="center">Please visit again!</div>
-            <div class="center" style="margin-top: 10px; font-size: 9px; color: #666;">Computer Generated Receipt</div>
-          </body>
-          </html>
-        `;
-        
-        printWindow.document.write(thermalHTML);
-        printWindow.document.close();
-        printWindow.print();
-        printWindow.close();
-      }
-    } catch (error) {
-      console.error('Thermal printing failed:', error);
-      alert('Thermal printing failed. Please check your printer connection.');
-    }
-  };
-  
-  return (
-    <div className="bg-white p-4 max-w-xs mx-auto flex flex-col items-center">
-      
-      <div className="font-mono text-xs space-y-1 w-full text-left">
-        {/* Header */}
-        <div className="font-bold text-base mb-2 text-center">{data.business.name}</div>
-        {data.business.address && <div className="text-xs mb-2">{data.business.address}</div>}
-        {data.business.phone && <div className="text-xs mb-2">{data.business.phone}</div>}
-        
-        {/* Invoice Details */}
-        <div className="flex justify-between text-xs">
-          <span>Invoice #:</span>
-          <span>{data.invoiceNumber}</span>
-        </div>
-        <div className="flex justify-between text-xs">
-          <span>Date:</span>
-          <span>{data.invoiceDate}</span>
-        </div>
-        <div className="flex justify-between text-xs">
-          <span>Payment:</span>
-          <span>{data.paymentType}</span>
-        </div>
-        
-        <div className="border-t border-dashed border-gray-400 my-2"></div>
-        
-        {/* Customer Details */}
-        <div className="text-xs">
-          <div className="font-bold">Customer:</div>
-          <div>{data.customer.name}</div>
-          {data.customer.phone && data.customer.phone !== 'N/A' && <div>{data.customer.phone}</div>}
-        </div>
-        
-        <div className="border-t border-dashed border-gray-400 my-2"></div>
-        
-        {/* Items Header */}
-        <div className="font-bold text-xs mb-1">ITEMS</div>
-        <div className="border-t border-dashed border-gray-400 my-1"></div>
-        
-        {/* Items Table */}
-        <table className="w-full text-xs border-collapse">
-          <thead>
-            <tr className="border-b border-dashed border-gray-400">
-              <th className="text-left py-1 w-8 pl-2">#</th>
-              <th className="text-left py-1 pl-2">Item</th>
-              <th className="text-center py-1 w-16 pl-2">Qty</th>
-              <th className="text-right py-1 w-20 pl-2">Rate</th>
-              <th className="text-right py-1 w-20 pl-2">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.items.map((item, index) => (
-              <tr key={index} className="border-b border-dashed border-gray-300">
-                <td className="py-1 w-8 pl-2">{index + 1}</td>
-                <td className="py-1 font-bold pr-2 pl-2">{item.name}</td>
-                <td className="py-1 text-center w-16 pl-2">{item.qty} {item.unit}</td>
-                <td className="py-1 text-right w-20 pl-2">{item.rate}</td>
-                <td className="py-1 text-right w-20 pl-2">{item.amount}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        
-        <div className="border-t border-dashed border-gray-400 my-2"></div>
-        
-        {/* Totals */}
-        <div className="space-y-1 text-xs">
-          <div className="flex justify-between">
-            <span>Subtotal:</span>
-            <span>Rs {totals.subtotal}</span>
-          </div>
-          {data.discount > 0 && (
-            <div className="flex justify-between">
-              <span>Discount:</span>
-              <span>-Rs {data.discount}</span>
-            </div>
-          )}
-          {data.tax > 0 && (
-            <div className="flex justify-between">
-              <span>Tax:</span>
-              <span>+Rs {data.tax}</span>
-            </div>
-          )}
-          <div className="flex justify-between font-bold border-t border-gray-400 pt-1">
-            <span>TOTAL:</span>
-            <span>Rs {totals.grandTotal}</span>
-          </div>
-          
-          {data.paymentType === 'Credit' && (
-            <>
-              <div className="flex justify-between">
-                <span>Received:</span>
-                <span>Rs {data.received}</span>
-              </div>
-              <div className="flex justify-between font-bold">
-                <span>Balance:</span>
-                <span>Rs {Math.max(0, totals.balance).toFixed(2)}</span>
-              </div>
-            </>
-          )}
-        </div>
-        
-        <div className="border-t border-dashed border-gray-400 my-2"></div>
-        
-        {/* Footer */}
-        <div className="text-xs text-center">
-          <div className="font-bold mb-1">Thank you for your business!</div>
-          <div>Please visit again!</div>
-          <div className="mt-2 text-gray-500">Computer Generated Receipt</div>
-        </div>
-      </div>
-      
-    </div>
-  );
-};
-
 // Main Invoice Component with auto page breaks
 const InvoiceContent: React.FC<{ size: keyof typeof PAPER_SIZES; data: typeof defaultInvoiceData }> = ({ size, data }) => {
   const { width, height } = PAPER_SIZES[size];
@@ -1083,11 +762,7 @@ const ControlPanel: React.FC<{
       
       <button
         onClick={onPrint}
-        className={`w-full px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center justify-center gap-2 transform hover:scale-105 ${
-          selectedSize === 'Thermal' 
-            ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white'
-            : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white'
-        }`}
+        className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center justify-center gap-2 transform hover:scale-105"
       >
         <Printer className="w-4 h-4" />
         {(() => {
@@ -1098,12 +773,7 @@ const ControlPanel: React.FC<{
             invoiceNo.includes('QT') ||
             invoiceNo.startsWith('QT')
           );
-          
-          if (selectedSize === 'Thermal') {
-            return isFromQuotation ? 'Print Thermal Estimate' : 'Print Thermal Receipt';
-          } else {
-            return isFromQuotation ? 'Print Estimate' : 'Print Invoice';
-          }
+          return isFromQuotation ? 'Print Estimate' : 'Print Invoice';
         })()}
       </button>
     </div>
@@ -1400,7 +1070,7 @@ const InvoicePageContent: React.FC = () => {
                 <div className="text-lg text-gray-600">Loading estimate data...</div>
               </div>
             ) : selectedSize === 'Thermal' ? (
-              <ThermalPrinterComponent data={invoiceData} />
+              <InvoiceContent size={selectedSize} data={invoiceData} />
             ) : (
               <SimpleInvoiceContent data={invoiceData} />
             )}

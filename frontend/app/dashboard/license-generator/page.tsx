@@ -11,7 +11,7 @@ export default function LicenseGenerator() {
   const [generatedKeys, setGeneratedKeys] = useState<LicenseKey[]>([]);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [licenseDuration, setLicenseDuration] = useState<number>(1);
+  const [licenseDuration, setLicenseDuration] = useState<number>(0.5);
   const [numberOfDevices, setNumberOfDevices] = useState<number>(1);
   const [showDurationDropdown, setShowDurationDropdown] = useState(false);
   const [showDevicesDropdown, setShowDevicesDropdown] = useState(false);
@@ -22,11 +22,12 @@ export default function LicenseGenerator() {
   const [editingKey, setEditingKey] = useState<LicenseKey | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editFormData, setEditFormData] = useState({
-    duration: 1,
+    duration: 0.5,
     maxDevices: 1
   });
 
   const durationOptions = [
+    { value: 0.5, label: '6 Months' },
     { value: 1, label: '1 Year' },
     { value: 2, label: '2 Years' },
     { value: 3, label: '3 Years' },
@@ -34,15 +35,10 @@ export default function LicenseGenerator() {
     { value: 10, label: '10 Years' }
   ];
 
-  const deviceOptions = [
-    { value: 1, label: '1 Device' },
-    { value: 2, label: '2 Devices' },
-    { value: 3, label: '3 Devices' },
-    { value: 5, label: '5 Devices' },
-    { value: 10, label: '10 Devices' },
-    { value: 20, label: '20 Devices' },
-    { value: 50, label: '50 Devices' }
-  ];
+  const deviceOptions = Array.from({ length: 10 }, (_, index) => ({
+    value: index + 1,
+    label: `${index + 1} Device${index + 1 > 1 ? 's' : ''}`
+  }));
 
   // Fetch all license keys on component mount
   useEffect(() => {

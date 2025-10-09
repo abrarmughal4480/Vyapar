@@ -28,7 +28,7 @@ import {
 import { fetchDashboardStats, fetchSalesOverviewForUser, fetchRecentActivityForUser } from '@/http/api';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import EnhancedModal from '../../components/EnhancedModal';
-import { getCurrentUserInfo, canAccessDashboard } from '../../lib/roleAccessControl';
+import { getCurrentUserInfo, canAccessDashboard, isAdminUser } from '../../lib/roleAccessControl';
 
 // Define your types here
 type User = {
@@ -177,6 +177,11 @@ export default function Dashboard() {
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showRevenueBreakdownModal, setShowRevenueBreakdownModal] = useState(false);
   const [revenueBreakdown, setRevenueBreakdown] = useState<any>(null);
+  const [showResetUserModal, setShowResetUserModal] = useState(false);
+  const [resetUserEmail, setResetUserEmail] = useState('');
+  const [isResettingUser, setIsResettingUser] = useState(false);
+  const [showConfirmationStep, setShowConfirmationStep] = useState(false);
+  const [resetConfirmationText, setResetConfirmationText] = useState('');
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -384,6 +389,74 @@ export default function Dashboard() {
 
   const handleCallSupport = () => {
     window.open('tel:+923326282035', '_blank');
+  };
+
+  const openResetUserModal = () => {
+    setShowResetUserModal(true);
+    setShowConfirmationStep(false);
+    setResetUserEmail('');
+    setResetConfirmationText('');
+    document.body.style.overflow = 'hidden';
+  };
+
+  const proceedToConfirmation = () => {
+    if (!resetUserEmail.trim()) {
+      alert('Please enter an email address');
+      return;
+    }
+    setShowConfirmationStep(true);
+  };
+
+  const handleResetUser = async () => {
+    if (resetConfirmationText !== 'RESET') {
+      alert('Please type "RESET" to confirm');
+      return;
+    }
+
+    setIsResettingUser(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/admin/reset-user`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ email: resetUserEmail.trim() })
+      });
+
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        alert(`✅ User ${resetUserEmail} has been reset successfully!\n\nAll business data has been cleared but the account is preserved.`);
+        setResetUserEmail('');
+        setResetConfirmationText('');
+        setShowConfirmationStep(false);
+        setShowResetUserModal(false);
+        document.body.style.overflow = 'auto';
+      } else if (response.status === 401) {
+        alert(`❌ Session expired. Please refresh the page and try again.`);
+        // Optionally redirect to login
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      } else {
+        alert(`❌ Failed to reset user: ${result.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error resetting user:', error);
+      alert('❌ Error resetting user. Please try again.');
+    } finally {
+      setIsResettingUser(false);
+    }
+  };
+
+  const closeResetModal = () => {
+    setShowResetUserModal(false);
+    setShowConfirmationStep(false);
+    setResetUserEmail('');
+    setResetConfirmationText('');
+    document.body.style.overflow = 'auto';
   };
 
   const openReceivableModal = async () => {
@@ -687,6 +760,18 @@ export default function Dashboard() {
               >
                 <span className="text-base sm:text-lg">🔑</span>
                 <span className="text-xs sm:text-sm font-semibold hidden xs:block">License</span>
+              </button>
+            )}
+
+            {/* Reset User Button - Only for Admin */}
+            {isAdminUser() && (
+              <button
+                onClick={openResetUserModal}
+                className="flex items-center justify-center sm:justify-start space-x-1 sm:space-x-2 px-2 sm:px-3 md:px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-lg sm:rounded-xl hover:from-red-700 hover:to-pink-700 transition-all duration-200 shadow-lg hover:shadow-xl group flex-1 sm:flex-none"
+                title="Reset User Data"
+              >
+                <span className="text-base sm:text-lg">🔄</span>
+                <span className="text-xs sm:text-sm font-semibold hidden xs:block">Reset User</span>
               </button>
             )}
 
@@ -1314,6 +1399,139 @@ export default function Dashboard() {
               <div>Sun: Closed</div>
             </div>
           </div>
+        </div>
+      </EnhancedModal>
+
+      {/* Reset User Modal */}
+      <EnhancedModal
+        isOpen={showResetUserModal}
+        onClose={closeResetModal}
+        title="Reset User Data"
+      >
+        <div className="space-y-6">
+          {/* Step 1: Email Input */}
+          {!showConfirmationStep && (
+            <>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-start">
+                  <AlertTriangle className="w-5 h-5 text-red-600 mr-3 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h3 className="font-semibold text-red-800 mb-2">⚠️ DANGER: Irreversible Action</h3>
+                    <p className="text-sm text-red-700 mb-2">
+                      This will permanently delete ALL business data for the specified user:
+                    </p>
+                    <ul className="text-sm text-red-700 list-disc list-inside space-y-1">
+                      <li>All sales invoices and transactions</li>
+                      <li>All purchase bills and records</li>
+                      <li>All inventory items and stock data</li>
+                      <li>All customer/party information</li>
+                      <li>All financial records and reports</li>
+                      <li>All expenses and payments</li>
+                    </ul>
+                    <p className="text-sm text-red-700 mt-2 font-semibold">
+                      The user account will be preserved but all business data will be lost forever.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="resetEmail" className="block text-sm font-medium text-gray-700 mb-2">
+                  User Email Address to Reset
+                </label>
+                <input
+                  type="email"
+                  id="resetEmail"
+                  value={resetUserEmail}
+                  onChange={(e) => setResetUserEmail(e.target.value)}
+                  placeholder="Enter user email address"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  disabled={isResettingUser}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Make sure you have the correct email address
+                </p>
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  onClick={proceedToConfirmation}
+                  disabled={isResettingUser || !resetUserEmail.trim()}
+                  className="flex-1 bg-gradient-to-r from-red-600 to-pink-600 text-white py-2 px-4 rounded-lg hover:from-red-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center"
+                >
+                  <span className="mr-2">⚠️</span>
+                  Proceed to Confirmation
+                </button>
+                <button
+                  onClick={closeResetModal}
+                  disabled={isResettingUser}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Step 2: Confirmation */}
+          {showConfirmationStep && (
+            <>
+              <div className="bg-red-100 border-2 border-red-300 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                  <AlertTriangle className="w-6 h-6 text-red-600 mr-2" />
+                  <h3 className="font-bold text-red-800 text-lg">Final Confirmation Required</h3>
+                </div>
+                <div className="bg-white rounded-lg p-3 border border-red-200">
+                  <p className="text-sm text-gray-700 mb-2">
+                    You are about to reset all data for:
+                  </p>
+                  <p className="font-bold text-red-600 text-lg">{resetUserEmail}</p>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="confirmationText" className="block text-sm font-medium text-gray-700 mb-2">
+                  Type <span className="font-bold text-red-600">RESET</span> to confirm this action:
+                </label>
+                <input
+                  type="text"
+                  id="confirmationText"
+                  value={resetConfirmationText}
+                  onChange={(e) => setResetConfirmationText(e.target.value.toUpperCase())}
+                  placeholder="Type RESET here"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-center font-mono text-lg"
+                  disabled={isResettingUser}
+                />
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  onClick={handleResetUser}
+                  disabled={isResettingUser || resetConfirmationText !== 'RESET'}
+                  className="flex-1 bg-gradient-to-r from-red-600 to-pink-600 text-white py-3 px-4 rounded-lg hover:from-red-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center font-semibold"
+                >
+                  {isResettingUser ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Resetting User Data...
+                    </>
+                  ) : (
+                    <>
+                      <span className="mr-2">🔥</span>
+                      CONFIRM RESET USER DATA
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowConfirmationStep(false)}
+                  disabled={isResettingUser}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                >
+                  Back
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </EnhancedModal>
     </div>

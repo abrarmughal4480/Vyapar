@@ -1341,11 +1341,11 @@ export default function AddPurchasePage() {
               amount: Number(item.price)
             })),
           totalAmount: grandTotal,
-          paymentType: 'Credit', // Always Credit for expenses
+          paymentType: newPurchase.paymentType?.startsWith('bank_') ? 'Cash' : 'Credit', // Cash for bank payments, Credit for others
           paymentMethod: newPurchase.paymentType || 'Cash',
           bankAccountId: newPurchase.paymentType?.startsWith('bank_') ? newPurchase.paymentType.replace('bank_', '') : null,
           bankAccountName: newPurchase.paymentType?.startsWith('bank_') ? bankAccounts.find(bank => bank._id === newPurchase.paymentType?.replace('bank_', ''))?.accountDisplayName || '' : '',
-          receivedAmount: Number(newPurchase.paid) || 0,
+          receivedAmount: newPurchase.paymentType?.startsWith('bank_') ? grandTotal : (Number(newPurchase.paid) || 0), // Full amount for bank payments
           expenseDate: newPurchase.billDate || new Date().toISOString().split('T')[0],
           description: newPurchase.description || ''
         };

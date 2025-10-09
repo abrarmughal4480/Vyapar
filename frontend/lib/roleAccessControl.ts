@@ -330,4 +330,24 @@ export const canAccessDashboard = (): boolean => {
 
   console.log(`✅ Dashboard Access GRANTED: ${userInfo.email} (${role}) can access dashboard`);
   return true; // Allow access for other roles
+};
+
+// Check if user is admin (bypasses license activation)
+export const isAdminUser = (): boolean => {
+  const userInfo = getCurrentUserInfo();
+  if (!userInfo) return false;
+
+  // Check if user is Default Admin (not in company context)
+  if (userInfo.context !== 'company') {
+    console.log(`🔑 Admin User Detected: ${userInfo.email} (Default Admin) - License activation bypassed`);
+    return true;
+  }
+
+  // Check if user has superadmin role
+  if (userInfo.role === 'Default Admin') {
+    console.log(`🔑 Admin User Detected: ${userInfo.email} (${userInfo.role}) - License activation bypassed`);
+    return true;
+  }
+
+  return false;
 }; 

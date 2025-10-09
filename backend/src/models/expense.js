@@ -13,6 +13,9 @@ const ExpenseSchema = new mongoose.Schema({
   items: { type: [ExpenseItemSchema], required: true },
   totalAmount: { type: Number, required: true },
   paymentType: { type: String, enum: ['Cash', 'Card', 'UPI', 'Cheque', 'Credit'], required: true },
+  paymentMethod: { type: String, default: 'Cash' }, // Payment method (Cash, Card, UPI, Cheque, Bank Transfer)
+  bankAccountId: { type: mongoose.Schema.Types.ObjectId, ref: 'BankAccount' }, // Reference to bank account
+  bankAccountName: { type: String, default: '' }, // Bank account display name
   receivedAmount: { type: Number, default: 0 }, // Amount received for credit payments
   creditAmount: { type: Number, default: 0 }, // Remaining amount to be paid
   expenseDate: { type: Date, required: true },

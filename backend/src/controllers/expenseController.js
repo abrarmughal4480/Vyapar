@@ -1,11 +1,13 @@
 import Expense from '../models/expense.js';
 import Party from '../models/parties.js';
+import BankAccount from '../models/bankAccount.js';
+import BankTransaction from '../models/bankTransaction.js';
 import mongoose from 'mongoose';
 
 // Create new expense
 export const createExpense = async (req, res) => {
   try {
-    const { expenseCategory, party, partyId, items, totalAmount, paymentType, receivedAmount, expenseDate, description } = req.body;
+    const { expenseCategory, party, partyId, items, totalAmount, paymentType, paymentMethod, bankAccountId, bankAccountName, receivedAmount, expenseDate, description } = req.body;
     
     
     if (!expenseCategory || !party || !items || !Array.isArray(items) || items.length === 0 || !totalAmount || !paymentType || !expenseDate) {
@@ -109,6 +111,9 @@ export const createExpense = async (req, res) => {
       items,
       totalAmount,
       paymentType,
+      paymentMethod: paymentMethod || 'Cash',
+      bankAccountId: bankAccountId || null,
+      bankAccountName: bankAccountName || '',
       receivedAmount: finalReceivedAmount,
       creditAmount,
       expenseDate,
@@ -119,6 +124,46 @@ export const createExpense = async (req, res) => {
 
     await newExpense.save();
 
+    // Handle bank transaction if bank account is selected
+    if (bankAccountId && bankAccountName && paymentMethod && paymentMethod !== 'Cash') {
+      try {
+        // Find the bank account
+        const bankAccount = await BankAccount.findOne({ 
+          _id: bankAccountId, 
+          userId, 
+          isActive: true 
+        });
+
+        if (bankAccount) {
+          // Calculate new balance after expense
+          const newBalance = bankAccount.currentBalance - totalAmount;
+
+          // Update bank account balance
+          await BankAccount.findByIdAndUpdate(bankAccountId, {
+            currentBalance: newBalance,
+            updatedAt: new Date()
+          });
+
+          // Create bank transaction record
+          const bankTransaction = new BankTransaction({
+            userId,
+            type: 'Payment Out',
+            fromAccount: bankAccountName,
+            toAccount: party, // Party receiving the payment
+            amount: totalAmount,
+            description: `Expense Payment - ${expenseNumber}`,
+            transactionDate: new Date(expenseDate),
+            balanceAfter: newBalance,
+            status: 'completed'
+          });
+
+          await bankTransaction.save();
+        }
+      } catch (bankError) {
+        console.error('Error creating bank transaction for expense:', bankError);
+        // Don't fail the expense creation if bank transaction fails
+      }
+    }
 
     res.status(201).json({
       success: true,
@@ -242,6 +287,12 @@ export const updateExpense = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Expense not found' });
     }
 
+    // Store old bank transaction details for reversal
+    const oldBankAccountId = expense.bankAccountId;
+    const oldBankAccountName = expense.bankAccountName;
+    const oldPaymentMethod = expense.paymentMethod;
+    const oldTotalAmount = expense.totalAmount;
+
     // Recover party balance from old expense before updating
     try {
       const Party = (await import('../models/parties.js')).default;
@@ -338,6 +389,72 @@ export const updateExpense = async (req, res) => {
       { new: true, runValidators: true }
     );
 
+    // Handle bank transaction reversal and creation
+    try {
+      // Reverse old bank transaction if it existed
+      if (oldBankAccountId && oldBankAccountName && oldPaymentMethod && oldPaymentMethod !== 'Cash') {
+        // Find and delete old bank transaction
+        await BankTransaction.findOneAndDelete({
+          userId,
+          type: 'Payment Out',
+          fromAccount: oldBankAccountName,
+          description: { $regex: `Expense Payment - ${expense.expenseNumber}` }
+        });
+
+        // Restore old bank account balance
+        const oldBankAccount = await BankAccount.findOne({ 
+          _id: oldBankAccountId, 
+          userId, 
+          isActive: true 
+        });
+        if (oldBankAccount) {
+          await BankAccount.findByIdAndUpdate(oldBankAccountId, {
+            currentBalance: oldBankAccount.currentBalance + oldTotalAmount,
+            updatedAt: new Date()
+          });
+        }
+      }
+
+      // Create new bank transaction if bank account is selected
+      const { bankAccountId, bankAccountName, paymentMethod, totalAmount } = req.body;
+      if (bankAccountId && bankAccountName && paymentMethod && paymentMethod !== 'Cash') {
+        // Find the bank account
+        const bankAccount = await BankAccount.findOne({ 
+          _id: bankAccountId, 
+          userId, 
+          isActive: true 
+        });
+
+        if (bankAccount) {
+          // Calculate new balance after expense
+          const newBalance = bankAccount.currentBalance - totalAmount;
+
+          // Update bank account balance
+          await BankAccount.findByIdAndUpdate(bankAccountId, {
+            currentBalance: newBalance,
+            updatedAt: new Date()
+          });
+
+          // Create bank transaction record
+          const bankTransaction = new BankTransaction({
+            userId,
+            type: 'Payment Out',
+            fromAccount: bankAccountName,
+            toAccount: updatedExpense.party,
+            amount: totalAmount,
+            description: `Expense Payment - ${updatedExpense.expenseNumber}`,
+            transactionDate: new Date(updatedExpense.expenseDate),
+            balanceAfter: newBalance,
+            status: 'completed'
+          });
+
+          await bankTransaction.save();
+        }
+      }
+    } catch (bankError) {
+      console.error('Error handling bank transaction for expense update:', bankError);
+      // Don't fail the expense update if bank transaction fails
+    }
 
     res.status(200).json({
       success: true,
@@ -422,8 +539,36 @@ export const deleteExpense = async (req, res) => {
       console.error('Failed to restore party balance on delete:', err);
     }
 
-    await Expense.findByIdAndDelete(id);
+    // Handle bank transaction reversal before deleting expense
+    try {
+      if (expense.bankAccountId && expense.bankAccountName && expense.paymentMethod && expense.paymentMethod !== 'Cash') {
+        // Find and delete bank transaction
+        await BankTransaction.findOneAndDelete({
+          userId,
+          type: 'Payment Out',
+          fromAccount: expense.bankAccountName,
+          description: { $regex: `Expense Payment - ${expense.expenseNumber}` }
+        });
 
+        // Restore bank account balance
+        const bankAccount = await BankAccount.findOne({ 
+          _id: expense.bankAccountId, 
+          userId, 
+          isActive: true 
+        });
+        if (bankAccount) {
+          await BankAccount.findByIdAndUpdate(expense.bankAccountId, {
+            currentBalance: bankAccount.currentBalance + expense.totalAmount,
+            updatedAt: new Date()
+          });
+        }
+      }
+    } catch (bankError) {
+      console.error('Error handling bank transaction reversal for expense deletion:', bankError);
+      // Don't fail the expense deletion if bank transaction reversal fails
+    }
+
+    await Expense.findByIdAndDelete(id);
 
     res.status(200).json({
       success: true,

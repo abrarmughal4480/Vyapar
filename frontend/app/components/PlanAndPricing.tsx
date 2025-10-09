@@ -3,6 +3,7 @@
 import { CheckCircle, X, DollarSign, Shield, ArrowRight, Loader2, Trash2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { activateLicenseKey, checkLicenseStatus, clearUserLicense } from '@/http/license-keys';
+import { isAdminUser } from '@/lib/roleAccessControl';
 
 interface PlanAndPricingProps {
   onGetStarted: () => void;
@@ -208,6 +209,18 @@ export default function PlanAndPricing({ onGetStarted }: PlanAndPricingProps) {
           hasValidLicense: false,
           message: 'Please login to check license status'
         });
+        return;
+      }
+      
+      // Check if user is admin - bypass license activation
+      if (isAdminUser()) {
+        console.log('🔑 Admin user detected - bypassing license activation');
+        setUserLicenseStatus({
+          hasValidLicense: true,
+          message: 'Admin user - license activation not required',
+          license: null
+        });
+        setIsCheckingStatus(false);
         return;
       }
       

@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { SidebarContext } from '../contexts/SidebarContext'
 import { FiChevronRight } from 'react-icons/fi'
 import { performLogout } from '../../lib/logout'
-import { getCurrentUserInfo, canAccessDashboard } from '../../lib/roleAccessControl'
+import { getCurrentUserInfo, canAccessDashboard, isAdminUser } from '../../lib/roleAccessControl'
 import { checkLicenseStatus } from '../../http/license-keys'
 
 // Define types for nav items
@@ -76,7 +76,7 @@ const navItems: NavItem[] = [
   },
   { id: 'reports', label: 'Reports', icon: '📈', path: '/dashboard/reports', description: 'Business Analytics' },
   { id: 'pricing', label: 'Pricing', icon: '💰', path: '/dashboard/pricing', description: 'Plans & Pricing' },
-  { id: 'settings', label: 'Settings', icon: '⚙️', path: '/dashboard/settings', description: 'App Configuration' }
+  { id: 'settings', label: 'Sync and Share', icon: '🔄', path: '/dashboard/settings', description: 'Sync & Share Data' }
 ]
 
 interface ReportsSidebarProps {
@@ -166,6 +166,17 @@ export default function Sidebar() {
         const token = localStorage.getItem('token')
         if (token) {
           setIsCheckingLicense(true)
+          
+          // Check if user is admin - bypass license activation
+          if (isAdminUser()) {
+            console.log('🔑 Admin user detected - bypassing license activation')
+            setHasLicenseKey(true) // Set as true for admin users
+            setLicenseDetails(null)
+            setIsCheckingLicense(false)
+            setIsLicenseCheckComplete(true)
+            return
+          }
+          
           const response = await checkLicenseStatus()
           
           if (response.success && response.data) {
@@ -247,7 +258,8 @@ export default function Sidebar() {
     const currentScrollY = window.scrollY;
     
     // Only show overlay if user doesn't have license key and has exceeded 3 days
-    if (showBuyPlan && !hasLicenseKey && daysSinceCreation > 3) {
+    // Skip overlay for admin users
+    if (showBuyPlan && !hasLicenseKey && daysSinceCreation > 3 && !isAdminUser()) {
       // Double check - don't create overlay on pricing page
       if (window.location.pathname === '/dashboard/pricing') {
         return;

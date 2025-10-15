@@ -22,6 +22,12 @@ const reportTabs = [
     path: '/dashboard/reports/purchase'
   },
   { 
+    id: 'expense-report', 
+    name: 'Expense Report', 
+    description: 'Complete expense tracking and analysis',
+    path: '/dashboard/reports/expense-report'
+  },
+  { 
     id: 'daybook', 
     name: 'Day Book', 
     description: 'Daily transaction summary',
@@ -49,6 +55,12 @@ const reportTabs = [
 
 const partyReportTabs = [
   {
+    id: 'all-parties',
+    name: 'All Parties',
+    description: 'Complete list of all parties with balances',
+    path: '/dashboard/reports/all-parties'
+  },
+  {
     id: 'party-statement',
     name: 'Party Statement',
     description: 'Individual party transactions',
@@ -68,6 +80,27 @@ const partyReportTabs = [
   },
 ];
 
+const itemStockReportTabs = [
+  {
+    id: 'stock-summary',
+    name: 'Stock Summary',
+    description: 'Current stock levels and valuation',
+    path: '/dashboard/reports/stock-summary'
+  },
+  {
+    id: 'low-stock-summary',
+    name: 'Low Stock Summary',
+    description: 'Items below minimum stock level',
+    path: '/dashboard/reports/low-stock-summary'
+  },
+  {
+    id: 'item-wise-profit-and-loss',
+    name: 'Item Wise P&L',
+    description: 'Profit/loss analysis by item',
+    path: '/dashboard/reports/item-wise-profit-and-loss'
+  },
+];
+
 const ReportsSidebar: React.FC<ReportsSidebarProps> = ({ activeTab, onTabChange }) => {
   const pathname = usePathname();
   
@@ -75,7 +108,7 @@ const ReportsSidebar: React.FC<ReportsSidebarProps> = ({ activeTab, onTabChange 
   React.useEffect(() => {
     console.log('🔍 ReportsSidebar - Current pathname:', pathname);
     
-    const allTabs = [...reportTabs, ...partyReportTabs];
+    const allTabs = [...reportTabs, ...partyReportTabs, ...itemStockReportTabs];
     const currentTab = allTabs.find(tab => {
       const isMatch = pathname === tab.path || pathname.startsWith(tab.path + '/');
       console.log(`  Checking ${tab.name}: ${tab.path} - Match: ${isMatch}`);
@@ -150,6 +183,18 @@ const ReportsSidebar: React.FC<ReportsSidebarProps> = ({ activeTab, onTabChange 
           </div>
           <nav className="space-y-1">
             {partyReportTabs.map(renderNavItem)}
+          </nav>
+        </div>
+
+        {/* Item/Stock Reports Section */}
+        <div className="py-3 border-t border-gray-100">
+          <div className="px-3 mb-2">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Item/Stock Reports
+            </h3>
+          </div>
+          <nav className="space-y-1">
+            {itemStockReportTabs.map(renderNavItem)}
           </nav>
         </div>
       </div>

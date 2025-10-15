@@ -3,7 +3,7 @@ import authRoutes from './auth.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import { requirePageAccess } from '../middlewares/accessControlMiddleware.js';
 import partiesRoutes from './parties.js';
-import { addItem, bulkImportItems, getItems, getItemsByLoggedInUser, deleteItem, updateItem, getItemsPerformanceStats, checkExistingItems } from '../controllers/itemsController.js';
+import { addItem, bulkImportItems, getItems, getItemsByLoggedInUser, deleteItem, updateItem, getItemsPerformanceStats, checkExistingItems, getStockSummary, getItemWiseProfitLoss } from '../controllers/itemsController.js';
 import saleRoutes from './sale.js';
 import purchaseRoutes from './purchase.js';
 import saleOrderRoutes from './saleOrder.js';
@@ -17,7 +17,7 @@ import licenseKeyRoutes from './licenseKeys.js';
 import expenseRoutes from './expense.js';
 import cashBankRoutes from './cashBank.js';
 import adminRoutes from './admin.js';
-import { getDashboardStats, getSalesOverview, getRecentActivity, getProfile, updateProfile, getReceivablesList, getPayablesList, getDashboardPerformanceStats, testStockValue, getStockSummary, createDashboardIndexes, getPartyBalances } from '../controllers/dashboardController.js';
+import { getDashboardStats, getSalesOverview, getRecentActivity, getProfile, updateProfile, getReceivablesList, getPayablesList, getDashboardPerformanceStats, testStockValue, createDashboardIndexes, getPartyBalances } from '../controllers/dashboardController.js';
 import sessionCheckRoutes from './sessionCheck.js';
 import { sendUserInvite, getUserInvites, getInvitesForMe, respondToInvite, deleteUserInvite, updateUserInvite, updateUserCompanyContext } from '../controllers/userInviteController.js';
 import { openFile } from '../tauri-integration.js';
@@ -73,6 +73,8 @@ router.get('/items/count', authMiddleware, (req, res) => {
 
 // Items routes
 router.get('/items', authMiddleware, getItemsByLoggedInUser);
+router.get('/items/stock-summary', authMiddleware, getStockSummary);
+router.get('/items/item-wise-profit-loss', authMiddleware, getItemWiseProfitLoss);
 router.post('/items/:userId', authMiddleware, addItem);
 router.post('/items/:userId/bulk-import', authMiddleware, bulkImportItems);
 router.post('/items/:userId/check-existing', authMiddleware, checkExistingItems);
@@ -93,7 +95,7 @@ router.post('/dashboard/create-indexes', authMiddleware, createDashboardIndexes)
 router.get('/dashboard/test-stock-value', authMiddleware, testStockValue);
 
 // Stock summary route
-router.get('/dashboard/stock-summary', authMiddleware, getStockSummary);
+// router.get('/dashboard/stock-summary', authMiddleware, getStockSummary);
 
 // Party balances route
 router.get('/dashboard/party-balances', authMiddleware, getPartyBalances);

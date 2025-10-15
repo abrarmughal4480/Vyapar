@@ -436,19 +436,19 @@ const PartyStatementPage = () => {
         });
       });
 
-      allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      allTransactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
       setTransactions(allTransactions);
 
       const selectedPartyData = parties.find(p => p.name === selectedParty);
       
-      const openingBal = selectedPartyData?.openingBalance || 0;
-      const currentBal = selectedPartyData?.openingBalance || 0;
+      const openingBal = selectedPartyData?.firstOpeningBalance || 0;
+      const currentBal = selectedPartyData?.firstOpeningBalance || 0;
       
       setOpeningBalance(openingBal);
       setCurrentBalance(currentBal);
 
-      setFirstOpeningBalance(selectedPartyData?.openingBalance || 0);
+      setFirstOpeningBalance(selectedPartyData?.firstOpeningBalance || 0);
 
     } catch (error) {
       setError('Failed to load transactions. Please try again.');

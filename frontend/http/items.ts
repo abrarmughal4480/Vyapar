@@ -148,6 +148,46 @@ export const getUserItems = async (token: string) => {
   }
 };
 
+export const fetchItemsByUserId = async (userId: string, token: string) => {
+  try {
+    console.log('Fetching items for user:', userId);
+    const res = await api.get('/items', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    console.log('Items API response:', res.data);
+    return res.data;
+  } catch (error) {
+    console.error('Error fetching items:', error);
+    return { success: false, message: 'Failed to fetch items', data: [] };
+  }
+};
+
+// Get stock summary for all items
+export const getStockSummary = async (token?: string) => {
+  try {
+    console.log('Fetching stock summary with token:', token ? 'Token present' : 'No token');
+    const res = await api.get('/items/stock-summary');
+    console.log('Stock Summary API response:', res.data);
+    return res.data;
+  } catch (error) {
+    console.error('Error fetching stock summary:', error);
+    return { success: false, data: { items: [], totals: { totalStockQty: 0, totalStockValue: 0 } } };
+  }
+};
+
+// Get item wise profit and loss report
+export const getItemWiseProfitLoss = async (token?: string) => {
+  try {
+    console.log('Fetching item wise profit loss with token:', token ? 'Token present' : 'No token');
+    const res = await api.get('/items/item-wise-profit-loss');
+    console.log('Item Wise Profit Loss API response:', res.data);
+    return res.data;
+  } catch (error) {
+    console.error('Error fetching item wise profit loss:', error);
+    return { success: false, data: { items: [], totalNetProfitLoss: 0 } };
+  }
+};
+
 // Optimized function with search and filtering support
 export const getUserItemsWithFilters = async (
   token: string, 

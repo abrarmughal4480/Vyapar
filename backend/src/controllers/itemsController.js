@@ -1,4 +1,5 @@
 import Item from '../models/items.js';
+import mongoose from 'mongoose';
 
 
 // Add this helper at the top after imports
@@ -461,6 +462,335 @@ export const deleteItem = async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+// Get stock summary for all items
+export const getStockSummary = async (req, res) => {
+  try {
+    console.log('getStockSummary called');
+    console.log('User from auth middleware:', req.user);
+    
+    const userId = req.user && (req.user._id || req.user.id);
+    if (!userId) {
+      console.log('No userId found in request');
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+    
+    console.log('UserId:', userId);
+
+    const items = await Item.find({ userId }).select('name salePrice purchasePrice stock openingQuantity openingStockQuantity').lean();
+    
+    const stockSummary = items.map(item => {
+      const currentStock = item.stock !== null && item.stock !== undefined ? item.stock : (item.openingQuantity || item.openingStockQuantity || 0);
+      const stockValue = currentStock * (item.purchasePrice || 0);
+      
+      return {
+        id: item._id,
+        itemName: item.name || 'Unknown Item',
+        salePrice: item.salePrice || 0,
+        purchasePrice: item.purchasePrice || 0,
+        stockQty: currentStock,
+        stockValue: stockValue
+      };
+    });
+
+    // Calculate totals
+    const totalStockQty = stockSummary.reduce((sum, item) => sum + item.stockQty, 0);
+    const totalStockValue = stockSummary.reduce((sum, item) => sum + item.stockValue, 0);
+
+    res.json({ 
+      success: true, 
+      data: {
+        items: stockSummary,
+        totals: {
+          totalStockQty,
+          totalStockValue
+        }
+      }
+    });
+  } catch (err) {
+    console.error('Error in getStockSummary:', err);
+    res.status(500).json({ success: false, message: 'Failed to get stock summary', error: err.message });
+  }
+};
+
+// Get item wise profit and loss report
+export const getItemWiseProfitLoss = async (req, res) => {
+  try {
+    console.log('getItemWiseProfitLoss called');
+    console.log('User from auth middleware:', req.user);
+    
+    const userId = req.user && (req.user._id || req.user.id);
+    if (!userId) {
+      console.log('No userId found in request');
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+    
+    // Convert userId to ObjectId if it's a string
+    const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+ 
+    // Import required models
+    const Sale = mongoose.model('Sale');
+    const Purchase = mongoose.model('Purchase');
+    const CreditNote = mongoose.model('CreditNote');
+    const PaymentOut = mongoose.model('PaymentOut'); // For purchase returns
+
+    // Get all items for the user
+    const items = await Item.find({ userId: userIdObj }).select('name').lean();
+    
+    const itemWiseData = [];
+    let totalNetProfitLoss = 0;
+
+    for (const item of items) {
+      const itemName = item.name || 'Unknown Item';
+      
+      // Get sales data for this item with proper discount calculation
+      const salesData = await Sale.aggregate([
+        { $match: { userId: userIdObj } },
+        { $unwind: '$items' },
+        { $match: { 
+          $or: [
+            { 'items.item': itemName },
+            { 'items.item': { $regex: new RegExp(`^${itemName}$`, 'i') } }
+          ]
+        } },
+        {
+          $addFields: {
+            actualItemAmount: {
+              $let: {
+                vars: {
+                  originalAmount: '$items.amount', // Use the pre-calculated amount field
+                  itemDiscount: {
+                    $cond: {
+                      if: { $ne: ['$items.discountPercentage', ''] },
+                      then: { $divide: [{ $multiply: ['$items.amount', { $toDouble: '$items.discountPercentage' }] }, 100] },
+                      else: {
+                        $cond: {
+                          if: { $ne: ['$items.discountAmount', ''] },
+                          then: { $toDouble: '$items.discountAmount' },
+                          else: 0
+                        }
+                      }
+                    }
+                  }
+                },
+                in: {
+                  $subtract: ['$$originalAmount', '$$itemDiscount']
+                }
+              }
+            }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalSaleAmount: { $sum: '$actualItemAmount' },
+            totalSaleQty: { $sum: '$items.qty' }
+          }
+        }
+      ]);
+
+      // Get credit notes/sale returns for this item with proper discount calculation
+      const creditNoteData = await CreditNote.aggregate([
+        { $match: { userId: userIdObj } },
+        { $unwind: '$items' },
+        { $match: { 
+          $or: [
+            { 'items.item': itemName },
+            { 'items.item': { $regex: new RegExp(`^${itemName}$`, 'i') } }
+          ]
+        } },
+        {
+          $addFields: {
+            actualItemAmount: {
+              $let: {
+                vars: {
+                  originalAmount: '$items.amount', // Use the pre-calculated amount field
+                  itemDiscount: {
+                    $cond: {
+                      if: { $ne: ['$items.discountPercentage', ''] },
+                      then: { $divide: [{ $multiply: ['$items.amount', { $toDouble: '$items.discountPercentage' }] }, 100] },
+                      else: {
+                        $cond: {
+                          if: { $ne: ['$items.discountAmount', ''] },
+                          then: { $toDouble: '$items.discountAmount' },
+                          else: 0
+                        }
+                      }
+                    }
+                  }
+                },
+                in: {
+                  $subtract: ['$$originalAmount', '$$itemDiscount']
+                }
+              }
+            }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalCreditAmount: { $sum: '$actualItemAmount' },
+            totalCreditQty: { $sum: '$items.qty' }
+          }
+        }
+      ]);
+
+      
+      // Get purchase data for this item with proper discount calculation
+      const purchaseData = await Purchase.aggregate([
+        { $match: { userId: userIdObj } },
+        { $unwind: '$items' },
+        { $match: { 
+          $or: [
+            { 'items.item': itemName },
+            { 'items.item': { $regex: new RegExp(`^${itemName}$`, 'i') } }
+          ]
+        } },
+        {
+          $addFields: {
+            actualItemAmount: {
+              $let: {
+                vars: {
+                  originalAmount: '$items.amount', // Use the pre-calculated amount field
+                  itemDiscount: {
+                    $cond: {
+                      if: { $ne: ['$items.discountPercentage', ''] },
+                      then: { $divide: [{ $multiply: ['$items.amount', { $toDouble: '$items.discountPercentage' }] }, 100] },
+                      else: {
+                        $cond: {
+                          if: { $ne: ['$items.discountAmount', ''] },
+                          then: { $toDouble: '$items.discountAmount' },
+                          else: 0
+                        }
+                      }
+                    }
+                  }
+                },
+                in: {
+                  $subtract: ['$$originalAmount', '$$itemDiscount']
+                }
+              }
+            }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalPurchaseAmount: { $sum: '$actualItemAmount' },
+            totalPurchaseQty: { $sum: '$items.qty' }
+          }
+        }
+      ]);
+
+      // Get purchase returns for this item (using PaymentOut with type 'Purchase Return')
+      const purchaseReturnData = await PaymentOut.aggregate([
+        { $match: { userId: userIdObj, type: 'Purchase Return' } },
+        { $unwind: '$items' },
+        { $match: { 
+          $or: [
+            { 'items.item': itemName },
+            { 'items.item': { $regex: new RegExp(`^${itemName}$`, 'i') } }
+          ]
+        } },
+        {
+          $group: {
+            _id: null,
+            totalReturnAmount: { $sum: '$items.amount' },
+            totalReturnQty: { $sum: '$items.qty' }
+          }
+        }
+      ]);
+
+      // Get current item details for stock calculation
+      const currentItem = await Item.findOne({ userId: userIdObj, name: itemName });
+      const openingStock = currentItem?.openingQuantity || currentItem?.openingStockQuantity || 0;
+      const closingStock = currentItem?.stock !== null && currentItem?.stock !== undefined ? currentItem.stock : openingStock;
+      
+      // Get item's purchase price for fallback calculation
+      const itemPurchasePrice = currentItem?.purchasePrice || 0;
+
+      // Calculate values
+      const saleAmount = salesData[0]?.totalSaleAmount || 0;
+      const creditNoteAmount = creditNoteData[0]?.totalCreditAmount || 0;
+      const purchaseAmount = purchaseData[0]?.totalPurchaseAmount || 0; // Only actual purchase transactions
+      const purchaseReturnAmount = purchaseReturnData[0]?.totalReturnAmount || 0;
+      
+      // Get sold quantities
+      const totalSaleQty = salesData[0]?.totalSaleQty || 0;
+      const totalCreditQty = creditNoteData[0]?.totalCreditQty || 0;
+      const netSoldQty = totalSaleQty - totalCreditQty; // Net quantity sold (sales - returns)
+      
+      // Calculate cost of goods sold using FIFO method from batches
+      let costOfGoodsSold = 0;
+      
+      if (netSoldQty > 0) {
+        if (currentItem && Array.isArray(currentItem.batches) && currentItem.batches.length > 0) {
+          // Use FIFO method to calculate cost of goods sold
+          let remainingQty = netSoldQty;
+          let totalCost = 0;
+          
+          // Sort batches by creation date (FIFO order)
+          const sortedBatches = [...currentItem.batches].sort((a, b) => 
+            new Date(a.createdAt || 0) - new Date(b.createdAt || 0)
+          );
+          
+          for (const batch of sortedBatches) {
+            if (remainingQty <= 0) break;
+            
+            const batchQty = batch.quantity || 0;
+            const batchPrice = batch.purchasePrice || 0;
+            
+            if (batchQty > 0) {
+              const consumedQty = Math.min(remainingQty, batchQty);
+              totalCost += consumedQty * batchPrice;
+              remainingQty -= consumedQty;
+            }
+          }
+          
+          costOfGoodsSold = totalCost;
+        } else if (itemPurchasePrice > 0) {
+          // Fallback to item's purchase price if no batches
+          costOfGoodsSold = netSoldQty * itemPurchasePrice;
+        }
+      }
+      
+      // If no batches and no purchase price, use actual purchase transactions
+      if (costOfGoodsSold === 0) {
+        costOfGoodsSold = purchaseAmount - purchaseReturnAmount;
+      }
+      
+      // Calculate net profit/loss (Sales - Credit Notes) - Cost of Goods Sold
+      const netProfitLoss = (saleAmount - creditNoteAmount) - costOfGoodsSold;
+
+      itemWiseData.push({
+        id: item._id,
+        itemName: itemName,
+        sale: saleAmount,
+        creditNoteSaleReturn: creditNoteAmount,
+        purchase: purchaseAmount,
+        drNotePurchaseReturn: purchaseReturnAmount,
+        openingStock: openingStock,
+        closingStock: closingStock,
+        taxReceivable: 0, // Can be calculated based on tax rates
+        taxPayable: 0, // Can be calculated based on tax rates
+        netProfitLoss: netProfitLoss
+      });
+
+      totalNetProfitLoss += netProfitLoss;
+    }
+
+    res.json({ 
+      success: true, 
+      data: {
+        items: itemWiseData,
+        totalNetProfitLoss: totalNetProfitLoss
+      }
+    });
+  } catch (err) {
+    console.error('Error in getItemWiseProfitLoss:', err);
+    res.status(500).json({ success: false, message: 'Failed to get item wise profit loss', error: err.message });
   }
 };
 

@@ -134,4 +134,34 @@ export const getPaymentRecords = async (userId: string, token: string) => {
     console.error('Error fetching payment records:', error);
     return { success: false, paymentIns: [] };
   }
+};
+
+// Edit payment record
+export const editPayment = async (paymentId: string, paymentData: any, token: string) => {
+  try {
+    const { data } = await api.put(`/api/sales/edit-payment/${paymentId}`, paymentData, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return data;
+  } catch (error) {
+    console.error('Error editing payment:', error);
+    return { success: false, message: 'Failed to edit payment' };
+  }
+};
+
+// Delete payment record
+export const deletePayment = async (paymentId: string, token: string) => {
+  try {
+    const { data } = await api.delete(`/api/sales/delete-payment/${paymentId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return data;
+  } catch (error) {
+    console.error('Error deleting payment:', error);
+    return { success: false, message: 'Failed to delete payment' };
+  }
 }; 

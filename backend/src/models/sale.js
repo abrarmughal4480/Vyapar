@@ -19,7 +19,7 @@ const SaleItemSchema = new mongoose.Schema({
 
 const SaleSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-  partyName: { type: String, required: true },
+  partyName: { type: String, required: false },
   phoneNo: { type: String },
   items: { type: [SaleItemSchema], required: true },
   discount: { type: Number, default: 0 },

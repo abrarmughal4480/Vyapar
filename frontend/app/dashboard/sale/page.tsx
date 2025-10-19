@@ -1315,7 +1315,9 @@ Your Business Name`;
                               <span className="text-gray-400">-</span>
                             )}
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{transaction.partyName}</td>
+                          <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">
+                            {transaction.partyName || 'Cash Sale'}
+                          </td>
                           <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
                             <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${transaction.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>{transaction.transaction ? transaction.transaction : 'Sale'}</span>
                           </td>

@@ -167,8 +167,12 @@ export const createPurchase = async (req, res) => {
     
     // Handle paid amount for all payment types
     let paid = 0;
-    if (req.body.paid !== undefined && req.body.paid !== null) {
-      paid = Number(req.body.paid) || 0;
+    if (req.body.paid !== undefined && req.body.paid !== null && req.body.paid !== '') {
+      const parsedPaid = Number(req.body.paid);
+      // Allow 0 as a valid payment amount
+      if (!isNaN(parsedPaid)) {
+        paid = parsedPaid;
+      }
     }
     const balance = grandTotal - paid;
     const purchase = new Purchase({
@@ -787,7 +791,20 @@ export const updatePurchase = async (req, res) => {
     const newGrandTotal = Math.max(0, originalSubTotal - totalDiscount + taxValue);
     
     // Calculate new balance (considering new paid amount from updateData)
-    const newPaid = Number(updateData.paid || updateData.paidAmount || existingPurchase.paid) || 0;
+    let newPaid = 0;
+    if (updateData.paid !== undefined && updateData.paid !== null && updateData.paid !== '') {
+      const parsedPaid = Number(updateData.paid);
+      if (!isNaN(parsedPaid)) {
+        newPaid = parsedPaid;
+      }
+    } else if (updateData.paidAmount !== undefined && updateData.paidAmount !== null && updateData.paidAmount !== '') {
+      const parsedPaid = Number(updateData.paidAmount);
+      if (!isNaN(parsedPaid)) {
+        newPaid = parsedPaid;
+      }
+    } else {
+      newPaid = existingPurchase.paid || 0;
+    }
     const newBalance = Math.max(0, newGrandTotal - newPaid);
     
     
@@ -1051,6 +1068,279 @@ export const getPaymentsByUser = async (req, res) => {
   }
 };
 
+// Edit payment out record
+export const editPaymentOut = async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    const { amount, paymentType, paymentDate, description, imageUrl, supplierName } = req.body;
+    const userId = req.user?._id || req.user?.id;
+
+    if (!paymentId) {
+      return res.status(400).json({ success: false, message: 'Missing paymentId' });
+    }
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'Amount must be greater than 0' });
+    }
+
+    // Find the existing payment record
+    const existingPayment = await Payment.findOne({ _id: paymentId, userId });
+    if (!existingPayment) {
+      return res.status(404).json({ success: false, message: 'Payment record not found' });
+    }
+
+    const oldAmount = existingPayment.amount;
+    const oldPaymentType = existingPayment.paymentType;
+    const oldSupplierName = existingPayment.supplierName;
+
+    // Step 1: Reverse the old payment from the party's balance (add back to party balance)
+    try {
+      const partyDoc = await Party.findOne({ name: oldSupplierName, user: userId });
+      if (partyDoc) {
+        // Reverse the old payment (add back to party balance)
+        partyDoc.openingBalance = (partyDoc.openingBalance || 0) + oldAmount;
+        await partyDoc.save();
+      }
+    } catch (partyError) {
+      console.error('Error updating party balance:', partyError);
+    }
+
+    // Step 2: Reverse old bank account transaction if payment was bank transfer
+    if (oldPaymentType && oldPaymentType.startsWith('bank_')) {
+      try {
+        const BankAccount = (await import('../models/bankAccount.js')).default;
+        const bankAccountId = oldPaymentType.replace('bank_', '');
+        const bankAccount = await BankAccount.findOne({ 
+          _id: bankAccountId, 
+          userId: userId, 
+          isActive: true 
+        });
+        
+        if (bankAccount) {
+          // Reverse the old bank transaction (add back to bank balance)
+          const restoredBalance = bankAccount.currentBalance + oldAmount;
+          await BankAccount.findByIdAndUpdate(bankAccountId, { 
+            currentBalance: Math.max(0, restoredBalance),
+            updatedAt: new Date()
+          });
+        }
+      } catch (bankError) {
+        console.error('Error reversing old bank transaction:', bankError);
+      }
+    }
+
+    // Step 3: Apply the new payment to the party's balance (subtract from party balance)
+    try {
+      const partyDoc = await Party.findOne({ name: supplierName || oldSupplierName, user: userId });
+      if (partyDoc) {
+        // Apply the new payment (subtract from party balance)
+        partyDoc.openingBalance = (partyDoc.openingBalance || 0) - amount;
+        await partyDoc.save();
+      }
+    } catch (partyError) {
+      console.error('Error updating party balance:', partyError);
+    }
+
+    // Step 4: Apply new bank account transaction if payment is bank transfer
+    if (paymentType && paymentType.startsWith('bank_')) {
+      try {
+        const BankAccount = (await import('../models/bankAccount.js')).default;
+        const bankAccountId = paymentType.replace('bank_', '');
+        const bankAccount = await BankAccount.findOne({ 
+          _id: bankAccountId, 
+          userId: userId, 
+          isActive: true 
+        });
+        
+        if (bankAccount) {
+          // Apply the new bank transaction (subtract from bank balance)
+          const newBalance = bankAccount.currentBalance - amount;
+          await BankAccount.findByIdAndUpdate(bankAccountId, { 
+            currentBalance: Math.max(0, newBalance),
+            updatedAt: new Date()
+          });
+        }
+      } catch (bankError) {
+        console.error('Error applying new bank transaction:', bankError);
+      }
+    }
+
+    // Step 5: Update associated purchase record if it exists
+    try {
+      const Purchase = (await import('../models/purchase.js')).default;
+      if (existingPayment.purchaseId) {
+        // Find the purchase record
+        const purchaseDoc = await Purchase.findById(existingPayment.purchaseId);
+        if (purchaseDoc) {
+          // Calculate the difference in payment amount
+          const amountDifference = amount - oldAmount;
+          const newPaidAmount = Math.max(0, (purchaseDoc.paid || 0) + amountDifference);
+          const newBalance = (purchaseDoc.grandTotal || 0) - newPaidAmount;
+          
+          await Purchase.findByIdAndUpdate(existingPayment.purchaseId, {
+            paid: newPaidAmount,
+            balance: newBalance,
+            status: newBalance <= 0 ? 'Paid' : (newPaidAmount > 0 ? 'Partial' : 'Pending'),
+            updatedAt: new Date()
+          });
+          
+          console.log('Purchase record updated after payment edit:', {
+            purchaseId: existingPayment.purchaseId,
+            oldPaidAmount: purchaseDoc.paid || 0,
+            newPaidAmount,
+            oldBalance: purchaseDoc.balance || 0,
+            newBalance,
+            amountDifference
+          });
+        }
+      }
+    } catch (purchaseError) {
+      console.error('Error updating associated purchase:', purchaseError);
+    }
+
+    // Step 6: Update the payment record
+    const updatedPayment = await Payment.findByIdAndUpdate(
+      paymentId,
+      {
+        amount,
+        paymentType,
+        paymentDate: paymentDate || new Date(),
+        description,
+        imageUrl,
+        supplierName: supplierName || oldSupplierName,
+        updatedAt: new Date()
+      },
+      { new: true }
+    );
+
+    res.json({ 
+      success: true, 
+      message: 'Payment and purchase bill updated successfully',
+      payment: updatedPayment,
+      changes: {
+        oldAmount,
+        newAmount: amount,
+        oldPaymentType,
+        newPaymentType: paymentType,
+        oldSupplierName,
+        newSupplierName: supplierName || oldSupplierName,
+        purchaseId: existingPayment.purchaseId
+      }
+    });
+
+  } catch (err) {
+    console.error('Error editing payment:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Delete payment out record
+export const deletePaymentOut = async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    const userId = req.user?._id || req.user?.id;
+
+    if (!paymentId) {
+      return res.status(400).json({ success: false, message: 'Missing paymentId' });
+    }
+
+    // Find the existing payment record
+    const existingPayment = await Payment.findOne({ _id: paymentId, userId });
+    if (!existingPayment) {
+      return res.status(404).json({ success: false, message: 'Payment record not found' });
+    }
+
+    const supplierName = existingPayment.supplierName;
+    const amount = existingPayment.amount;
+    const paymentType = existingPayment.paymentType;
+
+    // Step 1: Reverse the payment from the party's balance (subtract payment amount)
+    try {
+      const partyDoc = await Party.findOne({ name: supplierName, user: userId });
+      if (partyDoc) {
+        // Reverse the payment (subtract payment amount)
+        partyDoc.openingBalance = (partyDoc.openingBalance || 0) - amount;
+        await partyDoc.save();
+      }
+    } catch (partyError) {
+      console.error('Error updating party balance:', partyError);
+    }
+
+    // Step 2: Reverse bank account transaction if payment was bank transfer
+    if (paymentType && paymentType.startsWith('bank_')) {
+      try {
+        const BankAccount = (await import('../models/bankAccount.js')).default;
+        const bankAccountId = paymentType.replace('bank_', '');
+        const bankAccount = await BankAccount.findOne({ 
+          _id: bankAccountId, 
+          userId: userId, 
+          isActive: true 
+        });
+        
+        if (bankAccount) {
+          // Reverse the bank transaction (add back to bank balance)
+          const restoredBalance = bankAccount.currentBalance + amount;
+          await BankAccount.findByIdAndUpdate(bankAccountId, { 
+            currentBalance: Math.max(0, restoredBalance),
+            updatedAt: new Date()
+          });
+        }
+      } catch (bankError) {
+        console.error('Error reversing bank transaction:', bankError);
+      }
+    }
+
+    // Step 3: Update associated purchase record if it exists
+    try {
+      const Purchase = (await import('../models/purchase.js')).default;
+      if (existingPayment.purchaseId) {
+        // Find the purchase record
+        const purchaseDoc = await Purchase.findById(existingPayment.purchaseId);
+        if (purchaseDoc) {
+          // Update balance and paid amount
+          const newPaidAmount = Math.max(0, (purchaseDoc.paid || 0) - amount);
+          const newBalance = (purchaseDoc.grandTotal || 0) - newPaidAmount;
+          
+          await Purchase.findByIdAndUpdate(existingPayment.purchaseId, {
+            paid: newPaidAmount,
+            balance: newBalance,
+            status: newBalance <= 0 ? 'Paid' : (newPaidAmount > 0 ? 'Partial' : 'Pending'),
+            updatedAt: new Date()
+          });
+          
+          console.log('Purchase record updated after payment deletion:', {
+            purchaseId: existingPayment.purchaseId,
+            oldPaidAmount: purchaseDoc.paid || 0,
+            newPaidAmount,
+            oldBalance: purchaseDoc.balance || 0,
+            newBalance
+          });
+        }
+      }
+    } catch (purchaseError) {
+      console.error('Error updating associated purchase:', purchaseError);
+    }
+
+    // Step 4: Delete the payment record
+    await Payment.findByIdAndDelete(paymentId);
+
+    res.json({ 
+      success: true, 
+      message: 'Payment deleted and purchase bill updated successfully',
+      deletedPayment: {
+        supplierName,
+        amount,
+        paymentType,
+        purchaseId: existingPayment.purchaseId
+      }
+    });
+
+  } catch (err) {
+    console.error('Error deleting payment:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 export default {
   createPurchase,
   getPurchasesByUser,
@@ -1059,4 +1349,6 @@ export default {
   deletePurchase,
   updatePurchase,
   getPaymentsByUser,
+  editPaymentOut,
+  deletePaymentOut,
 }; 

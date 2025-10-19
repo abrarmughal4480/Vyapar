@@ -618,6 +618,10 @@ const AddSalePageWithSearchParams = () => {
           deleteRow(lastItem.id);
         }
       }
+      else if (event.ctrlKey && event.key === 's') {
+        event.preventDefault();
+        handleAddSale();
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
@@ -741,7 +745,10 @@ const AddSalePageWithSearchParams = () => {
   // Validation
   const validateForm = () => {
     const errors: any = {};
-    if (!newSale.partyName) errors.partyName = 'Customer is required';
+    // Only require customer name for credit sales, not for cash sales
+    if (newSale.paymentType === 'Credit' && !newSale.partyName) {
+      errors.partyName = 'Customer is required for credit sales';
+    }
     const validItems = newSale.items.filter(item => item.item && parseFloat(item.qty) > 0 && parseFloat(item.price) > 0);
     if (validItems.length === 0) errors.items = 'At least one valid item is required';
     setFormErrors(errors);

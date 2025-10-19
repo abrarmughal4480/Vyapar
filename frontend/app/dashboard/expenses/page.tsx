@@ -525,7 +525,7 @@ export default function ExpensesPage() {
                         {expense.expenseNumber}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">
-                        {expense.party}
+                        {expense.party === 'Unknown' ? '' : expense.party}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">
                         {expense.paymentType}

@@ -45,6 +45,7 @@ function PartiesPageContent() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingParty, setEditingParty] = useState<Party | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [bulkImportModal, setBulkImportModal] = useState(false)
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(false)
   const [partyToDelete, setPartyToDelete] = useState<Party | null>(null)
@@ -251,6 +252,11 @@ function PartiesPageContent() {
       setToast({ message: validationError, type: 'error' });
       return;
     }
+    
+    // Prevent multiple submissions
+    if (isSubmitting) return;
+    
+    setIsSubmitting(true);
     try {
       // Prepare party data for backend
       const partyData = {
@@ -330,15 +336,23 @@ function PartiesPageContent() {
       }
     } catch (error) {
       setToast({ message: (editingParty ? 'Failed to update party: ' : 'Failed to add party: ') + String(error), type: 'error' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleDeleteParty = async () => {
     if (!partyToDelete) return;
+    
+    // Close modal immediately
+    setDeleteConfirmModal(false);
+    setPartyToDelete(null);
+    
     try {
       // Remove from local state immediately
       const updatedParties = parties.filter(p => p.id !== partyToDelete.id);
       setParties(updatedParties);
+      
       // Try to sync deletion with API in background
       try {
         const token = authToken || localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
@@ -347,8 +361,6 @@ function PartiesPageContent() {
       } catch (apiError) {
         setToast({ message: 'API deletion sync failed, but party removed locally', type: 'error' });
       }
-      setDeleteConfirmModal(false);
-      setPartyToDelete(null);
     } catch (error) {
       setToast({ message: 'Failed to delete party: ' + String(error), type: 'error' });
     }
@@ -460,6 +472,7 @@ function PartiesPageContent() {
       setEditingParty(null)
       resetForm()
     }
+    setIsSubmitting(false) // Reset loading state
     setIsModalOpen(true)
   }
 
@@ -839,10 +852,17 @@ function PartiesPageContent() {
                 </h2>
                 <button 
                   onClick={() => {
-                    setIsModalOpen(false)
-                    resetForm()
+                    if (!isSubmitting) {
+                      setIsModalOpen(false)
+                      resetForm()
+                    }
                   }}
-                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                  disabled={isSubmitting}
+                  className={`text-2xl transition-colors ${
+                    isSubmitting 
+                      ? 'text-gray-300 cursor-not-allowed' 
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
                 >
                   ✕
                 </button>
@@ -1160,9 +1180,15 @@ function PartiesPageContent() {
                       setActiveModalTab('address')
                     })
                   }}
-                  className="px-6 py-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors"
+                  disabled={isSubmitting}
+                  className={`px-6 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
+                    isSubmitting 
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                      : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                  }`}
                 >
-                  Save & New
+                  {isSubmitting && <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>}
+                  <span>Save & New</span>
                 </button>
                 <div className="flex space-x-3">
                   <button
@@ -1171,16 +1197,27 @@ function PartiesPageContent() {
                       setIsModalOpen(false)
                       resetForm()
                     }}
-                    className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                    disabled={isSubmitting}
+                    className={`px-6 py-2 border rounded-lg transition-colors ${
+                      isSubmitting 
+                        ? 'border-gray-200 text-gray-400 cursor-not-allowed' 
+                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
                     onClick={handleAddParty}
-                    className="px-8 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    disabled={isSubmitting}
+                    className={`px-8 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
+                      isSubmitting 
+                        ? 'bg-gray-400 text-white cursor-not-allowed' 
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }`}
                   >
-                    Save
+                    {isSubmitting && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
+                    <span>{editingParty ? 'Update' : 'Save'}</span>
                   </button>
                 </div>
               </div>
@@ -1191,10 +1228,29 @@ function PartiesPageContent() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeinup">
+        <div 
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeinup"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setDeleteConfirmModal(false)
+              setPartyToDelete(null)
+            }
+          }}
+        >
           <div className="bg-white/90 rounded-2xl shadow-2xl w-full max-w-md animate-scalein">
             <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-900">Delete Party</h2>
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-semibold text-gray-900">Delete Party</h2>
+                <button 
+                  onClick={() => {
+                    setDeleteConfirmModal(false)
+                    setPartyToDelete(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             <div className="p-6">
               <p className="text-gray-700 mb-4">

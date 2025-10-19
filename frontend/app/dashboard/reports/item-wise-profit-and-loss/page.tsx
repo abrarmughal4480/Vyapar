@@ -334,9 +334,18 @@ export default function ItemWiseProfitLossPage() {
               </tr>
             ))}
             {/* Total Row */}
-            <tr className="bg-gray-50 font-semibold">
+            <tr className={`font-semibold ${totalNetProfitLoss >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
               <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
-                Total Amount:
+                <div className="flex items-center gap-2">
+                  <span>Total Amount:</span>
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    totalNetProfitLoss >= 0 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                    {totalNetProfitLoss >= 0 ? 'Profit' : 'Loss'}
+                  </span>
+                </div>
               </td>
               <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
                 
@@ -362,7 +371,9 @@ export default function ItemWiseProfitLossPage() {
               <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
                 
               </td>
-              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
+              <td className={`px-4 py-2 whitespace-nowrap text-sm font-bold text-right ${
+                totalNetProfitLoss >= 0 ? 'text-green-700' : 'text-red-700'
+              }`}>
                 ₨ {totalNetProfitLoss.toFixed(2)}
               </td>
             </tr>

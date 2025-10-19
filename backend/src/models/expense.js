@@ -8,7 +8,7 @@ const ExpenseItemSchema = new mongoose.Schema({
 const ExpenseSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   expenseCategory: { type: String, required: true },
-  party: { type: String, required: true },
+  party: { type: String, required: false },
   partyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Party' }, // Reference to party
   items: { type: [ExpenseItemSchema], required: true },
   totalAmount: { type: Number, required: true },

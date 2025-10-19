@@ -10,7 +10,7 @@ export const createExpense = async (req, res) => {
     const { expenseCategory, party, partyId, items, totalAmount, paymentType, paymentMethod, bankAccountId, bankAccountName, receivedAmount, expenseDate, description } = req.body;
     
     
-    if (!expenseCategory || !party || !items || !Array.isArray(items) || items.length === 0 || !totalAmount || !paymentType || !expenseDate) {
+    if (!expenseCategory || !items || !Array.isArray(items) || items.length === 0 || !totalAmount || !paymentType || !expenseDate) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
@@ -19,7 +19,7 @@ export const createExpense = async (req, res) => {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
 
-    // Handle party creation if partyId is not provided
+    // Handle party creation if partyId is not provided and party name is not empty
     let finalPartyId = partyId;
     if (!finalPartyId && party && party.trim() !== '') {
       try {

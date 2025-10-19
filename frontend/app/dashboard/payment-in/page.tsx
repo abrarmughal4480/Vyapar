@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef, Suspense } from "react";
-import { getPaymentRecords, getSaleById } from "@/http/sales";
+import { getPaymentRecords, getSaleById, deletePayment } from "@/http/sales";
 import { jwtDecode } from "jwt-decode";
 import Toast from "../../components/Toast";
 import PaymentInModal from "../../components/PaymentInModal";
@@ -33,6 +33,7 @@ const PaymentInPageContent = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showPaymentIn, setShowPaymentIn] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [filterType, setFilterType] = useState('All');
   const [dateFrom, setDateFrom] = useState('');
@@ -45,6 +46,8 @@ const PaymentInPageContent = () => {
   const searchParams = useSearchParams();
   const [userInfo, setUserInfo] = useState<any>(null);
   const [isClient, setIsClient] = useState(false);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
+  const [paymentToDelete, setPaymentToDelete] = useState<any>(null);
 
   // Get current user info for role-based access
   useEffect(() => {
@@ -52,40 +55,43 @@ const PaymentInPageContent = () => {
     setUserInfo(currentUserInfo);
   }, []);
 
+  // Function to refresh payment data
+  const refreshPaymentData = async () => {
+    setLoading(true);
+    try {
+      const token = (typeof window !== "undefined" && (localStorage.getItem("token") || localStorage.getItem("vypar_auth_token"))) || "";
+      if (!token) {
+        setTransactions([]);
+        setLoading(false);
+        return;
+      }
+      const decoded: any = jwtDecode(token);
+      const userId = decoded._id || decoded.id;
+      if (!userId) {
+        setTransactions([]);
+        setLoading(false);
+        return;
+      }
+      const result = await getPaymentRecords(userId, token);
+      if (result && result.success && Array.isArray(result.paymentIns)) {
+        setTransactions(result.paymentIns);
+      } else {
+        setTransactions([]);
+      }
+    } catch (err) {
+      console.error('Error fetching payment data:', err);
+      setTransactions([]);
+    }
+    setLoading(false);
+  };
+
   // Add loading state to prevent hydration mismatch
   useEffect(() => {
     setIsClient(true);
   }, []);
 
   useEffect(() => {
-    const fetchPayments = async () => {
-      setLoading(true);
-      try {
-        const token = (typeof window !== "undefined" && (localStorage.getItem("token") || localStorage.getItem("vypar_auth_token"))) || "";
-        if (!token) {
-          setTransactions([]);
-          setLoading(false);
-          return;
-        }
-        const decoded: any = jwtDecode(token);
-        const userId = decoded._id || decoded.id;
-        if (!userId) {
-          setTransactions([]);
-          setLoading(false);
-          return;
-        }
-        const result = await getPaymentRecords(userId, token);
-        if (result && result.success && Array.isArray(result.paymentIns)) {
-          setTransactions(result.paymentIns);
-        } else {
-          setTransactions([]);
-        }
-      } catch (err) {
-        setTransactions([]);
-      }
-      setLoading(false);
-    };
-    fetchPayments();
+    refreshPaymentData();
   }, []);
 
   // Check URL parameters for auto-opening payment modal
@@ -215,6 +221,41 @@ const PaymentInPageContent = () => {
     }
   };
 
+  // Handle payment deletion
+  const handleDeletePayment = async () => {
+    if (!paymentToDelete) return;
+    
+    // Close modal immediately
+    setDeleteConfirmModal(false);
+    setPaymentToDelete(null);
+    
+    try {
+      const token = (typeof window !== "undefined" && (localStorage.getItem("token") || localStorage.getItem("vypar_auth_token"))) || "";
+      if (!token) {
+        setToast({ message: 'Authentication required', type: 'error' });
+        return;
+      }
+
+      const result = await deletePayment(paymentToDelete._id, token);
+      if (result && result.success) {
+        setToast({ message: 'Payment deleted successfully!', type: 'success' });
+        // Refresh the payment data
+        await refreshPaymentData();
+      } else {
+        setToast({ message: result?.message || 'Failed to delete payment', type: 'error' });
+      }
+    } catch (err) {
+      console.error('Error deleting payment:', err);
+      setToast({ message: 'Failed to delete payment', type: 'error' });
+    }
+  };
+
+  // Function to open delete confirmation modal
+  const openDeleteConfirmation = (payment: any) => {
+    setPaymentToDelete(payment);
+    setDeleteConfirmModal(true);
+  };
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       {/* Header */}
@@ -224,24 +265,28 @@ const PaymentInPageContent = () => {
             <h1 className="text-xl md:text-2xl font-bold text-gray-900">Payment In</h1>
             <p className="text-sm text-gray-500 mt-1">All payments received from customers</p>
           </div>
-          {/* Add Payment In Button */}
-          {!isClient ? (
-            // Show loading state during SSR to prevent hydration mismatch
-            <div className="px-6 py-2 rounded-full bg-gray-100 text-gray-500 font-semibold text-sm">
+          {/* Action Buttons */}
+          <div className="flex gap-3">
+            
+            {/* Add Payment In Button */}
+            {!isClient ? (
+              // Show loading state during SSR to prevent hydration mismatch
+              <div className="px-6 py-2 rounded-full bg-gray-100 text-gray-500 font-semibold text-sm">
+                + Add Payment In
+              </div>
+            ) : canAddData() ? (
+            <button
+              className="px-6 py-2 rounded-full bg-blue-600 text-white font-semibold shadow hover:bg-blue-700 transition-all text-sm"
+              onClick={() => { setSelectedTransaction(null); setIsEditMode(false); setShowPaymentIn(true); }}
+            >
               + Add Payment In
-            </div>
-          ) : canAddData() ? (
-          <button
-            className="px-6 py-2 rounded-full bg-blue-600 text-white font-semibold shadow hover:bg-blue-700 transition-all text-sm"
-            onClick={() => { setSelectedTransaction(null); setShowPaymentIn(true); }}
-          >
-            + Add Payment In
-          </button>
-          ) : (
-            <div className="px-6 py-2 rounded-full bg-gray-100 text-gray-500 font-semibold text-sm">
-              + Add Payment In (Restricted)
-            </div>
-          )}
+            </button>
+            ) : (
+              <div className="px-6 py-2 rounded-full bg-gray-100 text-gray-500 font-semibold text-sm">
+                + Add Payment In (Restricted)
+              </div>
+            )}
+          </div>
         </div>
       </div>
       {/* Stats Grid */}
@@ -259,13 +304,6 @@ const PaymentInPageContent = () => {
             PKR {Number(filteredStats.totalGrandTotal || 0).toLocaleString()}
           </div>
           <div className="text-sm text-gray-500">Total Invoices</div>
-        </div>
-        <div className="bg-gradient-to-br from-orange-100 to-orange-50 p-6 rounded-2xl shadow group hover:shadow-lg transition-all flex flex-col items-start">
-          <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-orange-500 text-white mb-3 text-xl">🧾</div>
-          <div className="text-2xl font-bold text-orange-700">
-            PKR {Number(filteredStats.totalBalance || 0).toLocaleString()}
-          </div>
-          <div className="text-sm text-gray-500">Total Balance</div>
         </div>
       </div>
       {/* Filters */}
@@ -411,12 +449,9 @@ const PaymentInPageContent = () => {
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Date</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Number</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Party Name</th>
-                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Category</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Type</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Total</th>
-                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Received/Paid</th>
-                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Balance</th>
-                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Status</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Received</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Print/Share</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700"></th>
               </tr>
@@ -424,7 +459,7 @@ const PaymentInPageContent = () => {
             <tbody className="divide-y divide-gray-100">
               {filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-6 py-8 text-center text-gray-500 text-lg font-medium">
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500 text-lg font-medium">
                     {searchTerm
                       ? `No payments found matching "${searchTerm}".`
                       : "No payments found."}
@@ -451,7 +486,6 @@ const PaymentInPageContent = () => {
                         {transaction.invoiceNo || (transaction.category === 'Party Payment In' ? 'Party Payment' : '-')}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{transaction.partyName}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap text-center">{transaction.category || '-'}</td>
                       <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap text-center">{transaction.paymentType || '-'}</td>
                       <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">
                         PKR {typeof transaction.grandTotal === 'number' ? transaction.grandTotal.toLocaleString() : (transaction.amount ? transaction.amount.toLocaleString() : '0')}
@@ -459,23 +493,20 @@ const PaymentInPageContent = () => {
                       <td className="px-6 py-4 text-sm font-semibold text-green-700 whitespace-nowrap text-center">
                         PKR {typeof transaction.amount === 'number' ? transaction.amount.toLocaleString() : '0'}
                       </td>
-                      <td className="px-6 py-4 text-sm font-semibold text-orange-600 whitespace-nowrap text-center">
-                        PKR {typeof transaction.balance === 'number' ? transaction.balance.toLocaleString() : '0'}
-                      </td>
-                      <td className="px-6 py-4 text-sm font-semibold text-center">
-                        <PaymentStatusBadge status={transaction.status || 'Paid'} />
-                      </td>
                       <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
                         <button
                           className="px-2 py-1 text-sm text-blue-700 underline mr-2"
-                          onClick={() => window.open(`/dashboard/sale/invoice/${transaction._id}`, '_blank')}
+                          onClick={() => {
+                            const url = `/dashboard/invoices?type=payment-in&id=${transaction._id}`;
+                            window.location.href = url;
+                          }}
                         >
                           Print
                         </button>
                         <button
                           className="px-2 py-1 text-sm text-blue-700 underline"
                           onClick={() => {
-                            const url = `${window.location.origin}/dashboard/sale/invoice/${transaction._id}`;
+                            const url = `${window.location.origin}/dashboard/invoices?type=payment-in&id=${transaction._id}`;
                             navigator.clipboard.writeText(url);
                             setToast({ message: 'Link copied!', type: 'success' });
                           }}
@@ -486,13 +517,9 @@ const PaymentInPageContent = () => {
                       <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
                         {isClient && canEditData() ? (
                         <TableActionMenu
-                          onView={() => window.open(`/dashboard/sale/invoice/${transaction._id}`, '_blank')}
-                          extraActions={[
-                            {
-                              label: 'Add Payment',
-                              onClick: () => { setSelectedTransaction(transaction); setShowPaymentIn(true); }
-                            }
-                          ]}
+                          onView={() => { setSelectedTransaction(transaction); setIsEditMode(true); setShowPaymentIn(true); }}
+                          viewButtonText="Edit / View"
+                          onDelete={() => openDeleteConfirmation(transaction)}
                         />
                         ) : (
                           <div className="text-gray-400 text-sm">No actions</div>
@@ -511,41 +538,101 @@ const PaymentInPageContent = () => {
         isOpen={showPaymentIn}
         onClose={() => setShowPaymentIn(false)}
         onSave={async (data) => {
-          // Refresh the entire payment data after successful payment
-          try {
-            const token = (typeof window !== 'undefined' && (localStorage.getItem('token') || localStorage.getItem('vypar_auth_token'))) || '';
-            if (!token) {
-              setShowPaymentIn(false);
-              setToast({ message: 'Payment received successfully!', type: 'success' });
-              return;
-            }
-            const decoded: any = jwtDecode(token);
-            const userId = decoded._id || decoded.id;
-            if (!userId) {
-              setShowPaymentIn(false);
-              setToast({ message: 'Payment received successfully!', type: 'success' });
-              return;
-            }
-            const result = await getPaymentRecords(userId, token);
-            if (result && result.success && Array.isArray(result.sales)) {
-              setTransactions(result.sales.filter((sale: any) => sale.received && sale.received > 0));
-            }
-          } catch (err) {
-            console.error('Error refreshing payment data:', err);
-          }
+          // Refresh the payment data after successful payment
+          await refreshPaymentData();
           setShowPaymentIn(false);
           setToast({ message: 'Payment received successfully!', type: 'success' });
         }}
         partyName={selectedTransaction?.partyName || ''}
         total={typeof selectedTransaction?.grandTotal === 'number' ? selectedTransaction.grandTotal : 0}
         dueBalance={typeof selectedTransaction?.balance === 'number' ? selectedTransaction.balance : 0}
+        receivedAmount={typeof selectedTransaction?.amount === 'number' ? selectedTransaction.amount : 0}
         saleId={selectedTransaction?._id || selectedTransaction?.id || ''}
+        paymentId={isEditMode ? (selectedTransaction?._id || selectedTransaction?.id) : undefined}
         showDiscount={false}
         showRemainingAmount={false}
+        isEditMode={isEditMode}
       />
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmModal && (
+        <div 
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeinup"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setDeleteConfirmModal(false)
+              setPaymentToDelete(null)
+            }
+          }}
+        >
+          <div className="bg-white/90 rounded-2xl shadow-2xl w-full max-w-md animate-scalein">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-semibold text-gray-900">Delete Payment</h2>
+                <button 
+                  onClick={() => {
+                    setDeleteConfirmModal(false)
+                    setPaymentToDelete(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">
+                Are you sure you want to delete this payment? 
+                <br />
+                <strong>Party:</strong> {paymentToDelete?.partyName}
+                <br />
+                <strong>Amount:</strong> PKR {paymentToDelete?.amount?.toLocaleString() || '0'}
+                <br />
+                <br />
+                This action cannot be undone.
+              </p>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setDeleteConfirmModal(false)
+                    setPaymentToDelete(null)
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeletePayment}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
+
+      {/* Add animation keyframes */}
+      <style jsx global>{`
+        @keyframes fadeinup {
+          0% { opacity: 0; transform: translateY(40px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeinup {
+          animation: fadeinup 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes scalein {
+          0% { opacity: 0; transform: scale(0.95); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+        .animate-scalein {
+          animation: scalein 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+      `}</style>
     </div>
   );
 };

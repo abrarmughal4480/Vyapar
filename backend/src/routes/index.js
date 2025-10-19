@@ -3,7 +3,8 @@ import authRoutes from './auth.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import { requirePageAccess } from '../middlewares/accessControlMiddleware.js';
 import partiesRoutes from './parties.js';
-import { addItem, bulkImportItems, getItems, getItemsByLoggedInUser, deleteItem, updateItem, getItemsPerformanceStats, checkExistingItems, getStockSummary, getItemWiseProfitLoss } from '../controllers/itemsController.js';
+import { addItem, bulkImportItems, getItems, getItemsByLoggedInUser, deleteItem, updateItem, getItemsPerformanceStats, checkExistingItems, getItemWiseProfitLoss } from '../controllers/itemsController.js';
+import { getStockSummary } from '../controllers/dashboardController.js';
 import saleRoutes from './sale.js';
 import purchaseRoutes from './purchase.js';
 import saleOrderRoutes from './saleOrder.js';
@@ -95,7 +96,7 @@ router.post('/dashboard/create-indexes', authMiddleware, createDashboardIndexes)
 router.get('/dashboard/test-stock-value', authMiddleware, testStockValue);
 
 // Stock summary route
-// router.get('/dashboard/stock-summary', authMiddleware, getStockSummary);
+router.get('/dashboard/stock-summary', authMiddleware, getStockSummary);
 
 // Party balances route
 router.get('/dashboard/party-balances', authMiddleware, getPartyBalances);

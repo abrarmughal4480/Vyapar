@@ -2,8 +2,9 @@
 import React, { useRef, useState, useEffect, Suspense } from "react";
 import { QrCode, FileText, Printer, ArrowLeft, Wifi, Usb } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { getSaleById } from "../../../http/sales";
+import { getSaleById, getSalesByUser, getPaymentRecords } from "../../../http/sales";
 import { getQuotationsForUser } from "../../../http/quotations";
+import { getPaymentOutsByUser } from "../../../http/purchases";
 import { jwtDecode } from "jwt-decode";
 
 // Constants
@@ -527,6 +528,230 @@ const InvoiceSummary: React.FC<{
 };
 
 // Simple Invoice Component (like estimate format)
+// Payment In Invoice Component (A4 Format)
+const PaymentInInvoice: React.FC<{ data: typeof defaultInvoiceData }> = ({ data }) => {
+  const totals = calculateTotals(data.items, data.discount, data.tax, data.received);
+  const [companyName, setCompanyName] = useState('My Company');
+  const [companyPhone, setCompanyPhone] = useState('');
+  const [isClient, setIsClient] = useState(false);
+  
+  // Handle client-side hydration
+  useEffect(() => {
+    setIsClient(true);
+    
+    // Get company name from token
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
+      if (token) {
+        const decoded: any = jwtDecode(token);
+        setCompanyName(decoded.name || decoded.companyName || 'My Company');
+        setCompanyPhone(decoded.phone || decoded.companyPhone || '');
+      }
+    } catch (error) {
+      console.error('Error decoding token:', error);
+    }
+  }, []);
+  
+  const formatDate = (date: string) => {
+    if (!date) return '';
+    const d = new Date(date);
+    return d.toLocaleDateString('en-GB');
+  };
+
+  const formatAmount = (amount: number) => {
+    return `Rs ${amount.toLocaleString('en-PK', { minimumFractionDigits: 2 })}`;
+  };
+
+  const numberToWords = (num: number): string => {
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    
+    if (num === 0) return 'Zero';
+    if (num < 10) return ones[num];
+    if (num < 20) return teens[num - 10];
+    if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 ? ' ' + ones[num % 10] : '');
+    if (num < 1000) return ones[Math.floor(num / 100)] + ' Hundred' + (num % 100 ? ' ' + numberToWords(num % 100) : '');
+    if (num < 100000) return numberToWords(Math.floor(num / 1000)) + ' Thousand' + (num % 1000 ? ' ' + numberToWords(num % 1000) : '');
+    return 'Large Number';
+  };
+
+  return (
+    <div className="bg-white p-4 w-full" style={{ fontFamily: 'Arial, sans-serif' }}>
+      {/* Header Section */}
+      <div className="mb-2">
+        <h1 className="text-2xl font-bold text-black mb-1 text-center">
+          Payment Receipt
+        </h1>
+        <div className="text-lg font-bold text-black ml-4">{companyName}</div>
+        {isClient && companyPhone && (
+          <div className="text-xs text-gray-700 ml-4">Phone: {companyPhone}</div>
+        )}
+      </div>
+
+      {/* Payment Details Section */}
+      <div className="border border-gray-300 mb-2">
+        <div className="flex">
+          {/* Left Side - Received From */}
+          <div className="flex-1 p-2 border-r border-gray-300">
+            <div className="text-xs text-gray-700">Received From:</div>
+            <div className="text-sm font-semibold text-black">{data.customer.name}</div>
+            {data.customer.phone && data.customer.phone !== 'N/A' && (
+              <div className="text-xs text-gray-700">Contact No: {data.customer.phone}</div>
+            )}
+          </div>
+          
+          {/* Right Side - Receipt Details */}
+          <div className="flex-1 p-2">
+            <div className="text-xs text-gray-700">Receipt Details:</div>
+            <div className="text-xs text-black">No: {data.invoiceNumber}</div>
+            <div className="text-xs text-black">Date: {formatDate(data.invoiceDate)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Amount Summary */}
+      <div className="mb-2">
+        <div className="flex justify-between items-center py-1">
+          <span className="text-xs text-black">Received:</span>
+          <span className="text-xs font-bold text-black">{formatAmount(totals.grandTotal)}</span>
+        </div>
+        
+        <div className="mt-1">
+          <div className="text-xs text-black">Amount in Words:</div>
+          <div className="text-xs text-black italic">
+            {numberToWords(Math.floor(totals.grandTotal))} Rupees only
+          </div>
+        </div>
+      </div>
+
+      {/* Signature Section */}
+      <div className="border border-gray-300 p-2">
+        <div className="flex justify-between">
+          <div className="flex-1"></div>
+          <div className="text-center">
+            <div className="text-xs text-black">For {companyName}:</div>
+            <div className="w-24 h-12 border border-gray-300 mx-auto mb-1"></div>
+            <div className="text-xs text-black">Authorized Signatory</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Payment Out Invoice Component (A4 Format)
+const PaymentOutInvoice: React.FC<{ data: typeof defaultInvoiceData }> = ({ data }) => {
+  const totals = calculateTotals(data.items, data.discount, data.tax, data.received);
+  const [companyName, setCompanyName] = useState('My Company');
+  const [companyPhone, setCompanyPhone] = useState('');
+  const [isClient, setIsClient] = useState(false);
+  
+  // Handle client-side hydration
+  useEffect(() => {
+    setIsClient(true);
+    
+    // Get company name from token
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
+      if (token) {
+        const decoded: any = jwtDecode(token);
+        setCompanyName(decoded.name || decoded.companyName || 'My Company');
+        setCompanyPhone(decoded.phone || decoded.companyPhone || '');
+      }
+    } catch (error) {
+      console.error('Error decoding token:', error);
+    }
+  }, []);
+  
+  const formatDate = (date: string) => {
+    if (!date) return '';
+    const d = new Date(date);
+    return d.toLocaleDateString('en-GB');
+  };
+
+  const formatAmount = (amount: number) => {
+    return `Rs ${amount.toLocaleString('en-PK', { minimumFractionDigits: 2 })}`;
+  };
+
+  const numberToWords = (num: number): string => {
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    
+    if (num === 0) return 'Zero';
+    if (num < 10) return ones[num];
+    if (num < 20) return teens[num - 10];
+    if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 ? ' ' + ones[num % 10] : '');
+    if (num < 1000) return ones[Math.floor(num / 100)] + ' Hundred' + (num % 100 ? ' ' + numberToWords(num % 100) : '');
+    if (num < 100000) return numberToWords(Math.floor(num / 1000)) + ' Thousand' + (num % 1000 ? ' ' + numberToWords(num % 1000) : '');
+    return 'Large Number';
+  };
+
+  return (
+    <div className="bg-white p-4 w-full" style={{ fontFamily: 'Arial, sans-serif' }}>
+      {/* Header Section */}
+      <div className="mb-2">
+        <h1 className="text-2xl font-bold text-black mb-1 text-center">
+          Payment Out
+        </h1>
+        <div className="text-lg font-bold text-black ml-4">{companyName}</div>
+        {isClient && companyPhone && (
+          <div className="text-xs text-gray-700 ml-4">Phone: {companyPhone}</div>
+        )}
+      </div>
+
+      {/* Payment Details Section */}
+      <div className="border border-gray-300 mb-2">
+        <div className="flex">
+          {/* Left Side - Paid To */}
+          <div className="flex-1 p-2 border-r border-gray-300">
+            <div className="text-xs text-gray-700">Paid To:</div>
+            <div className="text-sm font-semibold text-black">{data.customer.name}</div>
+            {data.customer.phone && data.customer.phone !== 'N/A' && (
+              <div className="text-xs text-gray-700">Phone: {data.customer.phone}</div>
+            )}
+          </div>
+          
+          {/* Right Side - Payment Details */}
+          <div className="flex-1 p-2">
+            <div className="text-xs text-gray-700">Payment Details:</div>
+            <div className="text-xs text-black">Date: {formatDate(data.invoiceDate)}</div>
+            <div className="text-xs text-black">Amount: {formatAmount(totals.grandTotal)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Amount Summary */}
+      <div className="mb-2">
+        <div className="flex justify-between items-center py-1">
+          <span className="text-xs text-black">Paid Amount:</span>
+          <span className="text-xs font-bold text-black">{formatAmount(totals.grandTotal)}</span>
+        </div>
+        
+        <div className="mt-1">
+          <div className="text-xs text-black">Amount in Words:</div>
+          <div className="text-xs text-black italic">
+            {numberToWords(Math.floor(totals.grandTotal))} Rupees only
+          </div>
+        </div>
+      </div>
+
+      {/* Signature Section */}
+      <div className="border border-gray-300 p-2">
+        <div className="flex justify-between">
+          <div className="flex-1"></div>
+          <div className="text-center">
+            <div className="text-xs text-black">For {companyName}:</div>
+            <div className="w-24 h-12 border border-gray-300 mx-auto mb-1"></div>
+            <div className="text-xs text-black">Authorized Signatory</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SimpleInvoiceContent: React.FC<{ data: typeof defaultInvoiceData }> = ({ data }) => {
   // Function to convert number to words (simple version)
   const numberToWords = (num: number): string => {
@@ -570,7 +795,9 @@ const SimpleInvoiceContent: React.FC<{ data: typeof defaultInvoiceData }> = ({ d
           {/* Left Side - Customer */}
           <div className="flex-1 p-2 border-r border-gray-300">
             <div className="text-xs text-gray-700">Bill To:</div>
-            <div className="text-sm font-semibold text-black">{data.customer.name}</div>
+            <div className="text-sm font-semibold text-black">
+              {data.customer.name === 'N/A' ? 'Cash Sale' : data.customer.name}
+            </div>
             <div className="text-xs text-gray-700">Phone: {data.business.phone || '3054561515'}</div>
           </div>
           
@@ -1056,8 +1283,22 @@ const InvoicePageContent: React.FC = () => {
       // Prevent the default back navigation
       event.preventDefault();
       
-      // Determine redirect destination based on invoice number
+      const type = searchParams.get('type');
       const invoiceNo = searchParams.get('invoiceNo');
+      
+      // Check if this is payment-out type
+      if (type === 'payment-out') {
+        router.push('/dashboard/payment-out');
+        return;
+      }
+      
+      // Check if this is payment-in type
+      if (type === 'payment-in') {
+        router.push('/dashboard/payment-in');
+        return;
+      }
+      
+      // Determine redirect destination based on invoice number
       const isFromQuotation = invoiceNo && (
         invoiceNo.includes('QUO') || 
         invoiceNo.includes('QUOT') || 
@@ -1086,6 +1327,140 @@ const InvoicePageContent: React.FC = () => {
     const fetchData = async () => {
       const saleId = searchParams.get('saleId');
       const invoiceNo = searchParams.get('invoiceNo');
+      const type = searchParams.get('type');
+      const id = searchParams.get('id');
+      
+      // Handle payment-out type
+      if (type === 'payment-out' && id) {
+        setLoading(true);
+        try {
+          const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
+          const decoded: any = jwtDecode(token);
+          const userId = decoded.userId || decoded._id || decoded.id || "";
+          
+          console.log('Fetching payment-outs for user:', userId);
+          const result = await getPaymentOutsByUser(userId, token);
+          console.log('Payment-outs result:', result);
+          
+          if (result.success && result.paymentOuts) {
+            const paymentOut = result.paymentOuts.find((p: any) => p._id === id || p.id === id);
+            console.log('Found payment-out:', paymentOut);
+            
+            if (paymentOut) {
+              // Convert payment-out data to invoice format
+              const invoiceData = {
+                invoiceNumber: paymentOut.billNo || 'Payment Out',
+                invoiceDate: paymentOut.paymentDate || paymentOut.createdAt,
+                dueDate: "",
+                status: "Paid",
+                customer: {
+                  name: paymentOut.supplierName || 'Supplier',
+                  phone: paymentOut.phoneNo || '',
+                  address: '',
+                },
+                business: {
+                  name: "My Company",
+                  address: "",
+                  phone: "3055645645",
+                  email: "",
+                },
+                items: [{
+                  name: paymentOut.category || 'Payment',
+                  qty: 1,
+                  unit: 'pcs',
+                  rate: paymentOut.amount || 0,
+                  amount: paymentOut.amount || 0,
+                  discountPercentage: null,
+                  discountAmount: null,
+                }],
+                discount: 0,
+                tax: 0,
+                paymentType: paymentOut.paymentType || 'Cash',
+                received: paymentOut.amount?.toString() || '0',
+                description: paymentOut.description || '',
+                qrUrl: '',
+              };
+              
+              setInvoiceData(invoiceData);
+              setLoading(false);
+              return;
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching payment-out:', error);
+          setLoading(false);
+        }
+      }
+      
+      // Handle payment-in type
+      if (type === 'payment-in' && id) {
+        setLoading(true);
+        try {
+          const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
+          const decoded: any = jwtDecode(token);
+          const userId = decoded.userId || decoded._id || decoded.id || "";
+          
+          console.log('Fetching payment-ins for user:', userId);
+          const result = await getPaymentRecords(userId, token);
+          console.log('Payment-ins result:', result);
+          
+          if (result.success && result.paymentIns) {
+            const paymentIn = result.paymentIns.find((p: any) => p._id === id || p.id === id);
+            console.log('Found payment-in:', paymentIn);
+            
+            if (paymentIn) {
+              // Convert payment-in data to invoice format
+              const invoiceData = {
+                invoiceNumber: paymentIn.paymentId || 'Payment In',
+                invoiceDate: paymentIn.paymentDate || paymentIn.createdAt,
+                dueDate: "",
+                status: "Paid",
+                customer: {
+                  name: paymentIn.partyName || 'Customer',
+                  phone: paymentIn.phoneNo || '',
+                  address: '',
+                },
+                business: {
+                  name: "My Company",
+                  address: "",
+                  phone: "3055645645",
+                  email: "",
+                },
+                items: [{
+                  name: paymentIn.description || 'Payment',
+                  qty: 1,
+                  unit: 'pcs',
+                  rate: paymentIn.amount || 0,
+                  amount: paymentIn.amount || 0,
+                  discountPercentage: null,
+                  discountAmount: null,
+                }],
+                discount: 0,
+                tax: 0,
+                paymentType: paymentIn.paymentType || 'Cash',
+                received: paymentIn.amount?.toString() || '0',
+                description: paymentIn.description || '',
+                qrUrl: '',
+              };
+              
+              setInvoiceData(invoiceData);
+              setLoading(false);
+              return;
+            } else {
+              console.log('Payment-in not found with id:', id);
+              setLoading(false);
+              return;
+            }
+          } else {
+            console.log('No payment-ins found in result');
+            setLoading(false);
+            return;
+          }
+        } catch (error) {
+          console.error('Error fetching payment-in:', error);
+          setLoading(false);
+        }
+      }
       
       if (saleId) {
         setLoading(true);
@@ -1306,9 +1681,20 @@ const InvoicePageContent: React.FC = () => {
         <div className="mb-6">
           <button
             onClick={() => {
-              // Check if we came from quotation page or sale page
-              const saleId = searchParams.get('saleId');
+              const type = searchParams.get('type');
               const invoiceNo = searchParams.get('invoiceNo');
+              
+              // Check if this is payment-out type
+              if (type === 'payment-out') {
+                router.push('/dashboard/payment-out');
+                return;
+              }
+              
+              // Check if this is payment-in type
+              if (type === 'payment-in') {
+                router.push('/dashboard/payment-in');
+                return;
+              }
               
               // Determine if this is from quotation (estimate) or sale
               const isFromQuotation = invoiceNo && (
@@ -1330,7 +1716,17 @@ const InvoicePageContent: React.FC = () => {
           >
             <ArrowLeft className="w-4 h-4" />
             {(() => {
+              const type = searchParams.get('type');
               const invoiceNo = searchParams.get('invoiceNo');
+              
+              if (type === 'payment-out') {
+                return 'Back to Payment Out';
+              }
+              
+              if (type === 'payment-in') {
+                return 'Back to Payment In';
+              }
+              
               const isFromQuotation = invoiceNo && (
                 invoiceNo.includes('QUO') || 
                 invoiceNo.includes('QUOT') || 
@@ -1346,8 +1742,12 @@ const InvoicePageContent: React.FC = () => {
           <div className="flex-1 invoice-print-area">
             {loading ? (
               <div className="flex items-center justify-center h-64">
-                <div className="text-lg text-gray-600">Loading estimate data...</div>
+                <div className="text-lg text-gray-600">Loading data...</div>
               </div>
+            ) : searchParams.get('type') === 'payment-out' ? (
+              <PaymentOutInvoice data={invoiceData} />
+            ) : searchParams.get('type') === 'payment-in' ? (
+              <PaymentInInvoice data={invoiceData} />
             ) : selectedSize === 'Thermal' ? (
               <InvoiceContent size={selectedSize} data={invoiceData} />
             ) : (

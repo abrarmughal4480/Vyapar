@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { makePayment, getPurchasesByUser, makeBulkPaymentToParty } from '@/http/purchases';
+import { makePayment, getPurchasesByUser, makeBulkPaymentToParty, editPaymentOut } from '@/http/purchases';
 import Toast from './Toast';
 import { fetchPartiesByUserId, getPartyBalance } from '@/http/parties';
 import { Settings } from 'lucide-react';
@@ -15,11 +15,14 @@ interface PaymentOutModalProps {
   partyName: string;
   total: number;
   dueBalance: number;
+  paidAmount?: number; // Add paid amount prop for edit mode
   purchaseId?: string; // Made optional for party payments
+  paymentId?: string; // Add payment ID for edit mode
   onSave?: (data: any) => void;
   showDiscount?: boolean; // New prop to control discount field visibility
   showPartyBalance?: boolean; // New prop to control party balance display
   showRemainingAmount?: boolean; // New prop to control remaining amount display
+  isEditMode?: boolean; // New prop to enable edit mode
 }
 
 const getPaymentTypeOptions = (bankAccounts: any[]) => [
@@ -104,7 +107,7 @@ function PaymentTypeDropdown({ value, onChange, bankAccounts }: { value: string;
   );
 }
 
-const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, partyName: initialPartyName, total, dueBalance, purchaseId, onSave, showDiscount = true, showPartyBalance = true, showRemainingAmount = true }) => {
+const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, partyName: initialPartyName, total, dueBalance, paidAmount: initialPaidAmount, purchaseId, paymentId, onSave, showDiscount = true, showPartyBalance = true, showRemainingAmount = true, isEditMode = false }) => {
   const [paymentType, setPaymentType] = useState('Cash');
   const { bankAccounts } = useBankAccounts();
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -126,6 +129,7 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
   const [partyTotal, setPartyTotal] = useState(0);
   const [partyDueBalance, setPartyDueBalance] = useState(0);
   const [partyOpeningBalance, setPartyOpeningBalance] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Function to fetch party opening balance
   const fetchPartyBalance = async (partyName: string) => {
@@ -180,12 +184,30 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
       } else {
         setSelectedParty(null);
       }
-      // Pre-fill paid amount with due balance
-      if (dueBalance && dueBalance > 0) {
+      // Pre-fill paid amount with initial paid amount or due balance
+      if (initialPaidAmount && initialPaidAmount > 0) {
+        setPaidAmount(initialPaidAmount.toString());
+      } else if (dueBalance && dueBalance > 0) {
         setPaidAmount(dueBalance.toString());
       }
+      // Reset date to current when modal opens (only for new payments)
+      if (!isEditMode) {
+        const now = new Date();
+        setDate(now.toISOString().slice(0, 10));
+      }
     }
-  }, [isOpen, initialPartyName, dueBalance]);
+  }, [isOpen, initialPartyName, dueBalance, initialPaidAmount, isEditMode]);
+
+  // Handle edit mode - set date from existing payment data
+  useEffect(() => {
+    if (isEditMode && isOpen) {
+      // For edit mode, we should get the payment data from the backend
+      // For now, we'll use the current date, but this should be updated
+      // when we have the actual payment data
+      const now = new Date();
+      setDate(now.toISOString().slice(0, 10));
+    }
+  }, [isEditMode, isOpen]);
 
   // Fetch supplier parties for suggestions
   useEffect(() => {
@@ -259,6 +281,9 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
   };
 
   const handleSave = async () => {
+    // Prevent multiple clicks
+    if (isLoading) return;
+    
     const amount = parseFloat(paidAmount) || 0;
     const discountAmount = parseFloat(discount) || 0;
     
@@ -267,16 +292,32 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
       return;
     }
     
+    setIsLoading(true);
     try {
       const token = localStorage.getItem('token') || localStorage.getItem('vypar_auth_token') || '';
       let result;
       
-      if (purchaseId) {
+      if (isEditMode && paymentId) {
+        // Edit existing payment
+        const paymentData = {
+          supplierName: selectedParty.name,
+          amount: amount,
+          paymentType,
+          paymentDate: date, // Use only date
+          description: `Payment edited for ${selectedParty.name}`,
+          imageUrl: imagePreview || '',
+          discount: discountAmount > 0 ? discountAmount : 0,
+          discountType: discountAmount > 0 ? (discountType === 'percentage' ? '%' : 'PKR') : 'PKR'
+        };
+        
+        result = await editPaymentOut(paymentId, paymentData, token);
+      } else if (purchaseId) {
         // Use individual purchase payment (updates specific purchase and party balance)
         const paymentData = {
           purchaseId: purchaseId,
           amount: amount,
           paymentType,
+          paymentDate: date, // Use only date
           description: `Payment for ${selectedParty.name}`,
           imageUrl: imagePreview || ''
         };
@@ -290,6 +331,7 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
           discount: discountAmount > 0 ? discountAmount : undefined,
           discountType: discountAmount > 0 ? (discountType === 'percentage' ? '%' : 'PKR') : undefined,
           paymentType,
+          paymentDate: date, // Use only date
           description: `Payment for ${selectedParty.name}`,
           imageUrl: imagePreview || ''
         };
@@ -298,7 +340,7 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
       }
       
       if (result && result.success) {
-        let message = `Payment made to ${selectedParty.name}!`;
+        let message = isEditMode ? `Payment and purchase bill updated for ${selectedParty.name}!` : `Payment made to ${selectedParty.name}!`;
         if (discountAmount > 0) {
           message += ` (${discountType === 'percentage' ? discountAmount + '%' : 'PKR ' + discountAmount} discount)`;
         }
@@ -321,21 +363,30 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
     } catch (err: any) {
       console.error('Payment error:', err);
       setToast({ message: err?.message || 'Payment failed', type: 'error' });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      background: 'rgba(0,0,0,0.4)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 9999,
-      padding: 32,
-      overflow: 'auto',
-    }}>
+    <>
+      <style jsx>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
+      <div style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.4)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+        padding: 32,
+        overflow: 'auto',
+      }}>
       <div style={{
         background: 'white',
         borderRadius: 18,
@@ -349,24 +400,41 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
         display: 'flex',
         flexDirection: 'column',
       }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '32px 40px 0 40px' }}>
-            <div>
-              <h2 style={{ fontSize: 26, fontWeight: 700, color: '#1e293b', letterSpacing: '-0.5px' }}>
-                {purchaseId ? 'Make Payment' : 'Make Party Payment'}
-              </h2>
-              <p style={{ fontSize: 14, color: '#64748b', marginTop: 4 }}>
-                {purchaseId ? 'Payment for specific purchase' : 'Payment will be applied to party balance'}
-              </p>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <button onClick={() => setShowSettings(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 26, marginRight: 8 }} title="Settings">
-                <Settings size={26} />
-              </button>
-              <button onClick={onClose} style={{ fontSize: 28, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>✕</button>
-            </div>
+        {/* Fixed Header */}
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          padding: '32px 40px 24px 40px',
+          background: 'white',
+          zIndex: 10,
+          borderBottom: '1px solid #f1f5f9',
+          flexShrink: 0
+        }}>
+          <div>
+            <h2 style={{ fontSize: 26, fontWeight: 700, color: '#1e293b', letterSpacing: '-0.5px', margin: 0 }}>
+              {isEditMode ? 'Edit Payment' : (purchaseId ? 'Make Payment' : 'Make Party Payment')}
+            </h2>
+            <p style={{ fontSize: 14, color: '#64748b', marginTop: 4, margin: 0 }}>
+              {isEditMode ? 'Edit existing payment details' : (purchaseId ? 'Payment for specific purchase' : 'Payment will be applied to party balance')}
+            </p>
           </div>
-          <div style={{ display: 'flex', gap: 48, flexWrap: 'wrap', padding: '32px 40px 0 40px', overflowY: 'auto', flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <button onClick={() => setShowSettings(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 26, marginRight: 8 }} title="Settings">
+              <Settings size={26} />
+            </button>
+            <button onClick={onClose} style={{ fontSize: 28, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+          </div>
+        </div>
+        
+        {/* Scrollable Body */}
+        <div style={{ 
+          flex: 1, 
+          overflowY: 'auto', 
+          padding: '32px 40px 0 40px',
+          minHeight: 0
+        }}>
+          <div style={{ display: 'flex', gap: 48, flexWrap: 'wrap' }}>
             {/* Left Side */}
             <div style={{ flex: 1, minWidth: 240 }}>
               {/* Party selection field with live suggestions */}
@@ -568,10 +636,58 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
               </div>
             </div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 40px 32px 40px' }}>
-            <button onClick={onClose} style={{ padding: '12px 24px', border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#f1f5f9', color: '#334155', marginRight: 14, fontWeight: 600, fontSize: 15, cursor: 'pointer', transition: 'background 0.2s' }}>Cancel</button>
-            <button onClick={handleSave} style={{ padding: '12px 32px', borderRadius: 8, background: '#2563eb', color: 'white', fontWeight: 700, border: 'none', fontSize: 15, cursor: 'pointer', transition: 'background 0.2s' }}>Save</button>
-          </div>
+           <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 40px 32px 40px' }}>
+             <button 
+               onClick={onClose} 
+               disabled={isLoading}
+               style={{ 
+                 padding: '12px 24px', 
+                 border: '1.5px solid #e2e8f0', 
+                 borderRadius: 8, 
+                 background: isLoading ? '#f8fafc' : '#f1f5f9', 
+                 color: isLoading ? '#94a3b8' : '#334155', 
+                 marginRight: 14, 
+                 fontWeight: 600, 
+                 fontSize: 15, 
+                 cursor: isLoading ? 'not-allowed' : 'pointer', 
+                 transition: 'background 0.2s',
+                 opacity: isLoading ? 0.6 : 1
+               }}
+             >
+               Cancel
+             </button>
+             <button 
+               onClick={handleSave} 
+               disabled={isLoading}
+               style={{ 
+                 padding: '12px 32px', 
+                 borderRadius: 8, 
+                 background: isLoading ? '#94a3b8' : '#2563eb', 
+                 color: 'white', 
+                 fontWeight: 700, 
+                 border: 'none', 
+                 fontSize: 15, 
+                 cursor: isLoading ? 'not-allowed' : 'pointer', 
+                 transition: 'background 0.2s',
+                 opacity: isLoading ? 0.8 : 1,
+                 display: 'flex',
+                 alignItems: 'center',
+                 gap: 8
+               }}
+             >
+               {isLoading && (
+                 <div style={{
+                   width: 16,
+                   height: 16,
+                   border: '2px solid transparent',
+                   borderTop: '2px solid white',
+                   borderRadius: '50%',
+                   animation: 'spin 1s linear infinite'
+                 }} />
+               )}
+               {isLoading ? 'Saving...' : (isEditMode ? 'Update Payment' : 'Save')}
+             </button>
+           </div>
         </div>
         {/* Settings Drawer */}
         {showSettings && (
@@ -602,6 +718,7 @@ const PaymentOutModal: React.FC<PaymentOutModalProps> = ({ isOpen, onClose, part
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
     </div>
+    </>
   );
 };
 

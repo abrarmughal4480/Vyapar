@@ -11,7 +11,13 @@ const JWT_EXPIRES_IN = '100y';
 
 const generateToken = (user) => {
   return jwt.sign(
-    { id: user._id, email: user.email, name: user.name },
+    { 
+      id: user._id, 
+      email: user.email, 
+      name: user.name, 
+      role: user.role,
+      isSuperAdmin: user.role === 'superadmin'
+    },
     JWT_SECRET,
     { expiresIn: JWT_EXPIRES_IN }
   );
@@ -22,19 +28,28 @@ const authController = {
   sendOTP: async (req, res) => {
     try {
       const { email } = req.body;
+      console.log('=== OTP SEND REQUEST ===');
+      console.log('Email:', email);
+      console.log('Timestamp:', new Date().toISOString());
+      
       if (!email) {
+        console.log('ERROR: Email is required');
         return res.status(400).json({ success: false, message: 'Email is required' });
       }
 
       // Check if user already exists
       const existingUser = await User.findOne({ email });
       if (existingUser) {
+        console.log('ERROR: User already exists with email:', email);
         return res.status(409).json({ success: false, message: 'User already exists with this email' });
       }
 
       // Generate 6-digit OTP
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
       const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
+      
+      console.log('Generated OTP:', otp);
+      console.log('OTP Expiry:', otpExpiry.toISOString());
 
       // Store OTP in temporary storage (you might want to use Redis in production)
       // For now, we'll store it in a global variable (not recommended for production)
@@ -42,6 +57,7 @@ const authController = {
         global.otpStorage = new Map();
       }
       global.otpStorage.set(email, { otp, expiry: otpExpiry });
+      console.log('OTP stored for email:', email);
 
       // Send OTP via email
       const emailContent = `
@@ -57,17 +73,22 @@ const authController = {
       `;
 
       try {
+        console.log('Sending OTP email to:', email);
         await sendEmail({
           to: email,
           subject: 'Email Verification - Devease Digital',
           html: emailContent
         });
+        console.log('OTP email sent successfully to:', email);
+        console.log('=== OTP SEND COMPLETED ===');
         return res.json({ success: true, message: 'OTP sent successfully' });
       } catch (emailError) {
         console.error('Email sending failed:', emailError);
+        console.log('ERROR: Failed to send OTP email to:', email);
         // For development/testing, you might want to return the OTP in response
         // In production, you should handle this differently
         if (process.env.NODE_ENV === 'development') {
+          console.log('Development mode: Returning OTP in response');
           return res.json({ 
             success: true, 
             message: 'OTP sent successfully (development mode)', 
@@ -91,35 +112,55 @@ const authController = {
     try {
       const { email, password, name, businessName, phone, businessType, address, gstNumber, website, otp } = req.body;
       
+      console.log('=== OTP VERIFICATION REQUEST ===');
+      console.log('Email:', email);
+      console.log('OTP Provided:', otp);
+      console.log('Timestamp:', new Date().toISOString());
+      
       if (!email || !password || !name || !businessName || !phone || !businessType || !otp) {
+        console.log('ERROR: Missing required fields');
         return res.status(400).json({ success: false, message: 'Missing required fields' });
       }
 
       // Check if user already exists
       const existingUser = await User.findOne({ email });
       if (existingUser) {
+        console.log('ERROR: User already exists with email:', email);
         return res.status(409).json({ success: false, message: 'User already exists' });
       }
 
       // Verify OTP
       if (!global.otpStorage || !global.otpStorage.has(email)) {
+        console.log('ERROR: OTP not found in storage for email:', email);
         return res.status(400).json({ success: false, message: 'OTP not found or expired' });
       }
 
       const storedOTPData = global.otpStorage.get(email);
+      console.log('Stored OTP:', storedOTPData.otp);
+      console.log('Stored OTP Expiry:', storedOTPData.expiry.toISOString());
+      
       if (storedOTPData.otp !== otp) {
+        console.log('ERROR: Invalid OTP provided');
+        console.log('Expected:', storedOTPData.otp);
+        console.log('Received:', otp);
         return res.status(400).json({ success: false, message: 'Invalid OTP' });
       }
 
       if (new Date() > storedOTPData.expiry) {
+        console.log('ERROR: OTP has expired');
+        console.log('Current time:', new Date().toISOString());
+        console.log('Expiry time:', storedOTPData.expiry.toISOString());
         global.otpStorage.delete(email);
         return res.status(400).json({ success: false, message: 'OTP has expired' });
       }
 
+      console.log('OTP verification successful');
       // Clear OTP after successful verification
       global.otpStorage.delete(email);
+      console.log('OTP cleared from storage');
 
       // Create user
+      console.log('Creating new user account');
       const hashedPassword = await bcrypt.hash(password, 10);
       const user = new User({ 
         email, 
@@ -134,8 +175,11 @@ const authController = {
         emailVerified: true // Mark email as verified
       });
       await user.save();
+      console.log('User created successfully with ID:', user._id);
       
       const token = generateToken(user);
+      console.log('JWT token generated for user:', user._id);
+      console.log('=== OTP VERIFICATION COMPLETED ===');
       return res.status(201).json({ success: true, data: { user }, token });
     } catch (err) {
       return res.status(500).json({ success: false, message: 'Registration failed', error: err.message });

@@ -97,4 +97,34 @@ export const makeBulkPaymentToParty = async (paymentData: any, token: string) =>
     },
   });
   return res.data;
+};
+
+// Edit payment out record
+export const editPaymentOut = async (paymentId: string, paymentData: any, token: string) => {
+  try {
+    const { data } = await api.put(`/api/purchases/edit-payment/${paymentId}`, paymentData, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return data;
+  } catch (error) {
+    console.error('Error editing payment out:', error);
+    return { success: false, message: 'Failed to edit payment' };
+  }
+};
+
+// Delete payment out record
+export const deletePaymentOut = async (paymentId: string, token: string) => {
+  try {
+    const { data } = await api.delete(`/api/purchases/delete-payment/${paymentId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return data;
+  } catch (error) {
+    console.error('Error deleting payment out:', error);
+    return { success: false, message: 'Failed to delete payment' };
+  }
 }; 

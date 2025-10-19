@@ -35,6 +35,7 @@ interface Item {
   type?: 'Product' | 'Service'
   imageUrl?: string
   openingQuantity?: number; // Added for opening stock
+  openingStockQuantity?: number; // Alternative opening stock field
   // New fields from bulk import
   hsn?: string
   wholesalePrice?: number
@@ -91,7 +92,7 @@ function calculateStats(items: Item[]) {
 
 // Helper function to get current stock value (shows actual stock, can be negative)
 function getCurrentStock(item: Item): number {
-  return item.stock ?? 0;
+  return item.stock !== null && item.stock !== undefined ? item.stock : (item.openingQuantity || item.openingStockQuantity || 0);
 }
 
 // Add this helper function above the component
@@ -652,14 +653,11 @@ export default function ItemsPage() {
                             onClick={() => openEditItemPage(item)}
                             className="text-blue-600 hover:text-blue-900 text-sm font-medium"
                           >
-                            Edit
+                            Edit / View
                           </button>
                         ) : (
-                          <div className="text-gray-400 text-sm">Edit</div>
+                          <div className="text-gray-400 text-sm">Edit / View</div>
                         )}
-                        <button className="text-green-600 hover:text-green-900 text-sm font-medium">
-                          View
-                        </button>
                         {isClient && canDeleteData() ? (
                           <button className="text-red-600 hover:text-red-900 text-sm font-medium" onClick={() => handleDeleteItem(item)}>
                             Delete
@@ -762,14 +760,11 @@ export default function ItemsPage() {
                                   onClick={() => openEditItemPage(item)}
                                   className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors px-2 py-1 rounded hover:bg-blue-50"
                                 >
-                                  Edit
+                                  Edit / View
                                 </button>
                               ) : (
-                                <div className="text-gray-400 text-sm px-2 py-1">Edit</div>
+                                <div className="text-gray-400 text-sm px-2 py-1">Edit / View</div>
                               )}
-                              <button className="text-green-600 hover:text-green-800 text-sm font-medium transition-colors px-2 py-1 rounded hover:bg-green-50">
-                                View
-                              </button>
                               {isClient && canDeleteData() ? (
                                 <button className="text-red-600 hover:text-red-800 text-sm font-medium transition-colors px-2 py-1 rounded hover:bg-red-50" onClick={() => handleDeleteItem(item)}>
                                   Delete

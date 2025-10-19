@@ -2,7 +2,7 @@
 // This file handles all permission checks before making API calls
 
 // Define role types
-type UserRole = 'SECONDARY ADMIN' | 'SALESMAN' | 'CA' | 'PURCHASER' | 'Default Admin';
+type UserRole = 'SECONDARY ADMIN' | 'SALESMAN' | 'CA' | 'PURCHASER' | 'Default Admin' | 'superadmin';
 
 // Define user info interface
 interface UserInfo {
@@ -49,6 +49,12 @@ const PAGE_PERMISSIONS: Record<UserRole, {
     operations: ['all'],
     restrictedPages: [],
     restrictedOperations: []
+  },
+  'superadmin': {
+    pages: ['all'],
+    operations: ['all'],
+    restrictedPages: [],
+    restrictedOperations: []
   }
 };
 
@@ -73,7 +79,6 @@ export const getCurrentUserInfo = (): UserInfo | null => {
       originalUserId: tokenPayload.originalUserId
     };
   } catch (error) {
-    console.error('Error parsing token:', error);
     return null;
   }
 };
@@ -100,7 +105,6 @@ export const getOriginalUserEmail = (): string | null => {
     
     return tokenPayload.email || tokenPayload.userEmail;
   } catch (error) {
-    console.error('Error parsing token for original email:', error);
     return null;
   }
 };
@@ -117,19 +121,16 @@ export const canAccessPage = (pageName: string): boolean => {
   const rolePermissions = PAGE_PERMISSIONS[role];
 
   if (!rolePermissions) {
-    console.log(`No permissions defined for role: ${role}`);
     return false;
   }
 
   // Check if page is restricted for this role
   if (rolePermissions.restrictedPages.includes(pageName)) {
-    console.log(`❌ Access DENIED: ${userInfo.email} (${role}) cannot access ${pageName}`);
     return false;
   }
 
   // Check if page is allowed for this role
   const hasAccess = rolePermissions.pages.includes(pageName);
-  console.log(`🔒 Page Access Check: ${userInfo.email} (${role}) ${hasAccess ? '✅ GRANTED' : '❌ DENIED'} to ${pageName}`);
   
   return hasAccess;
 };
@@ -149,13 +150,11 @@ export const canPerformOperation = (operation: string): boolean => {
 
   // Check if operation is restricted for this role
   if (rolePermissions.restrictedOperations.includes(operation)) {
-    console.log(`❌ Operation DENIED: ${userInfo.email} (${role}) cannot perform ${operation}`);
     return false;
   }
 
   // Check if operation is allowed for this role
   const hasPermission = rolePermissions.operations.includes(operation);
-  console.log(`🔒 Operation Check: ${userInfo.email} (${role}) ${hasPermission ? '✅ GRANTED' : '❌ DENIED'} for ${operation}`);
   
   return hasPermission;
 };
@@ -263,7 +262,6 @@ export const canEditSalesData = (): boolean => {
   
   // SALESMAN can create but not edit sales
   if (role === 'SALESMAN') {
-    console.log(`❌ Sales Edit DENIED: ${userInfo.email} (${role}) cannot edit sales data`);
     return false;
   }
 
@@ -282,7 +280,6 @@ export const canDeleteSalesData = (): boolean => {
   
   // SALESMAN cannot delete sales
   if (role === 'SALESMAN') {
-    console.log(`❌ Sales Delete DENIED: ${userInfo.email} (${role}) cannot delete sales data`);
     return false;
   }
 
@@ -324,30 +321,32 @@ export const canAccessDashboard = (): boolean => {
   
   // SALESMAN, CA, and PURCHASER cannot access dashboard
   if (role === 'SALESMAN' || role === 'CA' || role === 'PURCHASER') {
-    console.log(`🚫 Dashboard Access DENIED: ${userInfo.email} (${role}) cannot access dashboard`);
     return false;
   }
 
-  console.log(`✅ Dashboard Access GRANTED: ${userInfo.email} (${role}) can access dashboard`);
   return true; // Allow access for other roles
 };
 
 // Check if user is admin (bypasses license activation)
 export const isAdminUser = (): boolean => {
-  const userInfo = getCurrentUserInfo();
-  if (!userInfo) return false;
+  try {
+    // Check if we're on the client side
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    
+    const token = localStorage.getItem('token');
+    if (!token) return false;
 
-  // Check if user is Default Admin (not in company context)
-  if (userInfo.context !== 'company') {
-    console.log(`🔑 Admin User Detected: ${userInfo.email} (Default Admin) - License activation bypassed`);
-    return true;
+    const tokenPayload = JSON.parse(atob(token.split('.')[1]));
+    
+    // Check isSuperAdmin field from token
+    if (tokenPayload.isSuperAdmin === true) {
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    return false;
   }
-
-  // Check if user has superadmin role
-  if (userInfo.role === 'Default Admin') {
-    console.log(`🔑 Admin User Detected: ${userInfo.email} (${userInfo.role}) - License activation bypassed`);
-    return true;
-  }
-
-  return false;
 }; 

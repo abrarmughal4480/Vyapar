@@ -303,6 +303,55 @@ export const deletePaymentOut = async (req, res) => {
       await purchase.save();
     }
     
+    // Update supplier openingBalance (subtract payment amount)
+    try {
+      const Party = (await import('../models/parties.js')).default;
+      const supplierDoc = await Party.findOne({ name: paymentOut.supplierName, user: userId });
+      if (supplierDoc) {
+        const supplierCurrentBalance = supplierDoc.openingBalance || 0;
+        supplierDoc.openingBalance = supplierCurrentBalance - paymentOut.amount;
+        await supplierDoc.save();
+      }
+    } catch (err) {
+      console.error('Failed to update supplier openingBalance on payment out deletion:', err);
+    }
+    
+    // Handle bank account restoration if payment type was bank
+    if (paymentOut.paymentType && paymentOut.paymentType.startsWith('bank_')) {
+      try {
+        const BankAccount = (await import('../models/bankAccount.js')).default;
+        const BankTransaction = (await import('../models/bankTransaction.js')).default;
+        
+        const bankAccountId = paymentOut.paymentType.replace('bank_', '');
+        const bankAccount = await BankAccount.findOne({ 
+          _id: bankAccountId, 
+          userId: userId, 
+          isActive: true 
+        });
+        
+        if (bankAccount) {
+          // Restore bank account balance
+          const newBalance = bankAccount.currentBalance + paymentOut.amount;
+          await BankAccount.findByIdAndUpdate(bankAccountId, { 
+            currentBalance: newBalance,
+            updatedAt: new Date()
+          });
+          
+          // Delete the corresponding bank transaction
+          await BankTransaction.findOneAndDelete({
+            userId,
+            type: 'Payment Out',
+            fromAccount: bankAccount.accountDisplayName,
+            toAccount: paymentOut.supplierName,
+            amount: paymentOut.amount,
+            description: { $regex: `Payment out to ${paymentOut.supplierName}` }
+          });
+        }
+      } catch (bankError) {
+        console.error('Bank account restoration error:', bankError);
+      }
+    }
+    
     await PaymentOut.findByIdAndDelete(paymentOutId);
     
     res.json({ success: true, message: 'Payment out deleted successfully' });

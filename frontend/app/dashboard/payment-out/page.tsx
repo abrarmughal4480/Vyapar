@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef, Suspense } from "react";
-import { getPurchasesByUser, getPurchaseById, getPayments, getPaymentOutsByUser } from "@/http/purchases";
+import { getPaymentOutsByUser, deletePaymentOut } from "@/http/purchases";
 import { jwtDecode } from "jwt-decode";
 import Toast from "../../components/Toast";
 import PaymentOutModal from "../../components/PaymentOutModal";
@@ -33,6 +33,7 @@ const PaymentOutPageContent = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showPaymentOut, setShowPaymentOut] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [filterType, setFilterType] = useState('All');
   const [dateFrom, setDateFrom] = useState('');
@@ -47,6 +48,8 @@ const PaymentOutPageContent = () => {
   // Role-based access control
   const [userInfo, setUserInfo] = useState<any>(null);
   const [isClient, setIsClient] = useState(false);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState(false);
+  const [paymentToDelete, setPaymentToDelete] = useState<any>(null);
 
   useEffect(() => {
     // Set client-side flag for hydration safety
@@ -79,7 +82,16 @@ const PaymentOutPageContent = () => {
         }
         const result = await getPaymentOutsByUser(userId, token);
         if (result && result.success && Array.isArray(result.paymentOuts)) {
-          setTransactions(result.paymentOuts);
+          // Filter to ensure only payment-out records are shown
+          const paymentOutRecords = result.paymentOuts.filter((payment: any) => {
+            // Only show records that are payment-out related
+            return payment.category === 'Party Payment Out' || 
+                   payment.category === 'Purchase' || 
+                   payment.category === 'Purchase Payment' ||
+                   !payment.category || // Allow records without category
+                   payment.supplierName; // Allow records with supplier name (payment-out indicator)
+          });
+          setTransactions(paymentOutRecords);
         } else {
           setTransactions([]);
         }
@@ -215,6 +227,64 @@ const PaymentOutPageContent = () => {
     }
   };
 
+  // Handle payment deletion
+  const handleDeletePayment = async () => {
+    if (!paymentToDelete) return;
+    
+    // Close modal immediately
+    setDeleteConfirmModal(false);
+    setPaymentToDelete(null);
+    
+    try {
+      const token = (typeof window !== "undefined" && (localStorage.getItem("token") || localStorage.getItem("vypar_auth_token"))) || "";
+      if (!token) {
+        setToast({ message: 'Authentication required', type: 'error' });
+        return;
+      }
+
+      const result = await deletePaymentOut(paymentToDelete._id, token);
+      if (result && result.success) {
+        setToast({ message: 'Payment deleted and purchase bill updated successfully!', type: 'success' });
+        // Refresh the payment data
+        const userId = (() => {
+          try {
+            const decoded: any = jwtDecode(token);
+            return decoded.userId || decoded._id || decoded.id || "";
+          } catch (e) {
+            console.error('JWT decode error:', e);
+            return "";
+          }
+        })();
+        
+        if (userId) {
+          const refreshResult = await getPaymentOutsByUser(userId, token);
+          if (refreshResult && refreshResult.success && Array.isArray(refreshResult.paymentOuts)) {
+            // Filter to ensure only payment-out records are shown
+            const paymentOutRecords = refreshResult.paymentOuts.filter((payment: any) => {
+              return payment.category === 'Party Payment Out' || 
+                     payment.category === 'Purchase' || 
+                     payment.category === 'Purchase Payment' ||
+                     !payment.category || 
+                     payment.supplierName;
+            });
+            setTransactions(paymentOutRecords);
+          }
+        }
+      } else {
+        setToast({ message: result?.message || 'Failed to delete payment', type: 'error' });
+      }
+    } catch (err) {
+      console.error('Error deleting payment:', err);
+      setToast({ message: 'Failed to delete payment', type: 'error' });
+    }
+  };
+
+  // Function to open delete confirmation modal
+  const openDeleteConfirmation = (payment: any) => {
+    setPaymentToDelete(payment);
+    setDeleteConfirmModal(true);
+  };
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       {/* Header */}
@@ -228,7 +298,7 @@ const PaymentOutPageContent = () => {
           {isClient && canAddData() ? (
             <button
               className="px-6 py-2 rounded-full bg-blue-600 text-white font-semibold shadow hover:bg-blue-700 transition-all text-sm"
-              onClick={() => { setSelectedTransaction(null); setShowPaymentOut(true); }}
+              onClick={() => { setSelectedTransaction(null); setIsEditMode(false); setShowPaymentOut(true); }}
             >
               + Add Party Payment
             </button>
@@ -406,12 +476,9 @@ const PaymentOutPageContent = () => {
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Date</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Number</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Party Name</th>
-                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Category</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Type</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Total</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Paid</th>
-                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Balance</th>
-                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Status</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Print/Share</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700"></th>
               </tr>
@@ -419,7 +486,7 @@ const PaymentOutPageContent = () => {
             <tbody className="divide-y divide-gray-100">
               {filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-6 py-8 text-center text-gray-500 text-lg font-medium">
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500 text-lg font-medium">
                     {searchTerm
                       ? `No payments found matching "${searchTerm}".`
                       : "No payments found."}
@@ -440,7 +507,6 @@ const PaymentOutPageContent = () => {
                         {transaction.billNo || (transaction.category === 'Party Payment Out' ? 'Party Payment' : '-')}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap text-center">{transaction.supplierName || '-'}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap text-center">{transaction.category || 'Purchase'}</td>
                       <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap text-center">{transaction.paymentType || '-'}</td>
                       <td className="px-6 py-4 text-sm font-semibold text-blue-700 whitespace-nowrap text-center">
                         PKR {typeof transaction.total === 'number' ? transaction.total.toLocaleString() : (transaction.category === 'Party Payment Out' ? transaction.amount.toLocaleString() : '0')}
@@ -448,25 +514,23 @@ const PaymentOutPageContent = () => {
                       <td className="px-6 py-4 text-sm font-semibold text-red-700 whitespace-nowrap text-center">
                         PKR {typeof transaction.amount === 'number' ? transaction.amount.toLocaleString() : '0'}
                       </td>
-                      <td className="px-6 py-4 text-sm font-semibold text-orange-600 whitespace-nowrap text-center">
-                        PKR {typeof transaction.balance === 'number' ? transaction.balance.toLocaleString() : '0'}
-                      </td>
-                      <td className="px-6 py-4 text-sm font-semibold text-center">
-                        <PaymentStatusBadge status={transaction.status || 'Partial'} />
-                      </td>
                       <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
                         {isClient && canEditData() ? (
                           <>
                             <button
                               className="px-2 py-1 text-sm text-blue-700 underline mr-2"
-                              onClick={() => window.open(`/dashboard/purchase/invoice/${transaction.purchaseId}`, '_blank')}
+                              onClick={() => {
+                                const url = `/dashboard/invoices?type=payment-out&id=${transaction._id}`;
+                                console.log('Opening URL:', url);
+                                window.location.href = url;
+                              }}
                             >
                               Print
                             </button>
                             <button
                               className="px-2 py-1 text-sm text-blue-700 underline"
                               onClick={() => {
-                                const url = `${window.location.origin}/dashboard/purchase/invoice/${transaction.purchaseId}`;
+                                const url = `${window.location.origin}/dashboard/invoices?type=payment-out&id=${transaction._id}`;
                                 navigator.clipboard.writeText(url);
                                 setToast({ message: 'Link copied!', type: 'success' });
                               }}
@@ -481,13 +545,9 @@ const PaymentOutPageContent = () => {
                       <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
                         {isClient && canEditData() ? (
                           <TableActionMenu
-                            onView={() => window.open(`/dashboard/purchase/invoice/${transaction.purchaseId}`, '_blank')}
-                            extraActions={[
-                              {
-                                label: 'Add Payment',
-                                onClick: () => { setSelectedTransaction(transaction); setShowPaymentOut(true); }
-                              }
-                            ]}
+                            onView={() => { setSelectedTransaction(transaction); setIsEditMode(true); setShowPaymentOut(true); }}
+                            viewButtonText="Edit / View"
+                            onDelete={() => openDeleteConfirmation(transaction)}
                           />
                         ) : (
                           <div className="text-gray-400 text-sm">No actions</div>
@@ -522,7 +582,15 @@ const PaymentOutPageContent = () => {
             if (userId) {
               const result = await getPaymentOutsByUser(userId, token);
               if (result && result.success && Array.isArray(result.paymentOuts)) {
-                setTransactions(result.paymentOuts);
+                // Filter to ensure only payment-out records are shown
+                const paymentOutRecords = result.paymentOuts.filter((payment: any) => {
+                  return payment.category === 'Party Payment Out' || 
+                         payment.category === 'Purchase' || 
+                         payment.category === 'Purchase Payment' ||
+                         !payment.category || 
+                         payment.supplierName;
+                });
+                setTransactions(paymentOutRecords);
               }
             }
           } catch (err) {
@@ -539,13 +607,93 @@ const PaymentOutPageContent = () => {
         partyName={selectedTransaction?.supplierName || ''}
         total={typeof selectedTransaction?.total === 'number' ? selectedTransaction.total : 0}
         dueBalance={typeof selectedTransaction?.balance === 'number' ? selectedTransaction.balance : 0}
+        paidAmount={typeof selectedTransaction?.amount === 'number' ? selectedTransaction.amount : 0}
         purchaseId={selectedTransaction?.purchaseId}
+        paymentId={isEditMode ? (selectedTransaction?._id || selectedTransaction?.id) : undefined}
         showDiscount={false}
         showRemainingAmount={false}
+        isEditMode={isEditMode}
       />
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmModal && (
+        <div 
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeinup"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setDeleteConfirmModal(false)
+              setPaymentToDelete(null)
+            }
+          }}
+        >
+          <div className="bg-white/90 rounded-2xl shadow-2xl w-full max-w-md animate-scalein">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-semibold text-gray-900">Delete Payment</h2>
+                <button 
+                  onClick={() => {
+                    setDeleteConfirmModal(false)
+                    setPaymentToDelete(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">
+                Are you sure you want to delete this payment? 
+                <br />
+                <strong>Supplier:</strong> {paymentToDelete?.supplierName}
+                <br />
+                <strong>Amount:</strong> PKR {paymentToDelete?.amount?.toLocaleString() || '0'}
+                <br />
+                <br />
+                This will update the purchase bill balance and paid amount. This action cannot be undone.
+              </p>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setDeleteConfirmModal(false)
+                    setPaymentToDelete(null)
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeletePayment}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
+
+      {/* Add animation keyframes */}
+      <style jsx global>{`
+        @keyframes fadeinup {
+          0% { opacity: 0; transform: translateY(40px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeinup {
+          animation: fadeinup 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes scalein {
+          0% { opacity: 0; transform: scale(0.95); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+        .animate-scalein {
+          animation: scalein 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+      `}</style>
     </div>
   );
 };

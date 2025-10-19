@@ -1,5 +1,5 @@
 import express from 'express';
-import { createSale, getSalesByUser, receivePayment, receivePartyPayment, getSalesStatsByUser, deleteSale, updateSale, getBillWiseProfit, getItemPurchasePrices, getPaymentRecords } from '../controllers/saleController.js';
+import { createSale, getSalesByUser, receivePayment, receivePartyPayment, getSalesStatsByUser, deleteSale, updateSale, getBillWiseProfit, getItemPurchasePrices, getPaymentRecords, editPayment, deletePayment } from '../controllers/saleController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import Sale from '../models/sale.js';
 
@@ -53,6 +53,12 @@ router.put('/update/:saleId', authMiddleware, updateSale);
 
 // Get payment records for payment-in page
 router.get('/:userId/payments', authMiddleware, getPaymentRecords);
+
+// Edit payment record
+router.put('/edit-payment/:paymentId', authMiddleware, editPayment);
+
+// Delete payment record
+router.delete('/delete-payment/:paymentId', authMiddleware, deletePayment);
 
 // Parameterized routes must come last
 router.get('/:userId', authMiddleware, getSalesByUser);

@@ -839,7 +839,7 @@ export default function AddPurchasePage() {
   // Auto-switch to Cash when tax is disabled in expense mode
   useEffect(() => {
     if (isFromExpenses && !tacEnabled && newPurchase.paymentType === 'Credit') {
-      setNewPurchase(prev => ({ ...prev, paymentType: 'Cash', paid: '' }));
+      setNewPurchase(prev => ({ ...prev, paymentType: 'Cash' }));
     }
   }, [isFromExpenses, tacEnabled, newPurchase.paymentType]);
 
@@ -1280,6 +1280,15 @@ export default function AddPurchasePage() {
 
 
       const paidValue = newPurchase.paid !== undefined && newPurchase.paid !== '' ? Number(newPurchase.paid) : 0;
+      
+      // Ensure 0 is treated as a valid payment amount
+      let finalPaidValue = newPurchase.paid === '0' ? 0 : paidValue;
+      
+      // For expenses without tax, automatically set received amount to full total
+      if (isFromExpenses && !tacEnabled) {
+        finalPaidValue = grandTotal;
+      }
+      
       // Prepare common data
       const commonData = {
         supplierName: newPurchase.partyName,
@@ -1310,7 +1319,7 @@ export default function AddPurchasePage() {
         paymentMethod: newPurchase.paymentType || 'Cash', // Use the selected payment method
         bankAccountId: newPurchase.paymentType?.startsWith('bank_') ? newPurchase.paymentType.replace('bank_', '') : null,
         bankAccountName: newPurchase.paymentType?.startsWith('bank_') ? bankAccounts.find(bank => bank._id === newPurchase.paymentType?.replace('bank_', ''))?.accountDisplayName || '' : '',
-        paid: paidValue,
+        paid: finalPaidValue,
         description: newPurchase.description || '',
         imageUrl: uploadedImage || '',
         orderDate: newPurchase.invoiceDate,
@@ -1328,8 +1337,8 @@ export default function AddPurchasePage() {
         // Create or update expense
         const expenseData = {
           expenseCategory: expenseCategory,
-          party: tacEnabled && newPurchase.taxPartyName ? newPurchase.taxPartyName : (newPurchase.partyName || 'Unknown'),
-          partyId: newPurchase.partyId || null, // Always send partyId when available
+          party: tacEnabled && newPurchase.taxPartyName ? newPurchase.taxPartyName : (tacEnabled ? (newPurchase.partyName || 'Unknown') : ''),
+          partyId: tacEnabled ? (newPurchase.partyId || null) : null, // Only send partyId when tax is enabled
           items: newPurchase.items
             .filter(item => 
               item.item &&
@@ -1341,11 +1350,11 @@ export default function AddPurchasePage() {
               amount: Number(item.price)
             })),
           totalAmount: grandTotal,
-          paymentType: newPurchase.paymentType?.startsWith('bank_') ? 'Cash' : 'Credit', // Cash for bank payments, Credit for others
+          paymentType: isFromExpenses && !tacEnabled ? 'Cash' : (newPurchase.paymentType?.startsWith('bank_') ? 'Cash' : 'Credit'), // Cash for expenses without tax or bank payments, Credit for others
           paymentMethod: newPurchase.paymentType || 'Cash',
           bankAccountId: newPurchase.paymentType?.startsWith('bank_') ? newPurchase.paymentType.replace('bank_', '') : null,
           bankAccountName: newPurchase.paymentType?.startsWith('bank_') ? bankAccounts.find(bank => bank._id === newPurchase.paymentType?.replace('bank_', ''))?.accountDisplayName || '' : '',
-          receivedAmount: newPurchase.paymentType?.startsWith('bank_') ? grandTotal : (Number(newPurchase.paid) || 0), // Full amount for bank payments
+          receivedAmount: isFromExpenses && !tacEnabled ? grandTotal : (newPurchase.paymentType?.startsWith('bank_') ? grandTotal : finalPaidValue), // Full amount for expenses without tax or bank payments
           expenseDate: newPurchase.billDate || new Date().toISOString().split('T')[0],
           description: newPurchase.description || ''
         };
@@ -2980,33 +2989,42 @@ export default function AddPurchasePage() {
                         onBankAccountAdded={refetchBankAccounts}
                       />
                       
-                      {/* Paid Amount Field - Always Show */}
-                      <div className="mt-3">
-                        <label className="block text-xs font-medium text-green-700 mb-1">
-                          {isFromExpenses ? 'Received Amount' : 'Paid Amount'}
-                        </label>
-                        <input
-                          type="number"
-                          name="paid"
-                          value={newPurchase.paid}
-                          min={0}
-                          max={grandTotal}
-                          onChange={e => setNewPurchase(prev => ({ ...prev, paid: e.target.value }))}
-                          className={`w-full px-3 py-2 sm:px-4 sm:py-3 text-sm sm:text-base border-2 rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 ${
-                            formErrors.paid ? 'border-red-300 bg-red-50 focus:ring-red-200' : 'border-green-200 focus:ring-green-200'
-                          }`}
-                          placeholder={`Enter ${isFromExpenses ? 'amount received' : 'amount paid'} (max PKR ${grandTotal.toFixed(2)})`}
-                          onBlur={(e) => {
-                            const paidAmount = Number(e.target.value);
-                            if (paidAmount > grandTotal) {
-                              setNewPurchase(prev => ({ ...prev, paid: grandTotal.toString() }));
-                              setToast({ message: 'Paid amount cannot exceed total amount', type: 'error' });
-                            }
-                          }}
-                          autoComplete="off"
-                        />
-                        {formErrors.paid && <p className="text-xs text-red-500 mt-1">{formErrors.paid}</p>}
-                      </div>
+                      {/* Paid Amount Field - Show only when tax is enabled for expenses */}
+                      {!(isFromExpenses && !tacEnabled) && (
+                        <div className="mt-3">
+                          <label className="block text-xs font-medium text-green-700 mb-1">
+                            {isFromExpenses ? 'Received Amount' : 'Paid Amount'}
+                          </label>
+                          <input
+                            type="number"
+                            name="paid"
+                            value={newPurchase.paid}
+                            min={0}
+                            max={grandTotal}
+                            onChange={e => {
+                              const value = e.target.value;
+                              setNewPurchase(prev => ({ ...prev, paid: value }));
+                              // Clear any existing paid amount errors when user starts typing
+                              if (formErrors.paid) {
+                                setFormErrors((prev: any) => ({ ...prev, paid: undefined }));
+                              }
+                            }}
+                            className={`w-full px-3 py-2 sm:px-4 sm:py-3 text-sm sm:text-base border-2 rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 ${
+                              formErrors.paid ? 'border-red-300 bg-red-50 focus:ring-red-200' : 'border-green-200 focus:ring-green-200'
+                            }`}
+                            placeholder={`Enter ${isFromExpenses ? 'amount received' : 'amount paid'} (max PKR ${grandTotal.toFixed(2)})`}
+                            onBlur={(e) => {
+                              const paidAmount = Number(e.target.value);
+                              if (paidAmount > grandTotal) {
+                                setNewPurchase(prev => ({ ...prev, paid: grandTotal.toString() }));
+                                setToast({ message: 'Paid amount cannot exceed total amount', type: 'error' });
+                              }
+                            }}
+                            autoComplete="off"
+                          />
+                          {formErrors.paid && <p className="text-xs text-red-500 mt-1">{formErrors.paid}</p>}
+                        </div>
+                      )}
                     </div>
                     
                     {/* Totals */}
@@ -3021,8 +3039,8 @@ export default function AddPurchasePage() {
                             <span>Total Amount</span>
                             <span>PKR {isFromExpenses ? subTotal.toFixed(2) : originalSubTotal.toFixed(2)}</span>
                           </div>
-                            {/* Credit Information for Expenses - Always Show */}
-                            {newPurchase.paid && Number(newPurchase.paid) > 0 && (
+                            {/* Credit Information for Expenses - Show only when tax is enabled */}
+                            {tacEnabled && newPurchase.paid && Number(newPurchase.paid) > 0 && (
                               <>
                                 <div className="border-t border-blue-200 my-2"></div>
                                 <div className="flex justify-between text-xs sm:text-sm text-green-700">

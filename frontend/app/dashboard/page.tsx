@@ -558,7 +558,7 @@ export default function Dashboard() {
       bgGradient: 'from-emerald-500 to-teal-600',
       bgLight: 'bg-emerald-50',
       trend: businessStats.revenueChange !== undefined ? (businessStats.revenueChange >= 0 ? 'up' : 'down') : 'up',
-      onClick: openRevenueBreakdownModal
+      onClick: undefined
     },
     {
       title: 'Stock Value',
@@ -825,28 +825,28 @@ export default function Dashboard() {
         </div>
 
         {/* Enhanced Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-5 mb-6 md:mb-10 w-full">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-5 mb-6 md:mb-10 w-full">
           {dashboardStats.map((stat, index) => (
             <div
               key={index}
               className={`group relative bg-white/70 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg border border-white/20 p-4 sm:p-6 hover:shadow-2xl hover:-translate-y-1 sm:hover:-translate-y-2 transition-all duration-300 ${stat.onClick !== undefined ? 'cursor-pointer' : ''}`}
               onClick={stat.onClick}
             >
-              <div className="flex items-start justify-between">
-                <div className="space-y-2 sm:space-y-3 flex-1 min-w-0">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-2 sm:space-y-3 flex-1 min-w-0 mb-3 sm:mb-0">
                   <p className="text-xs sm:text-sm font-medium text-gray-600 uppercase tracking-wide">{stat.title}</p>
-                  <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 group-hover:scale-105 transition-transform duration-200 truncate">
+                  <p className="text-sm sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-900 group-hover:scale-105 transition-transform duration-200 break-all leading-tight">
                     {stat.value}
                   </p>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-2">
                     <div className={`flex items-center space-x-1 px-1.5 sm:px-2 py-1 rounded-full ${stat.bgLight}`}>
                       <stat.icon className={`w-2.5 h-2.5 sm:w-3 sm:h-3 ${stat.color}`} />
                       <span className={`text-xs sm:text-sm font-semibold ${stat.color}`}>{stat.change}</span>
                     </div>
-                    <span className="text-xs text-gray-500 hidden sm:block">from last month</span>
+                    <span className="text-xs text-gray-500">from last month</span>
                   </div>
                 </div>
-                <div className="relative flex-shrink-0 ml-2">
+                <div className="relative flex-shrink-0 self-center sm:self-start">
                   <div className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 bg-gradient-to-br ${stat.bgGradient} rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300`}>
                     <stat.icon className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-white" />
                   </div>
@@ -1192,17 +1192,17 @@ export default function Dashboard() {
               <ul className="divide-y divide-gray-200">
                 {stockSummary.items?.map((item: any, index: number) => {
                   let stockColor = 'text-gray-600';
-                  let stockText = item.currentStock.toString();
+                  let stockText = (item.currentStock ?? 0).toString();
 
                   if (item.issueType === 'negative') {
                     stockColor = 'text-red-800';
-                    stockText = `-${Math.abs(item.currentStock)}`;
+                    stockText = `-${Math.abs(item.currentStock ?? 0)}`;
                   } else if (item.issueType === 'outOfStock') {
                     stockColor = 'text-red-600';
                     stockText = '0';
                   } else if (item.issueType === 'lowStock') {
                     stockColor = 'text-orange-600';
-                    stockText = item.currentStock.toString();
+                    stockText = (item.currentStock ?? 0).toString();
                   }
 
                   return (

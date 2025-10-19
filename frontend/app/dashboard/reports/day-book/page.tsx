@@ -5,6 +5,7 @@ import TableActionMenu from '../../../components/TableActionMenu';
 import { getToken, getUserIdFromToken } from '../../../lib/auth';
 import { getSalesByUser } from '../../../../http/sales';
 import { getPurchasesByUser, getPayments, getPaymentOutsByUser } from '../../../../http/purchases';
+import { getExpenses } from '../../../../http/expenses';
 
 interface TransactionEntry {
   id: string;
@@ -39,11 +40,15 @@ export default function DayBookPage() {
         const userId = getUserIdFromToken();
         if (!token || !userId) throw new Error('Not authenticated');
         // Fetch all data
-        const [salesRes, purchasesRes, paymentsRes, paymentOutsRes] = await Promise.all([
+        const [salesRes, purchasesRes, paymentsRes, paymentOutsRes, expensesRes] = await Promise.all([
           getSalesByUser(userId, token),
           getPurchasesByUser(userId, token),
           getPayments(token),
-          getPaymentOutsByUser(userId, token)
+          getPaymentOutsByUser(userId, token),
+          getExpenses({ userId }).catch(err => {
+            console.error('Error fetching expenses:', err);
+            return { expenses: [] };
+          })
         ]);
         // Map to unified format with proper payment in/out calculation
         const sales = (salesRes.sales || []).map((s: any) => {
@@ -52,8 +57,8 @@ export default function DayBookPage() {
           const moneyOut = 0;
           
           return {
-            id: s._id,
-            name: s.partyName,
+            id: `sale-${s._id}`,
+            name: s.partyName || 'Cash Sale',
             ref: s.invoiceNo || s._id,
             type: 'Sale',
             total: s.actualSaleAmount || s.grandTotal, // Use actual amount after discounts
@@ -70,8 +75,8 @@ export default function DayBookPage() {
           const moneyOut = p.paid || 0;
           
           return {
-            id: p._id,
-            name: p.supplierName,
+            id: `purchase-${p._id}`,
+            name: p.supplierName || 'Cash Purchase',
             ref: p.billNo || p._id,
             type: 'Purchase',
             total: p.actualPurchaseAmount || p.grandTotal, // Use actual amount after discounts
@@ -82,13 +87,12 @@ export default function DayBookPage() {
           };
         });
         
-        // Only include separate payment entries for NON-cash transactions to avoid duplicates
+        // Include all payment entries
         const paymentIns: TransactionEntry[] = (paymentsRes.payments || [])
-          .filter((p: any) => p.paymentType !== 'Cash')
           .map((p: any) => ({
-            id: p._id,
+            id: `payment-in-${p._id}`,
             name: p.partyName || 'Payment Received',
-            ref: p.paymentRef || p._id,
+            ref: `Payment In #${p.paymentRef || p._id.slice(-6)}`,
             type: 'Payment In',
             total: p.amount,
             totalIn: p.amount,
@@ -97,13 +101,12 @@ export default function DayBookPage() {
             paymentType: p.paymentType || 'Credit',
           }));
         
-        // Only include separate payment out entries for NON-cash transactions to avoid duplicates
+        // Include all payment out entries
         const paymentOuts: TransactionEntry[] = (paymentOutsRes.paymentOuts || [])
-          .filter((p: any) => p.paymentType !== 'Cash')
           .map((p: any) => ({
-            id: p._id,
+            id: `payment-out-${p._id}`,
             name: p.supplierName || 'Payment Made',
-            ref: p.paymentRef || p._id,
+            ref: `Payment Out #${p.paymentRef || p._id.slice(-6)}`,
             type: 'Payment Out',
             total: p.amount,
             totalIn: 0,
@@ -112,7 +115,37 @@ export default function DayBookPage() {
             paymentType: p.paymentType || 'Credit',
           }));
         
-        let all: TransactionEntry[] = [...sales, ...purchases, ...paymentIns, ...paymentOuts];
+        // Debug expenses API response
+        console.log('Expenses API Response:', expensesRes);
+        
+        // Map expenses to unified format
+        const expenses: TransactionEntry[] = (expensesRes.data || []).map((e: any) => {
+          const paymentType = e.paymentType || 'Cash';
+          
+          // For credit expenses: money comes IN from party (you receive money)
+          // For cash expenses: money goes OUT (you pay money)
+          const moneyIn = paymentType === 'Credit' 
+            ? (e.totalAmount || 0) - (e.creditAmount || 0)  // Total - balance (amount received)
+            : 0;                                            // No money in for cash expenses
+          
+          const moneyOut = paymentType === 'Cash' 
+            ? (e.receivedAmount || e.totalAmount || 0)  // Money paid out
+            : 0;                                        // No money out for credit expenses
+          
+          return {
+            id: `expense-${e._id}`,
+            name: e.party || 'Cash Expense',
+            ref: `Expense #${e.expenseNumber || e._id.slice(-6)}`,
+            type: 'Expense',
+            total: e.totalAmount || 0,
+            totalIn: moneyIn,
+            out: moneyOut,
+            date: e.expenseDate?.slice(0, 10) || e.createdAt?.slice(0, 10) || '',
+            paymentType: paymentType,
+          };
+        });
+        
+        let all: TransactionEntry[] = [...sales, ...purchases, ...paymentIns, ...paymentOuts, ...expenses];
         
         // Debug logging
         console.log('Day Book Data:', {
@@ -120,11 +153,13 @@ export default function DayBookPage() {
           purchases: purchases.length,
           paymentIns: paymentIns.length,
           paymentOuts: paymentOuts.length,
+          expenses: expenses.length,
           totalIn: all.reduce((sum, entry) => sum + (entry.totalIn || 0), 0),
           totalOut: all.reduce((sum, entry) => sum + (entry.out || 0), 0),
           sampleSales: sales.slice(0, 2),
           samplePayments: paymentIns.slice(0, 2),
-          note: 'Cash transactions show only main entry, Credit transactions show both main entry and payment entry'
+          sampleExpenses: expenses.slice(0, 2),
+          note: 'All transactions including payments and expenses are shown'
         });
         
         // Sort by date descending
@@ -164,7 +199,7 @@ export default function DayBookPage() {
   const totalOut = filteredData.reduce((sum, entry) => sum + (entry.out || 0), 0);
   const balance = totalIn - totalOut;
 
-  const statusTabs = ['All', 'Sale', 'Purchase', 'Payment In', 'Payment Out'];
+  const statusTabs = ['All', 'Sale', 'Purchase', 'Payment In', 'Payment Out', 'Expense'];
 
   if (loading) {
     return <div className="text-center py-6 text-gray-400 text-sm">Loading...</div>;
@@ -183,7 +218,7 @@ export default function DayBookPage() {
             <h1 className="text-lg md:text-xl font-bold text-gray-900">Day Book</h1>
             <p className="text-xs text-gray-500 mt-1">View all daily transactions in one place</p>
             <p className="text-xs text-blue-600 mt-1">
-              💡 Cash transactions show only main entry, Credit transactions show both main entry and payment entry
+              💡 All transactions including sales, purchases, payments, and expenses are shown
             </p>
           </div>
         </div>

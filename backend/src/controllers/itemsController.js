@@ -518,12 +518,8 @@ export const getStockSummary = async (req, res) => {
 // Get item wise profit and loss report
 export const getItemWiseProfitLoss = async (req, res) => {
   try {
-    console.log('getItemWiseProfitLoss called');
-    console.log('User from auth middleware:', req.user);
-    
     const userId = req.user && (req.user._id || req.user.id);
     if (!userId) {
-      console.log('No userId found in request');
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
     
@@ -756,13 +752,21 @@ export const getItemWiseProfitLoss = async (req, res) => {
         }
       }
       
-      // If no batches and no purchase price, use actual purchase transactions
-      if (costOfGoodsSold === 0) {
+      // If no batches and no purchase price, AND items were actually sold, use actual purchase transactions
+      if (costOfGoodsSold === 0 && netSoldQty > 0) {
         costOfGoodsSold = purchaseAmount - purchaseReturnAmount;
       }
       
-      // Calculate net profit/loss (Sales - Credit Notes) - Cost of Goods Sold
-      const netProfitLoss = (saleAmount - creditNoteAmount) - costOfGoodsSold;
+      // Calculate net profit/loss
+      // Only calculate profit/loss based on actual sales, not unsold inventory
+      let netProfitLoss = 0;
+      
+      if (saleAmount > 0 && netSoldQty > 0) {
+        // If there were actual sales, calculate profit/loss
+        // Profit/Loss = (Sales - Returns) - Cost of Goods Sold
+        netProfitLoss = (saleAmount - creditNoteAmount) - costOfGoodsSold;
+      }
+      // If no sales, profit/loss should be 0 (unsold inventory doesn't create loss)
 
       itemWiseData.push({
         id: item._id,

@@ -36,25 +36,14 @@ export default function ItemWiseProfitLossPage() {
         const token = getToken();
         if (!token) throw new Error('Not authenticated');
         
-        console.log('Token from localStorage:', token ? 'Token present' : 'No token');
-        console.log('Token length:', token ? token.length : 0);
-        
-        // Fetch real item wise profit loss data from API
         const response = await getItemWiseProfitLoss();
         
         if (!response.success) {
           throw new Error(response.message || 'Failed to fetch item wise profit loss data');
         }
         
-        const profitLossData = response.data.items || [];
-        const totalAmount = response.data.totalNetProfitLoss || 0;
-        
-        console.log('Item Wise Profit Loss Data:', {
-          apiResponse: response,
-          totalItems: profitLossData.length,
-          totalNetProfitLoss: totalAmount,
-          sampleItems: profitLossData.slice(0, 2),
-        });
+        const profitLossData = response.data?.items || [];
+        const totalAmount = response.data?.totalNetProfitLoss || 0;
         
         setAllData(profitLossData);
         setFilteredData(profitLossData);
@@ -103,15 +92,15 @@ export default function ItemWiseProfitLossPage() {
             ${filteredData.map(item => `
               <tr>
                 <td style="border: 1px solid #ddd; padding: 8px;">${item.itemName}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${item.sale.toFixed(2)}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${item.creditNoteSaleReturn.toFixed(2)}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${item.purchase.toFixed(2)}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${item.drNotePurchaseReturn.toFixed(2)}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.openingStock}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.closingStock}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${item.taxReceivable.toFixed(2)}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${item.taxPayable.toFixed(2)}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${item.netProfitLoss.toFixed(2)}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${(item.sale || 0).toFixed(2)}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${(item.creditNoteSaleReturn || 0).toFixed(2)}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${(item.purchase || 0).toFixed(2)}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${(item.drNotePurchaseReturn || 0).toFixed(2)}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.openingStock || 0}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.closingStock || 0}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${(item.taxReceivable || 0).toFixed(2)}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${(item.taxPayable || 0).toFixed(2)}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${(item.netProfitLoss || 0).toFixed(2)}</td>
               </tr>
             `).join('')}
             <tr style="background-color: #f5f5f5; font-weight: bold;">
@@ -181,15 +170,15 @@ export default function ItemWiseProfitLossPage() {
                 ${filteredData.map(item => `
                   <tr>
                     <td>${item.itemName}</td>
-                    <td class="text-right">₨ ${item.sale.toFixed(2)}</td>
-                    <td class="text-right">₨ ${item.creditNoteSaleReturn.toFixed(2)}</td>
-                    <td class="text-right">₨ ${item.purchase.toFixed(2)}</td>
-                    <td class="text-right">₨ ${item.drNotePurchaseReturn.toFixed(2)}</td>
-                    <td class="text-right">${item.openingStock}</td>
-                    <td class="text-right">${item.closingStock}</td>
-                    <td class="text-right">₨ ${item.taxReceivable.toFixed(2)}</td>
-                    <td class="text-right">₨ ${item.taxPayable.toFixed(2)}</td>
-                    <td class="text-right">₨ ${item.netProfitLoss.toFixed(2)}</td>
+                    <td class="text-right">₨ ${(item.sale || 0).toFixed(2)}</td>
+                    <td class="text-right">₨ ${(item.creditNoteSaleReturn || 0).toFixed(2)}</td>
+                    <td class="text-right">₨ ${(item.purchase || 0).toFixed(2)}</td>
+                    <td class="text-right">₨ ${(item.drNotePurchaseReturn || 0).toFixed(2)}</td>
+                    <td class="text-right">${item.openingStock || 0}</td>
+                    <td class="text-right">${item.closingStock || 0}</td>
+                    <td class="text-right">₨ ${(item.taxReceivable || 0).toFixed(2)}</td>
+                    <td class="text-right">₨ ${(item.taxPayable || 0).toFixed(2)}</td>
+                    <td class="text-right">₨ ${(item.netProfitLoss || 0).toFixed(2)}</td>
                   </tr>
                 `).join('')}
                 <tr class="total-row">
@@ -222,7 +211,6 @@ export default function ItemWiseProfitLossPage() {
       
       alert('Item Wise Profit and Loss report downloaded successfully! You can now open and print it from your downloads folder.');
     } catch (error) {
-      console.error('Tauri print error:', error);
       handlePrint();
     }
   };
@@ -299,37 +287,37 @@ export default function ItemWiseProfitLossPage() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {filteredData.map((item) => (
-              <tr key={item.id} className="hover:bg-gray-50">
+            {filteredData.map((item, index) => (
+              <tr key={item.id || `item-${index}`} className="hover:bg-gray-50">
                 <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
                   {item.itemName}
                 </td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                  ₨ {item.sale.toFixed(2)}
+                  ₨ {(item.sale || 0).toFixed(2)}
                 </td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                  ₨ {item.creditNoteSaleReturn.toFixed(2)}
+                  ₨ {(item.creditNoteSaleReturn || 0).toFixed(2)}
                 </td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                  ₨ {item.purchase.toFixed(2)}
+                  ₨ {(item.purchase || 0).toFixed(2)}
                 </td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                  ₨ {item.drNotePurchaseReturn.toFixed(2)}
+                  ₨ {(item.drNotePurchaseReturn || 0).toFixed(2)}
                 </td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                  {item.openingStock}
+                  {item.openingStock || 0}
                 </td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                  {item.closingStock}
+                  {item.closingStock || 0}
                 </td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                  ₨ {item.taxReceivable.toFixed(2)}
+                  ₨ {(item.taxReceivable || 0).toFixed(2)}
                 </td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                  ₨ {item.taxPayable.toFixed(2)}
+                  ₨ {(item.taxPayable || 0).toFixed(2)}
                 </td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                  ₨ {item.netProfitLoss.toFixed(2)}
+                  ₨ {(item.netProfitLoss || 0).toFixed(2)}
                 </td>
               </tr>
             ))}

@@ -3,8 +3,8 @@ import authRoutes from './auth.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import { requirePageAccess } from '../middlewares/accessControlMiddleware.js';
 import partiesRoutes from './parties.js';
-import { addItem, bulkImportItems, getItems, getItemsByLoggedInUser, deleteItem, updateItem, getItemsPerformanceStats, checkExistingItems, getItemWiseProfitLoss } from '../controllers/itemsController.js';
-import { getStockSummary } from '../controllers/dashboardController.js';
+import { addItem, bulkImportItems, getItems, getItemsByLoggedInUser, deleteItem, updateItem, getItemsPerformanceStats, checkExistingItems, getItemWiseProfitLoss, getStockSummary } from '../controllers/itemsController.js';
+import { getStockSummary as getStockSummaryIssues } from '../controllers/dashboardController.js';
 import saleRoutes from './sale.js';
 import purchaseRoutes from './purchase.js';
 import saleOrderRoutes from './saleOrder.js';
@@ -95,8 +95,8 @@ router.post('/dashboard/create-indexes', authMiddleware, createDashboardIndexes)
 // Test stock value calculation route
 router.get('/dashboard/test-stock-value', authMiddleware, testStockValue);
 
-// Stock summary route
-router.get('/dashboard/stock-summary', authMiddleware, getStockSummary);
+// Stock summary route (stock issues - negative/low stock items)
+router.get('/dashboard/stock-summary', authMiddleware, getStockSummaryIssues);
 
 // Party balances route
 router.get('/dashboard/party-balances', authMiddleware, getPartyBalances);

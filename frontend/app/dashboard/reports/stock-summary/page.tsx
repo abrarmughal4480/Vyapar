@@ -30,25 +30,13 @@ export default function StockSummaryPage() {
         const token = getToken();
         if (!token) throw new Error('Not authenticated');
         
-        console.log('Token from localStorage:', token ? 'Token present' : 'No token');
-        console.log('Token length:', token ? token.length : 0);
-        
-        // Fetch real stock summary data from API
         const response = await getStockSummary();
         
         if (!response.success) {
           throw new Error(response.message || 'Failed to fetch stock summary data');
         }
         
-        const stockData = response.data.items || [];
-        
-        console.log('Stock Summary Data:', {
-          apiResponse: response,
-          totalItems: stockData.length,
-          totalStockQty: response.data.totals?.totalStockQty || 0,
-          totalStockValue: response.data.totals?.totalStockValue || 0,
-          sampleItems: stockData.slice(0, 2),
-        });
+        const stockData = response.data?.items || [];
         
         setAllData(stockData);
         setFilteredData(stockData);
@@ -91,18 +79,18 @@ export default function StockSummaryPage() {
             ${filteredData.map(item => `
               <tr>
                 <td style="border: 1px solid #ddd; padding: 8px;">${item.itemName}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${item.salePrice.toFixed(2)}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${item.purchasePrice.toFixed(2)}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.stockQty}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${item.stockValue.toFixed(2)}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${(item.salePrice || 0).toFixed(2)}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${(item.purchasePrice || 0).toFixed(2)}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.stockQty || 0}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${(item.stockValue || 0).toFixed(2)}</td>
               </tr>
             `).join('')}
             <tr style="background-color: #f5f5f5; font-weight: bold;">
               <td style="border: 1px solid #ddd; padding: 8px;">Total</td>
               <td style="border: 1px solid #ddd; padding: 8px; text-align: right;"></td>
               <td style="border: 1px solid #ddd; padding: 8px; text-align: right;"></td>
-              <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${filteredData.reduce((sum, item) => sum + item.stockQty, 0)}</td>
-              <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${filteredData.reduce((sum, item) => sum + item.stockValue, 0).toFixed(2)}</td>
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${filteredData.reduce((sum, item) => sum + (item.stockQty || 0), 0)}</td>
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₨ ${filteredData.reduce((sum, item) => sum + (item.stockValue || 0), 0).toFixed(2)}</td>
             </tr>
           </tbody>
         </table>
@@ -154,18 +142,18 @@ export default function StockSummaryPage() {
                 ${filteredData.map(item => `
                   <tr>
                     <td>${item.itemName}</td>
-                    <td class="text-right">₨ ${item.salePrice.toFixed(2)}</td>
-                    <td class="text-right">₨ ${item.purchasePrice.toFixed(2)}</td>
-                    <td class="text-right">${item.stockQty}</td>
-                    <td class="text-right">₨ ${item.stockValue.toFixed(2)}</td>
+                    <td class="text-right">₨ ${(item.salePrice || 0).toFixed(2)}</td>
+                    <td class="text-right">₨ ${(item.purchasePrice || 0).toFixed(2)}</td>
+                    <td class="text-right">${item.stockQty || 0}</td>
+                    <td class="text-right">₨ ${(item.stockValue || 0).toFixed(2)}</td>
                   </tr>
                 `).join('')}
                 <tr class="total-row">
                   <td>Total</td>
                   <td class="text-right"></td>
                   <td class="text-right"></td>
-                  <td class="text-right">${filteredData.reduce((sum, item) => sum + item.stockQty, 0)}</td>
-                  <td class="text-right">₨ ${filteredData.reduce((sum, item) => sum + item.stockValue, 0).toFixed(2)}</td>
+                  <td class="text-right">${filteredData.reduce((sum, item) => sum + (item.stockQty || 0), 0)}</td>
+                  <td class="text-right">₨ ${filteredData.reduce((sum, item) => sum + (item.stockValue || 0), 0).toFixed(2)}</td>
                 </tr>
               </tbody>
             </table>
@@ -257,45 +245,42 @@ export default function StockSummaryPage() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {filteredData.map((item) => (
-              <tr key={item.id} className="hover:bg-gray-50">
+            {filteredData.map((item, index) => (
+              <tr key={item.id || `item-${index}`} className="hover:bg-gray-50">
                 <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
                   {item.itemName}
                 </td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                  ₨ {item.salePrice.toFixed(2)}
+                  ₨ {(item.salePrice || 0).toFixed(2)}
                 </td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                  ₨ {item.purchasePrice.toFixed(2)}
+                  ₨ {(item.purchasePrice || 0).toFixed(2)}
                 </td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                  {item.stockQty}
+                  {item.stockQty || 0}
                 </td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                  ₨ {item.stockValue.toFixed(2)}
+                  ₨ {(item.stockValue || 0).toFixed(2)}
                 </td>
               </tr>
             ))}
-            {/* Total Row */}
-            <tr className="bg-gray-50 font-semibold">
-              <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
-                Total
-              </td>
-              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                
-              </td>
-              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                
-              </td>
-              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                {filteredData.reduce((sum, item) => sum + item.stockQty, 0)}
-              </td>
-              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
-                ₨ {filteredData.reduce((sum, item) => sum + item.stockValue, 0).toFixed(2)}
-              </td>
-            </tr>
           </tbody>
         </table>
+        {filteredData.length > 0 && (
+          <div className="bg-gray-50 border-t-2 border-gray-200">
+            <div className="px-4 py-3 flex justify-between items-center text-sm font-semibold text-gray-900">
+              <div className="px-4 py-2">Total</div>
+              <div className="px-4 py-2 text-right"></div>
+              <div className="px-4 py-2 text-right"></div>
+              <div className="px-4 py-2 text-right">
+                {filteredData.reduce((sum, item) => sum + (item.stockQty || 0), 0)}
+              </div>
+              <div className="px-4 py-2 text-right">
+                ₨ {filteredData.reduce((sum, item) => sum + (item.stockValue || 0), 0).toFixed(2)}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
